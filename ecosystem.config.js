@@ -16,5 +16,11 @@ module.exports = {
       instances: 1, // usually keep workers at 1 instance unless designed for horizontal scaling
       autorestart: true,
     },
+    {
+      name: 'whatsapp-worker',
+      script: 'helper/verificationCodeWorker.js', // wherever your BullMQ worker entrypoint is
+      instances: 1, // usually keep workers at 1 instance unless designed for horizontal scaling
+      autorestart: true,
+    },
   ],
 };

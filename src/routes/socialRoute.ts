@@ -35,7 +35,7 @@ router.get('/tiktok/:userId', authenticate, tiktokData);
 
 router.get('/auth/facebook', facebookAuthentication);
 
-router.get('/auth/facebook/callback', redirectFacebookAuth);
+router.get('/auth/facebook/callback', authenticate, redirectFacebookAuth);
 
 router.get('/instagram/:userId', authenticate, getUserInstagramData);
 
@@ -43,7 +43,7 @@ router.post('/tiktok/disconnect', authenticate, handleDisconnectTiktok);
 
 router.post('/facebook/disconnect', authenticate, handleDisconnectFacebook);
 
-router.get('/auth/instagram/callback', instagramCallback);
+router.get('/auth/instagram/callback', authenticate, instagramCallback);
 
 router.get('/instagram/overview/:userId', authenticate, getInstagramOverview);
 

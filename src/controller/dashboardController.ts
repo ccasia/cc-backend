@@ -19,8 +19,7 @@ async function getAssignedCampaignIds(userId: string): Promise<string[] | null> 
     },
   });
 
-  const isSuperAdmin =
-    user?.role === 'superadmin' || ['god', 'advanced'].includes(user?.admin?.mode || '');
+  const isSuperAdmin = user?.role === 'superadmin' || ['god', 'advanced'].includes(user?.admin?.mode || '');
   if (isSuperAdmin) return null;
 
   const assigned = await prisma.campaignAdmin.findMany({

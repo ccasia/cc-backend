@@ -5018,6 +5018,8 @@ export const uploadSubmissionCaption = async (req: Request, res: Response) => {
   const userId = req.userId;
   const caption = req.body.caption;
 
+  console.log('CAPTION', caption);
+
   if (!id) return res.status(400).json({ message: 'Id is missing' });
 
   try {

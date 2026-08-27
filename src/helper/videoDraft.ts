@@ -151,9 +151,15 @@ const checkCurrentSubmission = async (submissionId: string) => {
   }
 
   const [videos, rawFootages, photos] = await Promise.all([
-    prisma.video.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
-    prisma.rawFootage.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
-    prisma.photo.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
+    prisma.video.count({
+      where: { submissionId: submission.id, userId: submission.userId, campaignId: submission.campaignId },
+    }),
+    prisma.rawFootage.count({
+      where: { submissionId: submission.id, userId: submission.userId, campaignId: submission.campaignId },
+    }),
+    prisma.photo.count({
+      where: { submissionId: submission.id, userId: submission.userId, campaignId: submission.campaignId },
+    }),
   ]);
 
   let allDeliverablesSent = false;
@@ -281,6 +287,8 @@ const checkCurrentSubmission = async (submissionId: string) => {
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
 
+    console.log('VIDEO DRAFT QUEUE RUNNING...');
+
     const startUsage = process.cpuUsage();
 
     await channel.consume(
@@ -379,7 +387,6 @@ const checkCurrentSubmission = async (submissionId: string) => {
                 );
 
                 // await deleteFileIfExists(videoFile.outputPath);
-
                 // await fs.promises.unlink(videoFile.outputPath);
 
                 if (content.isV4 && content.preserveExistingMedia && !requestChangeVideos.length) {
@@ -436,7 +443,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
                 data: {
                   caption: content.caption,
                   submissionDate: dayjs().format(),
-                  ...(!submission.campaign.campaignCredits && { content: url[0] }),
+                  ...(submission.campaign.campaignCredits == null && { content: url[0] }),
                 },
                 include: {
                   submissionType: true,

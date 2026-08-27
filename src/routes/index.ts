@@ -37,7 +37,7 @@ import { reportsRouter } from './reports';
 import aiRouter from './aiRoute';
 import analyticsV2Route from './analyticsV2Route';
 import discoveryRoute from './discoveryRoute';
-import systemSettingRoute from './systemSettingRoute';
+
 import approvalRoute from './approvalRoute';
 import campaignBriefRoute from './campaignBriefRoute';
 import clientDemoRoute from './clientDemoRoute';
@@ -92,7 +92,7 @@ router.use('/reports', reportsRouter);
 router.use('/ai', aiRouter);
 router.use('/analytics/v2', analyticsV2Route);
 router.use('/discovery', discoveryRoute);
-router.use('/system-settings', systemSettingRoute);
+
 router.use('/approval-requests', approvalRoute);
 router.use('/briefs', campaignBriefRoute);
 router.use('/client-demo', clientDemoRoute);

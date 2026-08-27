@@ -227,8 +227,6 @@ export const handleV4CompletedCampaign = async (
   adminId?: string,
 ): Promise<boolean> => {
   try {
-    console.log(`🎯 Handling V4 campaign completion for user ${userId} in campaign ${campaignId}`);
-
     // Check if campaign is actually complete
     const completionStatus = await checkV4SubmissionCompletion(campaignId, userId);
 
@@ -269,33 +267,38 @@ export const handleV4CompletedCampaign = async (
       throw new Error('Creator user data not found');
     }
 
+    const campaign = await prisma.campaign.findUnique({ where: { id: campaignId }, select: { campaignType: true } });
+
+    const isSeedingCampaign = campaign?.campaignType === 'seedingCampaign';
+
     // Check if already processed to prevent duplicates
     if (creatorData.isCampaignDone) {
-      console.log(`✅ Campaign already marked as complete for user ${userId}`);
       return true;
     }
 
     // Get creator agreement amount for invoice
     const creatorAgreement = creatorData.user.creatorAgreement?.[0];
+
     if (!creatorAgreement) {
       throw new Error('Creator agreement not found');
     }
 
-    console.log(`💰 Creating invoice for ${creatorAgreement.amount} for creator ${userId}`);
-
-    // Create invoice using existing service
-    const invoice = await createInvoiceService(
-      {
-        user: creatorData.user,
-        campaignId,
-        updatedAt: new Date(),
-      },
-      userId,
-      creatorAgreement.amount,
-      undefined, // invoiceItems - V4 doesn't use detailed items
-      undefined, // tx - not in transaction
-      adminId,
-    );
+    let invoice: any;
+    if (!isSeedingCampaign) {
+      // Create invoice using existing service
+      invoice = await createInvoiceService(
+        {
+          user: creatorData.user,
+          campaignId,
+          updatedAt: new Date(),
+        },
+        userId,
+        creatorAgreement.amount,
+        undefined, // invoiceItems - V4 doesn't use detailed items
+        undefined, // tx - not in transaction
+        adminId,
+      );
+    }
 
     // Mark campaign as done
     await prisma.shortListedCreator.update({
@@ -310,24 +313,36 @@ export const handleV4CompletedCampaign = async (
       },
     });
 
-    console.log(`✅ V4 Campaign completed for user ${userId} - invoice generated: ${invoice?.id}`);
-
     // Notify the creator's app so the campaign moves from Active to Done in real time
     const completedPayload = createCreatorCampaignCompletedPayload({ userId, campaignId });
+
     const creatorSocketId = clients.get(userId);
+
     if (creatorSocketId) {
       getIo().to(creatorSocketId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
     }
     getIo().to(campaignId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
 
     // Notify the creator their posting is approved and the invoice is ready (in-app + push)
-    if (invoice?.id) {
+    if (invoice?.id && !isSeedingCampaign) {
       const creatorNotification = await saveNotification({
         userId,
         title: '✅ Posting Approved',
         message: `Your ${creatorData.campaign.name} posting is approved - invoice's ready inside`,
         entity: 'Invoice',
         invoiceId: invoice.id,
+        entityId: campaignId,
+      });
+
+      if (creatorSocketId) {
+        getIo().to(creatorSocketId).emit('notification', creatorNotification);
+      }
+    } else if (isSeedingCampaign) {
+      const creatorNotification = await saveNotification({
+        userId,
+        title: '✅ Posting Approved',
+        message: `Your ${creatorData.campaign.name} posting is approved`,
+        entity: 'Posting',
         entityId: campaignId,
       });
 

@@ -23,12 +23,12 @@ const client = new OAuth2Client();
 const acceptedAudiences = (): string[] =>
   [process.env.GOOGLE_MOBILE_WEB_CLIENT_ID, process.env.GOOGLE_IOS_CLIENT_ID].filter(Boolean) as string[];
 
-export type GoogleIdentity = {
+export interface GoogleIdentity {
   sub: string;
   email?: string;
   emailVerified: boolean;
   name?: string;
-};
+}
 
 /**
  * Verify a Google ID token and return the identity claims. Throws if the token

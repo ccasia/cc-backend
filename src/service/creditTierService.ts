@@ -190,6 +190,31 @@ export const batchUpdateCreatorTiers = async (
 };
 
 /**
+ * Resolve the tier for a campaign agreement.
+ *
+ * The admin's submitted follower count is authoritative: they source the creator
+ * themselves and a media kit can be stale or absent. Only when no count is
+ * submitted do we fall back to the creator's live follower data.
+ *
+ * Callers persist the result on ShortListedCreator as a per-campaign snapshot.
+ * Do NOT use this to maintain Creator.creditTier, which tracks live socials.
+ */
+export const resolveAgreedTier = async (
+  userId: string,
+  selectedPlatform?: PlatformType,
+  submittedFollowerCount?: number | null,
+): Promise<TierCalculationResult> => {
+  if (submittedFollowerCount && submittedFollowerCount > 0) {
+    return {
+      followerCount: submittedFollowerCount,
+      tier: await getTierByFollowerCount(submittedFollowerCount),
+    };
+  }
+
+  return calculateCreatorTier(userId, selectedPlatform);
+};
+
+/**
  * Calculate total credit cost for a creator based on video count and their tier
  * Used when shortlisting/assigning creators to credit tier campaigns
  */

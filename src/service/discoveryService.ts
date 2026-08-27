@@ -757,9 +757,7 @@ export const getPastCampaignsByCreatorIds = async (
 // "final rating". Per campaign the final rating is the average of whichever sides
 // have rated (client + admin -> mean; only one side -> that value; neither ->
 // campaign skipped). Creators with no ratings map to null (card shows 0/no stars).
-export const getAverageRatingsByCreatorIds = async (
-  userIds: string[],
-): Promise<Map<string, number | null>> => {
+export const getAverageRatingsByCreatorIds = async (userIds: string[]): Promise<Map<string, number | null>> => {
   const result = new Map<string, number | null>();
   const uniqueUserIds = Array.from(new Set((userIds || []).map((id) => String(id || '').trim()).filter(Boolean)));
   if (uniqueUserIds.length === 0) return result;
@@ -781,9 +779,7 @@ export const getAverageRatingsByCreatorIds = async (
     const rowUserId = row?.userId;
     if (!rowUserId) continue;
 
-    const sides = [row.clientRating, row.adminRating].filter(
-      (value): value is number => typeof value === 'number',
-    );
+    const sides = [row.clientRating, row.adminRating].filter((value): value is number => typeof value === 'number');
     if (sides.length === 0) continue;
 
     const campaignFinal = sides.reduce((sum, value) => sum + value, 0) / sides.length;

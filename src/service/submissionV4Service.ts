@@ -99,6 +99,12 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
                 name: true,
               },
             },
+            uploadSession: {
+              select: {
+                id: true,
+                status: true,
+              },
+            },
           },
           orderBy: { createdAt: 'desc' as const },
           take: V4_ACTIVE_VIDEO_VERSIONS_LIMIT,

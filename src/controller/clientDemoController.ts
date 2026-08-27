@@ -240,12 +240,7 @@ export const createDemoCampaign = async (req: Request, res: Response) => {
       include: { client: true },
     });
 
-    if (
-      !user ||
-      user.role !== 'client_demo' ||
-      !user.client ||
-      user.client.clientType !== 'demoClient'
-    ) {
+    if (!user || user.role !== 'client_demo' || !user.client || user.client.clientType !== 'demoClient') {
       return res.status(403).json({ message: 'Only demo clients can create demo campaigns' });
     }
 
@@ -259,8 +254,7 @@ export const createDemoCampaign = async (req: Request, res: Response) => {
       if (!req.body?.data) {
         return res.status(400).json({ message: 'Missing campaign data' });
       }
-      campaignData =
-        typeof req.body.data === 'string' ? JSON.parse(req.body.data) : req.body.data;
+      campaignData = typeof req.body.data === 'string' ? JSON.parse(req.body.data) : req.body.data;
     } catch (error) {
       return res.status(400).json({ message: 'Invalid campaign data format' });
     }
@@ -271,12 +265,9 @@ export const createDemoCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Campaign title and description are required' });
     }
 
-    const industries = Array.isArray(campaignData.campaignIndustries)
-      ? campaignData.campaignIndustries
-      : [];
+    const industries = Array.isArray(campaignData.campaignIndustries) ? campaignData.campaignIndustries : [];
 
-    const status =
-      campaignStartDate && dayjs(campaignStartDate).isSame(dayjs(), 'date') ? 'ACTIVE' : 'SCHEDULED';
+    const status = campaignStartDate && dayjs(campaignStartDate).isSame(dayjs(), 'date') ? 'ACTIVE' : 'SCHEDULED';
 
     // Upload the campaign image(s) to GCS and persist their URLs in the snapshot.
     const imageUrls: string[] = [];
@@ -373,14 +364,10 @@ const mapDemoCampaignToCampaignShape = (demo: any, company: any) => {
       user_persona: data.audienceUserPersona || '',
       geographic_focus: data.geographicFocus || '',
       geographicFocusOthers: data.geographicFocusOthers || '',
-      secondary_gender: Array.isArray(data.secondaryAudienceGender)
-        ? data.secondaryAudienceGender
-        : [],
+      secondary_gender: Array.isArray(data.secondaryAudienceGender) ? data.secondaryAudienceGender : [],
       secondary_age: Array.isArray(data.secondaryAudienceAge) ? data.secondaryAudienceAge : [],
       secondary_country: data.secondaryCountry || '',
-      secondary_language: Array.isArray(data.secondaryAudienceLanguage)
-        ? data.secondaryAudienceLanguage
-        : [],
+      secondary_language: Array.isArray(data.secondaryAudienceLanguage) ? data.secondaryAudienceLanguage : [],
       secondary_creator_persona: Array.isArray(data.secondaryAudienceCreatorPersona)
         ? data.secondaryAudienceCreatorPersona
         : [],

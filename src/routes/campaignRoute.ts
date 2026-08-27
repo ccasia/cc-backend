@@ -67,6 +67,7 @@ import {
   getCampaignsForPublic,
   exportActiveCompletedToSheet,
   exportCreatorsCampaignSheet,
+  exportCampaignMasterList,
   syncCampaignCredits,
   updateAllCampaignCredits,
   getCampaignStatus,

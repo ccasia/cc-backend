@@ -145,13 +145,13 @@ export const updateDraftBrief = async (briefId: string, patch: BriefUpdateInput,
 // into nested writes across Campaign / CampaignBrief / CampaignRequirement /
 // CampaignAdditionalDetails. Field names mirror
 // cc-frontend/src/sections/public-access/bd-brief-form.jsx.
-type CurrentBriefRecord = {
+interface CurrentBriefRecord {
   name?: string | null;
   brandName?: string | null;
   campaignBrief?: { id: string } | null;
   campaignRequirement?: { id: string } | null;
   campaignAdditionalDetails?: { specialNotesInstructions?: string | null } | null;
-};
+}
 
 const mapBriefPatch = (patch: BriefUpdateInput, current?: CurrentBriefRecord): Prisma.CampaignUpdateInput => {
   const out: Prisma.CampaignUpdateInput = {};
@@ -570,7 +570,6 @@ export const handoverBrief = async (
 
   return prisma.$transaction(async (tx) => {
     const campaignCode = current.campaignId || (await nextCampaignCode(tx));
-
     const updated = await tx.campaign.update({
       where: { id: briefId },
       data: {
@@ -1029,7 +1028,11 @@ const isBdRoleName = (roleName?: string | null): boolean => {
   );
 };
 
-type MonthRange = { start: Date; end: Date; label: string };
+interface MonthRange {
+  start: Date;
+  end: Date;
+  label: string;
+}
 
 // Resolve a YYYY-MM (or current month) to a [start, end) range. Uses the server's
 // local time — deployments run Asia/Kuala_Lumpur, matching the cron timezone.
@@ -1202,7 +1205,10 @@ export const setBriefHold = async (briefId: string, onHold: boolean) => {
   });
 };
 
-type DateRange = { start?: Date; end?: Date };
+interface DateRange {
+  start?: Date;
+  end?: Date;
+}
 
 export const resolveDateRange = (startDate?: string, endDate?: string): DateRange => {
   const parse = (val?: string): Date | undefined => {
@@ -1333,7 +1339,7 @@ export const getBdOverview = async (startDate?: string, endDate?: string) => {
     isBdById.set(u.id, false);
   });
 
-  type Person = {
+  interface Person {
     userId: string;
     name: string;
     photoURL: string | null;
@@ -1345,7 +1351,7 @@ export const getBdOverview = async (startDate?: string, endDate?: string) => {
     lost: number;
     convRate: number | null;
     value: Record<string, { wonAmount: number; lostAmount: number }>;
-  };
+  }
 
   const byUser = new Map<string, Person>();
   const ensure = (uid: string | null): Person => {

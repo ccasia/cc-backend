@@ -220,10 +220,7 @@ export const handleCreateBrand = async ({
   }
 };
 
-export const generateCustomId = async (
-  type: any,
-  client: Pick<typeof prisma, 'company'> = prisma,
-) => {
+export const generateCustomId = async (type: any, client: Pick<typeof prisma, 'company'> = prisma) => {
   const prefix = type === 'agency' ? 'A' : 'DC';
 
   // Find all companies with the matching prefix
@@ -306,8 +303,7 @@ export const createNewCompany = async (data: CompanyForm, publicURL?: string) =>
     try {
       return await prisma.$transaction(async (tx) => {
         const id: string = await generateSubscriptionCustomId();
-        const clientId =
-          attempt === 1 && companyID ? companyID : await generateCustomId(type, tx);
+        const clientId = attempt === 1 && companyID ? companyID : await generateCustomId(type, tx);
         const expiredAt = dayjs(invoiceDate).add(parseInt(validityPeriod), 'months').format();
         const subscriptionData = {
           creditsUsed: 0,
@@ -399,9 +395,17 @@ export const createNewCompany = async (data: CompanyForm, publicURL?: string) =>
   throw new Error('Failed to create company: exhausted clientId generation retries');
 };
 
-export const getRemainingCredits = async (clientId: string): Promise<number | null> => {
+// Source of truth for "remaining credits" = totalCredits − creditsUsed on active subs.
+// creditsUsed is incremented at allocation (campaign create) and decremented on refund/close.
+// Do NOT switch this to sum campaign.creditsUtilized — that counter tracks consumption, not
+// allocation, and the two diverge for any campaign in flight.
+export const getRemainingCredits = async (
+  clientId: string,
+  tx?: Pick<PrismaClient, 'company'>,
+): Promise<number | null> => {
   try {
-    const client = await prisma.company.findUnique({
+    const db = tx ?? prisma;
+    const client = await db.company.findUnique({
       where: {
         id: clientId,
       },
@@ -411,12 +415,6 @@ export const getRemainingCredits = async (clientId: string): Promise<number | nu
           select: {
             totalCredits: true,
             creditsUsed: true,
-            campaign: {
-              select: {
-                id: true,
-                creditsUtilized: true,
-              },
-            },
           },
         },
       },
@@ -428,19 +426,12 @@ export const getRemainingCredits = async (clientId: string): Promise<number | nu
       throw new Error('No active subscription or invalid total credits');
     }
 
-    const totalCredits = client.subscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
-
-    const usedCredits = client.subscriptions.reduce((sum, sub) => {
-      const subCreditsUtilized = sub.campaign.reduce(
-        (campaignSum, campaign) => campaignSum + (campaign.creditsUtilized || 0),
-        0,
-      );
-      return sum + subCreditsUtilized;
+    const remainingCredits = client.subscriptions.reduce((sum, sub) => {
+      const available = (sub.totalCredits ?? 0) - (sub.creditsUsed ?? 0);
+      return sum + Math.max(0, available);
     }, 0);
 
-    const remainingCredits = totalCredits - usedCredits;
-
-    return Math.max(0, remainingCredits); // Ensure we don't return negative credits
+    return remainingCredits;
   } catch (error) {
     throw new Error(error);
   }

@@ -2,21 +2,24 @@
 import { Worker } from 'bullmq';
 import connection from '../config/redis';
 import { prisma } from '../prisma/prisma';
+import os from 'os';
 
 import { buildPublicUrl, deleteFile, downloadFromGCS, uploadToGCS } from '../lib/gcs';
 import * as fs from 'fs-extra';
-import { runFfmpegCompression } from '../lib/ffmpeg';
+
 import { onSubmissionSubmitted } from '@/src/modules/gamification';
+import { ProgressUpdate, runFfmpegCompression } from '../lib/ffmpeg';
 
 const worker = new Worker(
   'compression-queue',
   async (job) => {
-    const { uploadSessionId, rawObjectPath, userId, campaignId, submissionId } = job.data as {
+    const { uploadSessionId, rawObjectPath, submissionId, videoId } = job.data as {
       uploadSessionId: string;
       rawObjectPath: string;
       userId: string;
       campaignId: string;
       submissionId: string;
+      videoId: string;
     };
 
     await prisma.uploadSession.update({
@@ -35,59 +38,59 @@ const worker = new Worker(
 
       if (!submission) throw new Error('Submission not found');
 
-      // find the video (if any) this new submission is resubmitting against
-      const requestChangeVideos = await prisma.video.findMany({
-        where: {
-          submissionId: submission.id,
-          status: 'REVISION_REQUESTED',
-          resubmissions: { none: {} },
-        },
-        orderBy: { createdAt: 'asc' },
-      });
-
-      const videoToReplace = requestChangeVideos[0]; // oldest un-resubmitted revision request
-
       localRawPath = await downloadFromGCS(rawObjectPath);
-      localCompressedPath = await runFfmpegCompression(localRawPath, (progress: number | undefined) => {
-        job.updateProgress({ submissionId, progress, uploadSessionId });
+      localCompressedPath = await runFfmpegCompression(localRawPath, (progress: ProgressUpdate) => {
+        job.updateProgress({
+          submissionId,
+          progress: progress.percent,
+          uploadSessionId,
+          etaSeconds: progress.etaSeconds,
+        });
       });
 
       const compressedObjectPath = rawObjectPath.replace('raw/', 'final/');
       await uploadToGCS(localCompressedPath, compressedObjectPath);
 
-      // single write — status and resubmittedFromId computed upfront, no follow-up update
-      const video = await prisma.video.create({
+      const video = await prisma.video.update({
+        where: {
+          id: videoId,
+        },
         data: {
           url: buildPublicUrl(compressedObjectPath),
-          status: 'PENDING',
-          userId,
-          campaignId,
-          submissionId,
-          ...(videoToReplace && { resubmittedFromId: videoToReplace.id }),
         },
       });
 
       await prisma.uploadSession.update({
         where: { id: uploadSessionId },
-        data: { status: 'COMPLETED', videoId: video.id },
+        data: {
+          status: 'COMPLETED',
+          video: {
+            connect: {
+              id: videoId,
+            },
+          },
+        },
       });
 
-      await prisma.submission.update({
+      const newSubmission = await prisma.submission.update({
         where: { id: submission.id },
         data: { status: 'PENDING_REVIEW' },
+        select: {
+          caption: true,
+        },
       });
 
-      onSubmissionSubmitted({
-        submissionId: submission.id,
-        userId,
-        campaignId,
-        submissionType: submission.submissionType?.type,
-      });
+      // onSubmissionSubmitted({
+      //   submissionId: submission.id,
+      //   userId,
+      //   campaignId,
+      //   submissionType: submission.submissionType?.type,
+      // });
 
       return uploadSessionId;
+      return { uploadSessionId, progress: 100, submissionId, video: video, caption: newSubmission.caption };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-
       await prisma.uploadSession.update({
         where: { id: uploadSessionId },
         data: { status: 'COMPRESSION_FAILED', errorMessage: message, failedAt: new Date() },
@@ -102,8 +105,13 @@ const worker = new Worker(
   { connection, concurrency: 2 }, // tune based on your Compute Engine instance's CPU
 );
 
-worker.on('completed', async (job) => {
+worker.on('ready', () => {
+  console.log('Compression Worker Ready');
+});
+
+worker.on('completed', async (job, returnvalue) => {
   await deleteFile(job.data.rawObjectPath);
+
   console.log(`Compression job ${job.id} completed`);
 });
 

@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
     "lib": ["ES6", "dom"],
-    // "ignoreDeprecations": "6.0",
     "target": "ES6",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
@@ -39,9 +38,10 @@
     "noImplicitThis": true,
     "alwaysStrict": true
   },
-  "include": ["src/**/*", "types/**/*"],
-  "exclude": ["node_modules", "**/*.spec.ts"],
-  "ts-node": {
-    "require": ["tsconfig-paths/register"]
-  }
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "**/*.spec.ts"]
+  // "ts-node": {
+  //   "files": true,
+  //   "require": ["tsconfig-paths/register"]
+  // }
 }

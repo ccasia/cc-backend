@@ -144,10 +144,6 @@ const checkCurrentSubmission = async (submissionId: string) => {
     hasPhotos: submission.photos.length,
   });
 
-  // Special handling for V3 campaigns (origin: 'CLIENT')
-  const isV3Campaign = submission.campaign.origin === 'CLIENT';
-  console.log(`Worker - V3 Campaign detected: ${isV3Campaign}`);
-
   const user = await prisma.shortListedCreator.findFirst({
     where: {
       userId: submission?.userId,
@@ -165,9 +161,15 @@ const checkCurrentSubmission = async (submissionId: string) => {
   }
 
   const [videos, rawFootages, photos] = await Promise.all([
-    prisma.video.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
-    prisma.rawFootage.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
-    prisma.photo.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
+    prisma.video.count({
+      where: { submissionId: submission.id, userId: submission.userId, campaignId: submission.campaignId },
+    }),
+    prisma.rawFootage.count({
+      where: { submissionId: submission.id, userId: submission.userId, campaignId: submission.campaignId },
+    }),
+    prisma.photo.count({
+      where: { submissionId: submission.id, userId: submission.userId, campaignId: submission.campaignId },
+    }),
   ]);
 
   console.log(`Worker - Deliverable counts for submission ${submissionId}:`, {
@@ -196,28 +198,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
       allDeliverablesSent,
       campaignRequiresRawFootage: submission.campaign.rawFootage,
       campaignRequiresPhotos: submission.campaign.photos,
-      isV3Campaign,
     });
-
-    // For V3 campaigns, use the same logic but with enhanced logging
-    if (isV3Campaign) {
-      console.log(`Worker - V3 Campaign ${submissionId}: Deliverable requirements check`, {
-        campaignRequiresVideos: true, // Always required
-        campaignRequiresRawFootage: submission.campaign.rawFootage,
-        campaignRequiresPhotos: submission.campaign.photos,
-        actualVideos: videos,
-        actualRawFootages: rawFootages,
-        actualPhotos: photos,
-        hasVideo,
-        hasRawFootage,
-        hasPhotos,
-        allDeliverablesSent,
-      });
-
-      // V3 uses same logic as V2 - allDeliverablesSent already calculated above
-      // hasVideo && hasRawFootage && hasPhotos
-      // where hasRawFootage/hasPhotos are true if not required by campaign
-    }
   } else if (submission?.submissionType.type === 'FINAL_DRAFT') {
     const [
       currentVideos,
@@ -556,7 +537,7 @@ async function deleteFileIfExists(filePath: string) {
                 data: {
                   caption: content.caption,
                   submissionDate: dayjs().format(),
-                  ...(!submission.campaign.campaignCredits && { content: url[0] }),
+                  ...(submission.campaign.campaignCredits == null && { content: url[0] }),
                 },
                 include: {
                   submissionType: true,

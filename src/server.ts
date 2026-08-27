@@ -7,48 +7,42 @@ import session from 'express-session';
 import cookieParser from 'cookie-parser';
 
 import fileUpload from 'express-fileupload';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Video } from '@prisma/client';
 
 import '@configs/cronjob';
 import http from 'http';
 import { handleSendMessage, fetchMessagesFromThread, markMessagesService } from '@services/threadService';
 import { authenticate } from '@middlewares/authenticate';
-import { Server, Socket } from 'socket.io';
+import { Socket } from 'socket.io';
+
+import '@helper/processPitchVideo';
+
+import './helper/xeroWebhookWorker';
 import { getIo, initializeSocket } from './config/socket';
 
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
-import '@helper/verificationCodeWorker';
-import { onInvoicePaid } from '@/src/modules/gamification';
-import '@helper/compressionWorker';
-// import './helper/videoDraftWorker';
+import './helper/videoDraftWorker';
 
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
-import path from 'path';
 import fse from 'fs-extra';
 
 import { PrismaSessionStore } from '@quixo3/prisma-session-store';
 
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
-import { buildGcsPublicUrl, storage } from '@configs/cloudStorage.config';
+import { storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import passport from 'passport';
 
-import amqplib from 'amqplib';
-import { model } from './scripts/ai';
-
 import crypto from 'crypto';
 
-import { TokenSet } from 'xero-node';
 import { prisma } from './prisma/prisma';
-import { xero } from '@configs/xero';
-import { logChange } from '@services/campaignServices';
+import { xeroWebhookQueue } from '@utils/queue';
 
 import { users } from '@utils/activeUsers';
 import { mobileRouter } from '@routes/mobile';
-import { OTPTypes } from '@/types';
 
 import jwt from 'jsonwebtoken';
 import { QueueEvents } from 'bullmq';
@@ -57,9 +51,6 @@ import connection from './config/redis';
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
 dotenv.config();
-
-const uploadPath = path.join(__dirname, 'uploads');
-const uploadPathChunks = path.join(__dirname, 'chunks');
 
 const app: Application = express();
 
@@ -111,37 +102,10 @@ app.disable('x-powered-by');
 
 app.set('trust proxy', true);
 
-// create the session here
-declare module 'express-session' {
-  interface Session {
-    userid: string;
-    refreshToken: string;
-    name: string;
-    role: string;
-    photoURL: string;
-    xeroToken: any;
-    xeroTokenid: any;
-    xeroTokenSet: any;
-    xeroTenants: any;
-    xeroActiveTenants: any;
-    isImpersonating?: boolean;
-    impersonatingBy?: { userId: string; name: string } | null;
-    otp: OTPTypes | undefined;
-    pendingRegistration:
-      | {
-          phone: string;
-          verified: boolean;
-          authType: 'otp' | 'email';
-        }
-      | undefined;
-  }
-}
-
-app.set('trust proxy', true);
-
 app.use(
   session({
-    secret: process.env.SESSION_SECRET as string,
+    name: 'sid',
+    secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: false,
     proxy: process.env.NODE_ENV === 'production',
@@ -151,7 +115,6 @@ app.use(
       sameSite: process.env.CROSS_SITE_COOKIES === 'true' ? 'none' : 'lax',
       maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
       httpOnly: true,
-      // sameSite: 'none',
     },
     store: new PrismaSessionStore(new PrismaClient(), {
       checkPeriod: 2 * 60 * 1000,
@@ -165,7 +128,6 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 app.use('/mobile', mobileRouter);
-
 app.use(router);
 
 app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb' }), async (req, res) => {
@@ -179,81 +141,19 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb
     if (xeroSignature !== expectedSignature) return res.status(401).send('Invalid signature');
 
     const payload = JSON.parse(req.body.toString('utf8'));
-    console.log('✅ Xero Webhook Verified', payload);
+    console.log('✅ Xero Webhook Verified:', payload.events?.length ?? 0, 'event(s)');
 
     if (!payload.events || !payload.events.length) return res.status(200).send('OK');
 
-    const user = await prisma.user.findFirst({
-      where: {
-        email: process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'super@cultcreativeasia.com',
-      },
-      include: { admin: { select: { xeroTokenSet: true } } },
-    });
-
-    if (!user) return res.sendStatus(400);
-
-    const tokenSet: TokenSet = user.admin?.xeroTokenSet as TokenSet;
-    if (!tokenSet) throw new Error('User not connected to Xero');
-
-    await xero.initialize();
-    xero.setTokenSet(tokenSet);
-
-    if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
-      const validTokenSet = await xero.refreshToken();
-      // save the new tokenset
-      await prisma.admin.update({
-        where: {
-          userId: user.id,
-        },
-        data: {
-          xeroTokenSet: validTokenSet as any,
-        },
-      });
-    }
-
-    await xero.updateTenants();
-
-    // Handle all events
-    for (const event of payload.events) {
-      const { tenantId } = event;
-
-      // Fetch all paid invoices (or filter by invoiceID if needed)
-      const invoiceData = await xero.accountingApi.getInvoices(tenantId, undefined, 'Status=="PAID"');
-      const xeroInvoices = invoiceData.body.invoices || [];
-      const xeroInvoicesIds = xeroInvoices.map((inv) => inv.invoiceID);
-
-      if (xeroInvoicesIds.length) {
-        // Query invoices not yet paid before updating, so we only log newly-paid ones
-        const notYetPaid = await prisma.invoice.findMany({
-          where: { xeroInvoiceId: { in: xeroInvoicesIds as string[] }, status: { not: 'paid' } },
-          select: {
-            invoiceNumber: true,
-            campaignId: true,
-            creatorId: true,
-            user: { select: { name: true } },
-          },
-        });
-
-        const invoices = await prisma.invoice.updateMany({
-          where: { xeroInvoiceId: { in: xeroInvoicesIds as string[] } },
-          data: { status: 'paid' },
-        });
-        console.log('Updated invoices:', invoices);
-
-        // Log only invoices that actually transitioned to paid
-        for (const inv of notYetPaid) {
-          if (inv.creatorId) onInvoicePaid(inv.creatorId);
-
-          logChange(
-            `Invoice ${inv.invoiceNumber} for ${inv.user?.name || 'Unknown Creator'} was marked as paid`,
-            inv.campaignId,
-            undefined,
-            undefined,
-            { systemLabel: 'Xero' },
-          );
-        }
-      }
-    }
+    // Ack immediately and process events asynchronously so we always respond 2XX well within
+    // Xero's ~5s window. Heavy Xero/Prisma work and rate-limit (Retry-After) handling run in
+    // helper/xeroWebhookWorker.ts. Enqueue makes no Xero API call, so a failure here is safe to
+    // surface as 500 (Xero retries and we simply re-enqueue without touching the daily quota).
+    await xeroWebhookQueue.add(
+      'xero-webhook',
+      { events: payload.events },
+      { removeOnComplete: true, removeOnFail: 100 },
+    );
 
     res.status(200).send('OK');
   } catch (error) {
@@ -286,7 +186,7 @@ app.post('/webhook/whatsapp', async (req: Request, res: Response) => {
     // ── Outbound message status updates ──────────────────────────
     if (value?.statuses) {
       const status = value.statuses[0];
-      const { id: messageId, recipient_id: phoneNumber, status: statusType, timestamp, errors } = status;
+      const { id: messageId, recipient_id: phoneNumber, status: statusType, timestamp } = status;
       const sentAt = dayjs(Number(timestamp) * 1000).toDate();
 
       let data;
@@ -365,20 +265,6 @@ app.post('/webhook/whatsapp', async (req: Request, res: Response) => {
 
 app.get('/', (req: Request, res: Response) => {
   res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
-});
-
-app.get('/users', authenticate, async (_req, res) => {
-  const prisma = new PrismaClient();
-  try {
-    const users = await prisma.user.findMany({
-      include: {
-        pitch: true,
-      },
-    });
-    res.send(users);
-  } catch (error) {
-    //console.log(error);
-  }
 });
 
 export const clients = new Map();
@@ -530,153 +416,43 @@ io.on('connection', (socket) => {
   });
 });
 
-const bucket = storage.bucket(process.env.BUCKET_NAME as string);
-
-app.post('/video', async (req: Request, res: Response) => {
-  const urls: string[] = [];
-
+app.post('/video', (req: Request, res: Response) => {
   try {
-    const videos = (req.files as any).rawFootages;
-
-    if (videos.length) {
-      for (const video of videos) {
-        let uploadedBytes = 0;
-        const { tempFilePath, name, mimetype, data, size } = video;
-
-        if (size > 100 * 1024 * 1024) {
-          return res.status(404).json({ message: 'File size too large' });
-        }
-
-        const readStream = fse.createReadStream(tempFilePath);
-
-        const blob = bucket.file(`videos/${dayjs().format()}-${name}`);
-
-        const totalBytes = fse.statSync(tempFilePath).size;
-
-        const blobStream = blob.createWriteStream({
-          resumable: false,
-          contentType: mimetype,
-        });
-
-        readStream.on('data', (chunk) => {
-          uploadedBytes += chunk.length;
-          const percentage = Math.round((uploadedBytes / totalBytes) * 100);
-          io.emit('uploadProgress', { name: name, percentage });
-        });
-
-        await new Promise<void>((resolve, reject) => {
-          readStream
-            .pipe(blobStream)
-            .on('error', (err) => {
-              console.error('Error uploading to GCS:', err);
-              reject('Failed to upload file.');
-            })
-            .on('finish', async () => {
-              await blob.makePublic();
-              const publicUrl = buildGcsPublicUrl(bucket.name, blob.name);
-              urls.push(publicUrl);
-              fse.unlinkSync(tempFilePath); // Cleanup temp file
-              resolve();
-            });
-        });
-      }
-    } else {
-      let uploadedBytes = 0;
-      const { tempFilePath, name, mimetype, data, size } = videos;
-
-      if (size > 1 * 1024 * 1024 * 1024) {
-        return res.status(404).json({ message: 'File size too large' });
-      }
-
-      const readStream = fse.createReadStream(tempFilePath);
-
-      const blob = bucket.file(`videos/${dayjs().format()}-${name}`);
-
-      const totalBytes = fse.statSync(tempFilePath).size;
-
-      const blobStream = blob.createWriteStream({
-        resumable: false,
-        contentType: mimetype,
-      });
-
-      readStream.on('data', (chunk) => {
-        uploadedBytes += chunk.length;
-        const percentage = Math.round((uploadedBytes / totalBytes) * 100);
-
-        io.emit('uploadProgress', { name: name, percentage });
-      });
-
-      await new Promise<void>((resolve, reject) => {
-        readStream
-          .pipe(blobStream)
-          .on('error', (err) => {
-            console.error('Error uploading to GCS:', err);
-            reject('Failed to upload file.');
-          })
-          .on('finish', async () => {
-            await blob.makePublic();
-            const publicUrl = buildGcsPublicUrl(bucket.name, blob.name);
-            urls.push(publicUrl);
-            fse.unlinkSync(tempFilePath); // Cleanup temp file
-            resolve();
-          });
-      });
-    }
-
-    return res.status(200).send({ message: 'File uploaded successfully.', url: urls });
+    const video = req.files;
+    console.log(video);
+    res.status(200).json({ message: 'Success' });
   } catch (error) {
-    return res.status(400).json(error);
+    res.status(500).json(error);
   }
-});
-
-app.post('/sendMessage', async (req: Request, res: Response) => {
-  let amqp: any;
-  let con: any;
-  try {
-    amqp = await amqplib.connect(process.env.RABBIT_MQ!);
-
-    con = await amqp.createChannel();
-    await con.assertQueue('draft', { durable: true });
-
-    con.sendToQueue('draft', Buffer.from(JSON.stringify({ name: req.body.username })), { persistent: true });
-
-    return res.status(200).json({ message: 'Send Sucessfully' });
-  } catch (error) {
-    return res.status(400).json(error);
-  } finally {
-    if (con) await con.close();
-    if (amqp) await amqp.close();
-  }
-});
-
-app.get('/report/:campaignId', async (req, res) => {
-  const campaignId = req.params.campaignId;
-
-  const data = await prisma.insightSnapshot.findMany({
-    where: {
-      campaignId: campaignId,
-    },
-  });
-
-  const dbViews = data.reduce((s, r) => s + r.totalViews, 0);
-
-  return res.status(200).json(dbViews);
 });
 
 const queueEvents = new QueueEvents('compression-queue', { connection: connection });
 
 queueEvents.on('progress', ({ data }) => {
-  const { submissionId, progress, uploadSessionId } = data as {
+  const { submissionId, progress, uploadSessionId, etaSeconds } = data as {
     submissionId: string;
     progress: number;
     uploadSessionId: string;
+    etaSeconds: number;
   };
-  console.log(progress);
-  io.to(`upload:${uploadSessionId}`).emit('compression:progress', { submissionId, progress, uploadSessionId });
+
+  // getIo()
+  //   .to(`upload:${uploadSessionId}`)
+  //   .emit('compression:progress', { submissionId, progress, uploadSessionId, etaSeconds });
+
+  getIo().emit('compression:progress', { submissionId, progress, uploadSessionId, etaSeconds });
 });
 
 queueEvents.on('completed', ({ returnvalue }) => {
-  getIo().to(`upload:${returnvalue}`).emit('status', 'completed');
+  const { submissionId, uploadSessionId, video } = returnvalue as unknown as {
+    submissionId: string;
+    uploadSessionId: string;
+    video: Video;
+  };
+
+  // getIo().to(`upload:${uploadSessionId}`).emit('status', { status: 'completed', submissionId, progress: 100, video });
+
+  getIo().emit('status', { submissionId, progress: 100, video });
 });
 
 if (require.main === module) {

@@ -28,12 +28,12 @@ import {
   verifyClient,
   deleteAccount,
   setupTwoFactor,
-  sendVerificationCode,
-  verifyCode,
-  getOtpStatus,
-  resendVerificationCode,
   getSessionStatus,
   checkEmailExistence,
+  sendVerificationCode,
+  resendVerificationCode,
+  verifyCode,
+  getOtpStatus,
 } from '@controllers/authController';
 
 import { validateToken } from '@utils/jwtHelper';

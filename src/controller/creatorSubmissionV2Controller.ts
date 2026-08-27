@@ -205,7 +205,6 @@ const shouldExposePosting = (posting: any | undefined, approvedDraft: any | unde
  */
 export const getMyV2Submissions = async (req: Request, res: Response) => {
   const { campaignId } = req.query;
-
   const creatorId = req.userId;
 
   try {

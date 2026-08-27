@@ -14,17 +14,26 @@ import {
 } from '@controllers/userController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { authenticate } from '@middlewares/authenticate';
+import { prisma } from '../prisma/prisma';
 
 const router = Router();
+
+router.get('/', authenticate, async (_req, res) => {
+  const users = await prisma.user.findMany({
+    include: {
+      pitch: true,
+    },
+  });
+  res.send(users);
+});
 
 router.get('/admins', authenticate, isSuperAdmin, getAdmins);
 router.get('/alladmins', authenticate, getAdmins);
 router.get('/forget-password-token/:token', checkForgetPasswordToken);
 router.get('/overview/:userId', authenticate, getOverview);
 router.get('/by-email/:email', authenticate, isSuperAdmin, getUserByEmail);
-// router.get('/getAdmins', isSuperAdmin, getAllActiveAdmins);
 
-router.get('/admin-logs/:adminId', getAdminLogs);
+router.get('/admin-logs/:adminId', isSuperAdmin, getAdminLogs);
 
 router.post('/admins', authenticate, isSuperAdmin, inviteAdmin);
 router.post('/createAdmin', authenticate, isSuperAdmin, createAdmin);

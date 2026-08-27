@@ -46,6 +46,7 @@ import {
   uploadCampaignAssets,
   createNewSpreadSheetAsync,
   rejectPendingPitchInternal,
+  generateCampaignMasterListSheet,
   revertStrandedClientReviewItems,
 } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
@@ -85,6 +86,7 @@ import {
   createCreatorCampaignMembershipUpdatedPayload,
 } from '@utils/campaignMembershipEvents';
 import { buildCreatorRatingEventId, shouldEmitCreatorRatingCompleted } from '@utils/creatorRatingReveal';
+import { buildAgreementFollowerSnapshot, resolveAgreementFollowerCount } from '@utils/agreementFollowerUtils';
 import { clients, getIo } from '../config/socket';
 import { awardXp, onPitchSubmitted, onShortlisted, progressAchievement } from '@/src/modules/gamification';
 
@@ -119,7 +121,18 @@ const emitCreatorCampaignMembershipUpdated = ({
   getIo().to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
 };
 
-const normalizePlatform = (platform?: string): SocialPlatform => (platform === 'tiktok' ? 'tiktok' : 'instagram');
+// Returns undefined for an unknown/absent platform. Never guess a platform here:
+// a missing value must fall back to a stored snapshot, not silently become Instagram.
+const normalizePlatform = (platform?: string | null): SocialPlatform | undefined => {
+  if (platform === 'tiktok') return 'tiktok';
+  if (platform === 'instagram') return 'instagram';
+  return undefined;
+};
+
+// Picks the first platform that was actually recorded, in order of authority:
+// what the admin just submitted, then the campaign snapshot, then the pitch.
+const resolvePlatform = (...candidates: (string | null | undefined)[]): SocialPlatform =>
+  candidates.reduce<SocialPlatform | undefined>((found, c) => found ?? normalizePlatform(c), undefined) ?? 'instagram';
 
 const getFollowerForPlatform = (creator: any, platform: SocialPlatform): number => {
   const instagramFollowers = creator?.instagramUser?.followers_count || 0;
@@ -956,9 +969,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
   const isClientCampaign =
     rawData?.isClientCampaign === true ||
     (rawData?.isClientCampaign === undefined && rawData?.submissionVersion === 'v4');
-  const draftUploadPrefixes = buildOwnedUrlPrefixes(
-    `campaign-creation-drafts/${encodeURIComponent(req.userId!)}/`,
-  );
+  const draftUploadPrefixes = buildOwnedUrlPrefixes(`campaign-creation-drafts/${encodeURIComponent(req.userId!)}/`);
   const isOwnedDraftFileUrl = (value: unknown): value is string =>
     typeof value === 'string' && draftUploadPrefixes.some((prefix) => value.startsWith(prefix));
 
@@ -1130,7 +1141,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
                 boostContent: boostContent || '',
                 primaryKPI: primaryKPI || '',
                 performanceBaseline: performanceBaseline || '',
-                images: publicURL,
+                images: images,
                 startDate: campaignStartDate ? new Date(campaignStartDate) : new Date(),
                 endDate: campaignEndDate ? new Date(campaignEndDate) : new Date(),
                 postingStartDate: postingStartDate ? new Date(postingStartDate) : null,
@@ -2134,6 +2145,27 @@ export const exportCreatorsCampaignSheet = async (_req: Request, res: Response) 
   }
 };
 
+export const exportCampaignMasterList = async (req: Request, res: Response) => {
+  const { campaignId } = req.params;
+  try {
+    const url = await generateCampaignMasterListSheet(campaignId);
+
+    await prisma.campaign.update({
+      where: {
+        id: campaignId,
+      },
+      data: {
+        summaryUrl: url,
+      },
+    });
+
+    return res.status(200).json({ success: true, url });
+  } catch (error: any) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: error?.message || 'Failed to generate master list' });
+  }
+};
+
 // Campaign Info for Admin
 export const getAllCampaigns = async (req: Request, res: Response) => {
   const id = req.userId;
@@ -2490,25 +2522,30 @@ export const getCampaignById = async (req: Request, res: Response) => {
                 creatorRemarks: true,
               },
             },
+            deliveryDetails: {
+              select: {
+                items: {
+                  select: {
+                    id: true,
+                    product: true,
+                    quantity: true,
+                  },
+                },
+              },
+            },
           },
         },
         products: true,
         reservationConfig: true,
-
         creatorAgreement: true,
       },
     });
 
-    console.log(`Campaign found:`, {
-      id: campaign?.id,
-      name: campaign?.name,
-      origin: campaign?.origin,
-      status: campaign?.status,
-    });
-
     // Attach approverPitchIds for approver-role clients so frontend can enforce row-level UI
     const sessionUserId = req.session?.userid;
+
     let approverPitchIds: string[] | undefined;
+
     if (sessionUserId && campaign) {
       const sessionUser = await prisma.user.findUnique({
         where: { id: sessionUserId },
@@ -2700,7 +2737,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    console.log('Creator interests count:', user.creator?.interests?.length || 0);
+    const country = await getCountry(req.ip as string);
 
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
@@ -2725,6 +2762,15 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
               name: {
                 contains: search as string,
                 mode: 'insensitive',
+              },
+            }),
+          },
+          {
+            ...(country && {
+              campaignRequirement: {
+                countries: {
+                  hasSome: [country],
+                },
               },
             }),
           },
@@ -2776,7 +2822,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     });
 
     const originalFetchedCount = campaigns.length;
-    console.log('Initial campaigns fetched from DB:', originalFetchedCount);
 
     if (campaigns?.length === 0) {
       console.log('No campaigns found in database');
@@ -2793,24 +2838,12 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(200).json(data);
     }
 
-    console.log('Campaign IDs fetched:', campaigns.map((c) => c.id).join(', '));
-    console.log('Campaign names:', campaigns.map((c) => c.name).join(', '));
-
     const beforeFilterCount = campaigns.length;
 
     campaigns = campaigns.filter((campaign) => {
       return campaign.status === 'ACTIVE';
     });
 
-    console.log(
-      '✅ After ACTIVE status filter:',
-      campaigns.length,
-      '(removed:',
-      beforeFilterCount - campaigns.length,
-      ')',
-    );
-
-    const country = await getCountry(req.ip as string);
     console.log('🌍 Detected country:', country);
     console.log('🔧 Environment:', process.env.NODE_ENV);
 
@@ -3522,6 +3555,10 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
       'CHANGES_REQUIRED';
 
     totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
+
+    if (campaign.campaignType === 'normal') {
+      totalSubmissions = isChangesRequired ? campaign?.submission.length : campaign?.submission.length - 1;
+    }
 
     const adjustedData = {
       ...campaign,
@@ -4449,6 +4486,10 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
 
       totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
 
+      if (campaign.campaignType === 'normal') {
+        totalSubmissions = isChangesRequired ? campaign?.submission.length : campaign?.submission.length - 1;
+      }
+
       return {
         ...campaign,
         pitch: campaign.pitch.find((pitch) => pitch.userId === user.id) ?? null,
@@ -4727,6 +4768,17 @@ export const closeCampaign = async (req: Request, res: Response) => {
       };
     });
 
+    const url = await generateCampaignMasterListSheet(result.campaign.id);
+
+    await prisma.campaign.update({
+      where: {
+        id: result.campaign.id,
+      },
+      data: {
+        summaryUrl: url,
+      },
+    });
+
     // Step 6: Send notifications (outside of transaction)
     result.campaign.campaignAdmin.forEach(async (item) => {
       const data = await saveNotification({
@@ -4752,30 +4804,13 @@ export const closeCampaign = async (req: Request, res: Response) => {
       message: 'Campaign closed successfully.',
       rejectedCreators: result.rejectedCount,
       refundedCredits: result.refundedCredits,
+      url,
     });
   } catch (error) {
     console.error('Error closing campaign:', error);
     return res.status(400).json(error);
   }
 };
-
-// export const editCampaign = async (req: Request, res: Response) => {
-//   const { id, name, desc, brief, admin } = req.body;
-//   try {
-//     const updatedCampaign = await prisma.campaign.update({
-//       where: { id: id },
-//       data: {
-//         name: name,
-//         description: desc,
-//         campaignBrief: brief,
-//         campaignAdmin: admin,
-//       },
-//     });
-//     return res.status(200).json({ message: 'Succesfully updated', ...updatedCampaign });
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// };
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
   const {
@@ -4803,8 +4838,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
       : [(req.files as any).campaignImages];
 
     for (const image of images) {
-      // Use your existing image upload function
-      const url = await uploadCompanyLogo(image.tempFilePath, image.name);
+      const url = await uploadImage(image.tempFilePath, `${Date.now()}_${image.name}`, 'campaign');
       publicURL.push(url);
     }
   }
@@ -7161,9 +7195,6 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       selectedPlatform,
       followerCount,
     } = JSON.parse(req.body.data);
-    const normalizedPlatform = normalizePlatform(selectedPlatform);
-
-    console.log('Received update data:', { paymentAmount, currency, campaignId, agreementId, isNew, credits });
 
     const creator = await prisma.user.findUnique({
       where: {
@@ -7197,12 +7228,12 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    const isCreditTierCampaign = campaign.isCreditTier === true;
-    const isGuestCreator = creator.creator?.isGuest === true;
-    const parsedFollowerCount = followerCount ? Math.floor(Number(followerCount)) : null;
+    const isCreditTierCampaign = campaign.isCreditTier;
+    const isGuestCreator = creator.creator?.isGuest;
 
     // Get current agreement amount for comparison
     let currentAgreement = null;
+
     if (isNew) {
       // For V3: Find by userId and campaignId
       currentAgreement = await prisma.creatorAgreement.findUnique({
@@ -7220,7 +7251,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       });
     }
 
-    // Get current shortlisted creator for comparison
+    // Get the campaign follower snapshots used when the actor cannot provide an override.
     const currentShortlisted = await prisma.shortListedCreator.findUnique({
       where: {
         userId_campaignId: {
@@ -7230,12 +7261,52 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       },
     });
 
-    // Get admin info for logging
+    if (!currentShortlisted) return res.status(401).json({ message: 'Creator is not shortlisted' });
+
+    const currentPitch = await prisma.pitch.findUnique({
+      where: {
+        userId_campaignId: {
+          userId: creator.id,
+          campaignId: campaignId,
+        },
+      },
+      select: {
+        selectedPlatform: true,
+        followerCount: true,
+      },
+    });
+
+    // Keep the platform the campaign already agreed on when the request omits one,
+    // so an edit that only touches the amount cannot flip the creator's platform.
+    const previousPlatform = currentShortlisted?.selectedPlatform ?? currentPitch?.selectedPlatform ?? null;
+    const normalizedPlatform = resolvePlatform(selectedPlatform, previousPlatform);
+    const platformChanged = !!previousPlatform && previousPlatform !== normalizedPlatform;
+
+    // Get admin info for logging and follower authorization.
     const adminId = req.userId;
+
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
+      select: { name: true, role: true },
     });
+
+    const resolvedFollower = resolveAgreementFollowerCount({
+      actorRole: admin?.role,
+      requestedFollowerCount: followerCount,
+      selectedPlatform: normalizedPlatform,
+      shortlist: currentShortlisted,
+      pitch: currentPitch,
+      creator: creator.creator,
+    });
+
+    const effectiveFollowerCount = resolvedFollower.followerCount;
+
+    const { shortlistData: shortlistFollowerData, pitchData: pitchFollowerData } = buildAgreementFollowerSnapshot(
+      effectiveFollowerCount,
+      { platformChanged },
+    );
     const adminName = admin?.name || 'Admin';
+
     const creatorName = creator.name || 'Creator';
 
     // Determine if credits/videos are being updated
@@ -7247,25 +7318,24 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
     let creditPerVideo: number | null = null;
     let tierSnapshot: any = null;
 
-    if (!isGuestCreator) {
-      if (parsedFollowerCount && parsedFollowerCount > 0) {
-        await prisma.creator.update({
-          where: { userId: creator.id },
-          data: {
-            ...(normalizedPlatform === 'instagram'
-              ? { manualInstagramFollowerCount: parsedFollowerCount }
-              : { manualTiktokFollowerCount: parsedFollowerCount }),
-          },
-        });
-      }
+    // Keep a count the admin typed on the creator, so the next agreement already knows it.
+    if (!isGuestCreator && resolvedFollower.isActorProvided) {
+      await prisma.creator.update({
+        where: { userId: creator.id },
+        data: {
+          ...(normalizedPlatform === 'instagram'
+            ? { manualInstagramFollowerCount: effectiveFollowerCount }
+            : { manualTiktokFollowerCount: effectiveFollowerCount }),
+        },
+      });
     }
 
     if (isCreditTierCampaign && !isGuestCreator && newVideoCount !== null && newVideoCount > 0) {
-      const { calculateCreatorCreditCost } = require('@services/creditTierService');
+      const { resolveAgreedTier } = require('@services/creditTierService');
       try {
-        const creditCost = await calculateCreatorCreditCost(creator.id, newVideoCount, normalizedPlatform);
-        creditPerVideo = creditCost.creditPerVideo;
-        tierSnapshot = creditCost.tier;
+        const { tier } = await resolveAgreedTier(creator.id, normalizedPlatform, effectiveFollowerCount || null);
+        creditPerVideo = tier?.creditsPerVideo ?? null;
+        tierSnapshot = tier;
       } catch (error: any) {
         console.warn(
           `Credit tier calculation failed for creator ${creator.id}, proceeding without tier data:`,
@@ -7285,7 +7355,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         amount: parseInt(paymentAmount),
         currency: currency,
         selectedPlatform: normalizedPlatform,
-        ...(parsedFollowerCount && parsedFollowerCount > 0 ? { followerCount: parsedFollowerCount } : {}),
+        ...shortlistFollowerData,
         ...(newVideoCount !== null && { ugcVideos: newVideoCount }),
         // Update tier info for credit tier campaigns
         ...(isCreditTierCampaign &&
@@ -7306,7 +7376,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       },
       data: {
         selectedPlatform: normalizedPlatform,
-        ...(parsedFollowerCount && parsedFollowerCount > 0 ? { followerCount: String(parsedFollowerCount) } : {}),
+        ...pitchFollowerData,
       },
     });
 
@@ -7320,7 +7390,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         data: {
           ugcCredits: newVideoCount,
           selectedPlatform: normalizedPlatform,
-          ...(parsedFollowerCount && parsedFollowerCount > 0 ? { followerCount: String(parsedFollowerCount) } : {}),
+          ...pitchFollowerData,
         },
       });
     }
@@ -7513,7 +7583,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         console.log(`✅ V4 submissions updated: ${result.deleted} deleted, ${result.created} created`);
 
         // Recalculate campaign credits
-        if (campaign.campaignCredits) {
+        if (campaign.campaignCredits != null) {
           const sentAgreements = await prisma.creatorAgreement.findMany({
             where: { campaignId, isSent: true },
             include: {
@@ -7560,8 +7630,6 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       }
     }
 
-    console.log('Updated agreement:', updatedAgreement);
-
     return res.status(200).json({
       message: 'Agreement updated successfully',
       agreement: updatedAgreement,
@@ -7574,8 +7642,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
 export const sendAgreement = async (req: Request, res: Response) => {
   const { user, id: agreementId, campaignId, isNew, credits, selectedPlatform, followerCount } = req.body;
-  const normalizedPlatform = normalizePlatform(selectedPlatform);
-  const parsedFollowerCount = followerCount ? Math.floor(Number(followerCount)) : null;
+  const requestedPlatform = normalizePlatform(selectedPlatform);
 
   const adminId = req.userId;
 
@@ -7597,6 +7664,11 @@ export const sendAgreement = async (req: Request, res: Response) => {
     if (!isUserExist) {
       return res.status(404).json({ message: 'Creator not exist' });
     }
+
+    const agreementActor = await prisma.user.findUnique({
+      where: { id: adminId },
+      select: { role: true },
+    });
 
     let agreement;
 
@@ -7638,27 +7710,46 @@ export const sendAgreement = async (req: Request, res: Response) => {
       },
     });
 
+    const pitchForUser = await prisma.pitch.findUnique({
+      where: {
+        userId_campaignId: {
+          userId: isUserExist.id,
+          campaignId,
+        },
+      },
+      include: {
+        campaign: {
+          select: {
+            isCreditTier: true,
+            submissionVersion: true,
+            origin: true,
+          },
+        },
+      },
+    });
+
+    // Fall back to the platform already agreed for this campaign rather than guessing,
+    // otherwise a linked creator with no submitted platform silently becomes Instagram.
+    const previousPlatform = shortlistedCreator?.selectedPlatform ?? pitchForUser?.selectedPlatform ?? null;
+    const normalizedPlatform = resolvePlatform(requestedPlatform, previousPlatform);
+    const platformChanged = !!previousPlatform && previousPlatform !== normalizedPlatform;
+    const resolvedFollower = resolveAgreementFollowerCount({
+      actorRole: agreementActor?.role,
+      requestedFollowerCount: followerCount,
+      selectedPlatform: normalizedPlatform,
+      shortlist: shortlistedCreator,
+      pitch: pitchForUser,
+      creator: isUserExist.creator,
+    });
+    const effectiveFollowerCount = resolvedFollower.followerCount;
+    const { shortlistData: shortlistFollowerData, pitchData: pitchFollowerData } = buildAgreementFollowerSnapshot(
+      effectiveFollowerCount,
+      { platformChanged },
+    );
+
     // Pitch-only flow (e.g. external approver) can leave APPROVED pitches without a shortlist row.
     // Client approval path creates ShortListedCreator; mirror that here so sendAgreement can run.
     if (!shortlistedCreator) {
-      const pitchForUser = await prisma.pitch.findUnique({
-        where: {
-          userId_campaignId: {
-            userId: isUserExist.id,
-            campaignId,
-          },
-        },
-        include: {
-          campaign: {
-            select: {
-              isCreditTier: true,
-              submissionVersion: true,
-              origin: true,
-            },
-          },
-        },
-      });
-
       const campMeta = pitchForUser?.campaign;
       const allowAutoShortlist = !!campMeta && (campMeta.submissionVersion === 'v4' || campMeta.origin === 'CLIENT');
 
@@ -7676,14 +7767,14 @@ export const sendAgreement = async (req: Request, res: Response) => {
       let creditTierId: string | null = null;
       if (campMeta.isCreditTier) {
         try {
-          const { calculateCreatorTier } = require('@services/creditTierService');
-          const { tier } = await calculateCreatorTier(isUserExist.id, normalizedPlatform);
+          const { resolveAgreedTier } = require('@services/creditTierService');
+          const { tier } = await resolveAgreedTier(isUserExist.id, normalizedPlatform, effectiveFollowerCount || null);
           if (tier) {
             creditPerVideo = tier.creditsPerVideo;
             creditTierId = tier.id;
           }
         } catch (tierErr) {
-          console.log('calculateCreatorTier in sendAgreement shortlist backfill:', tierErr);
+          console.log('resolveAgreedTier in sendAgreement shortlist backfill:', tierErr);
         }
       }
 
@@ -7694,8 +7785,8 @@ export const sendAgreement = async (req: Request, res: Response) => {
         currency: 'MYR',
         selectedPlatform: normalizedPlatform,
       };
-      if (parsedFollowerCount && parsedFollowerCount > 0) {
-        shortlistData.followerCount = parsedFollowerCount;
+      if (effectiveFollowerCount > 0) {
+        shortlistData.followerCount = effectiveFollowerCount;
       }
       if (pitchForUser.ugcCredits != null && Number(pitchForUser.ugcCredits) > 0) {
         shortlistData.ugcVideos = pitchForUser.ugcCredits;
@@ -7755,6 +7846,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
         campaignCredits: true,
         submissionVersion: true,
         isCreditTier: true,
+        campaignType: true,
       },
     });
 
@@ -7789,13 +7881,14 @@ export const sendAgreement = async (req: Request, res: Response) => {
     let tierSnapshot: any = null;
     let videoCount = 0;
 
-    if (!isGuestCreator && parsedFollowerCount && parsedFollowerCount > 0) {
+    // Keep a count the admin typed on the creator, so the next agreement already knows it.
+    if (!isGuestCreator && resolvedFollower.isActorProvided) {
       await prisma.creator.update({
         where: { userId: isUserExist.id },
         data: {
           ...(normalizedPlatform === 'instagram'
-            ? { manualInstagramFollowerCount: parsedFollowerCount }
-            : { manualTiktokFollowerCount: parsedFollowerCount }),
+            ? { manualInstagramFollowerCount: effectiveFollowerCount }
+            : { manualTiktokFollowerCount: effectiveFollowerCount }),
         },
       });
     }
@@ -7857,7 +7950,11 @@ export const sendAgreement = async (req: Request, res: Response) => {
     }
 
     if (!isGuestCreator) {
-      videoCount = Math.floor(Number(credits ?? shortlistedCreator.ugcVideos ?? 0));
+      videoCount =
+        campaign.campaignType === 'seedingCampaign'
+          ? 1
+          : Math.floor(Number(credits ?? shortlistedCreator.ugcVideos ?? 0));
+
       if (!Number.isFinite(videoCount) || videoCount <= 0) {
         return res.status(400).json({
           message: 'Number of videos must be provided before sending this agreement.',
@@ -7866,13 +7963,26 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
       // Calculate credits based on campaign type
       if (isCreditTierCampaign) {
-        // Credit Tier Campaign: Calculate credits based on creator's tier
-        const { calculateCreatorCreditCost } = require('@services/creditTierService');
+        // Credit Tier Campaign: charge from the tier the admin is agreeing to right now.
+        // Deriving it from live socials instead would let a creator's media kit inflate the
+        // cost above the tier the campaign was budgeted with, draining its credits.
+        const { resolveAgreedTier } = require('@services/creditTierService');
         try {
-          const creditCost = await calculateCreatorCreditCost(isUserExist.id, videoCount, normalizedPlatform);
-          creditsToAssign = creditCost.totalCredits;
-          creditPerVideo = creditCost.creditPerVideo;
-          tierSnapshot = creditCost.tier;
+          const { tier, followerCount: resolvedFollowerCount } = await resolveAgreedTier(
+            isUserExist.id,
+            normalizedPlatform,
+            effectiveFollowerCount || null,
+          );
+          if (!tier) {
+            throw new Error(
+              resolvedFollowerCount === 0
+                ? 'Creator does not have follower data. Please connect media kit or enter follower count manually.'
+                : "No credit tier found for this creator's follower count.",
+            );
+          }
+          creditsToAssign = tier.creditsPerVideo * videoCount;
+          creditPerVideo = tier.creditsPerVideo;
+          tierSnapshot = tier;
         } catch (error: any) {
           console.warn(
             `Credit tier calculation failed for creator ${isUserExist.id}, falling back to 1:1 credits:`,
@@ -7888,7 +7998,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
         creditPerVideo = 1;
       }
 
-      if (campaign.campaignCredits) {
+      if (campaign.campaignCredits != null) {
         const sentAgreementsBefore = await prisma.creatorAgreement.findMany({
           where: { campaignId, isSent: true },
           include: {
@@ -8002,7 +8112,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
       data: {
         isAgreementReady: true,
         selectedPlatform: normalizedPlatform,
-        ...(parsedFollowerCount && parsedFollowerCount > 0 ? { followerCount: parsedFollowerCount } : {}),
+        ...shortlistFollowerData,
         // Store video count (not total credits) - credits calculated from ugcVideos * creditPerVideo
         ...(videoCount > 0 && { ugcVideos: videoCount }),
         // Store tier snapshot for credit tier campaigns
@@ -8024,7 +8134,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
         data: {
           ugcCredits: videoCount, // Store video count in pitch as well
           selectedPlatform: normalizedPlatform,
-          ...(parsedFollowerCount && parsedFollowerCount > 0 ? { followerCount: String(parsedFollowerCount) } : {}),
+          ...pitchFollowerData,
         },
       });
     }
@@ -8064,7 +8174,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
       }
     }
 
-    if (campaign.campaignCredits) {
+    if (campaign.campaignCredits != null) {
       const sentAgreements = await prisma.creatorAgreement.findMany({
         where: { campaignId, isSent: true },
         include: {
@@ -9056,17 +9166,23 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
         console.log(`Processing shortlisted creator: ${shortlistedCreator.id}`);
 
         if (shortlistedCreator.ugcVideos) {
+          // Re-read inside tx to clamp without going negative. Use creditPerVideo when present
+          // so tier campaigns return the correct credit amount, not just the video count.
+          const current = await tx.campaign.findUnique({
+            where: { id: campaign.id },
+            select: { creditsUtilized: true, creditsPending: true, campaignCredits: true },
+          });
+          const perVideo = shortlistedCreator.creditPerVideo ?? 1;
+          const creditsToReturn = shortlistedCreator.ugcVideos * perVideo;
+          const newUtilized = Math.max(0, (current?.creditsUtilized ?? 0) - creditsToReturn);
+          const budget = current?.campaignCredits ?? 0;
+          const newPending = Math.min(budget, (current?.creditsPending ?? 0) + creditsToReturn);
+
           await tx.campaign.update({
-            where: {
-              id: campaign.id,
-            },
+            where: { id: campaign.id },
             data: {
-              creditsUtilized: {
-                decrement: shortlistedCreator.ugcVideos!,
-              },
-              creditsPending: {
-                increment: shortlistedCreator.ugcVideos!,
-              },
+              creditsUtilized: newUtilized,
+              creditsPending: newPending,
             },
           });
           console.log(`Updated campaign credits for shortlisted creator`);
@@ -9765,7 +9881,7 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
           );
         }
 
-        if (!campaign?.campaignCredits) throw new Error('Campaign is not assigned to any credits');
+        if (campaign?.campaignCredits == null) throw new Error('Campaign is not assigned to any credits');
 
         const existingCreators = campaign.shortlisted.reduce((acc, creator) => acc + (creator.ugcVideos ?? 0), 0);
 
@@ -11452,7 +11568,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
       for (const creator of creators) {
         const user = creatorData.find((u) => u.id === creator.id);
         if (!user) continue;
-        const selectedPlatform = normalizePlatform(creator.selectedPlatform);
+        // The shortlist form requires the admin to pick a platform, so this never falls back.
+        const selectedPlatform = resolvePlatform(creator.selectedPlatform);
         let resolvedFollowerCount = 0;
 
         console.log(`Processing creator: ${user.name} (${user.id})`);
@@ -12408,7 +12525,7 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
       const alreadyUtilized = (campaign.shortlisted || []).reduce((acc, item) => acc + (item.ugcVideos || 0), 0);
 
       // Enforce remaining credits check (campaignCredits - alreadyUtilized) - only for non-v4 campaigns
-      if (campaign.campaignCredits && totalCreditsToAssign > campaign.campaignCredits - alreadyUtilized) {
+      if (campaign.campaignCredits != null && totalCreditsToAssign > campaign.campaignCredits - alreadyUtilized) {
         return res.status(400).json({
           message: `Not enough credits available. Remaining: ${
             campaign.campaignCredits - alreadyUtilized
@@ -12523,7 +12640,8 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
       for (const guest of guestCreators) {
         // give guest a userId
         const { userId } = await handleGuestForShortListing(guest, tx);
-        const selectedPlatform = normalizePlatform(guest.selectedPlatform);
+        // The Add Non-Platform Creator modal always submits a platform.
+        const selectedPlatform = resolvePlatform(guest.selectedPlatform);
 
         // Update guest creator's manualFollowerCount and credit tier if followerCount provided
         if (guest.followerCount) {
@@ -12890,6 +13008,7 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
       include: {
+        creatorAgreement: true,
         shortlisted: {
           include: {
             user: {
@@ -12906,33 +13025,26 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    // Only count creators whose agreement has actually been approved (AGREEMENT_FORM
-    // submission status === APPROVED) - not merely sent - for both v4 and non-v4 campaigns.
-    const approvedAgreementSubmissions = await prisma.submission.findMany({
-      where: {
-        campaignId,
-        status: 'APPROVED',
-        submissionType: { type: 'AGREEMENT_FORM' },
-      },
-      select: { userId: true },
-      distinct: ['userId'],
-    });
-    const approvedAgreementUserIds = new Set(approvedAgreementSubmissions.map((submission) => submission.userId));
+    // Calculate utilized credits: sum of ugcVideos for shortlisted non-guest creators with sent agreements
+    // For credit tier campaigns, multiply ugcVideos by creditPerVideo
+    const sentAgreementUserIds = new Set(
+      campaign.creatorAgreement.filter((a) => a.isSent === true && a.userId).map((a) => a.userId as string),
+    );
 
-    // Calculate utilized credits for shortlisted non-guest creators with an approved agreement.
-    // For credit tier campaigns, multiply ugcVideos by creditPerVideo.
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
-      if (isGuest) return total;
+      const hasAgreementSent = !!creator.userId && sentAgreementUserIds.has(creator.userId);
 
-      if (!(creator.userId && approvedAgreementUserIds.has(creator.userId))) return total;
-
-      const videos = creator.ugcVideos || 0;
-      if (campaign.isCreditTier) {
-        const perVideo = creator.creditPerVideo || 1;
-        return total + videos * perVideo;
+      if (!isGuest && hasAgreementSent) {
+        const videos = creator.ugcVideos || 0;
+        // For credit tier campaigns, multiply by creditPerVideo
+        if (campaign.isCreditTier) {
+          const perVideo = creator.creditPerVideo || 1;
+          return total + videos * perVideo;
+        }
+        return total + videos;
       }
-      return total + videos;
+      return total;
     }, 0);
 
     // Calculate pending credits

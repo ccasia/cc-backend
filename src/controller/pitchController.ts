@@ -222,8 +222,12 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       const pitchPlatform = normalizePlatform(pitch.selectedPlatform);
       if (pitch.campaign.isCreditTier) {
         try {
-          const { calculateCreatorTier } = require('@services/creditTierService');
-          const { tier } = await calculateCreatorTier(pitch.userId, pitchPlatform);
+          const { resolveAgreedTier } = require('@services/creditTierService');
+          const { tier } = await resolveAgreedTier(
+            pitch.userId,
+            pitchPlatform,
+            parsePitchFollowerCount(pitch.followerCount),
+          );
           if (tier) {
             creditPerVideo = tier.creditsPerVideo;
             creditTierId = tier.id;
@@ -736,8 +740,12 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     const pitchPlatform = normalizePlatform(pitch.selectedPlatform);
     if (pitch.campaign.isCreditTier) {
       try {
-        const { calculateCreatorTier } = require('@services/creditTierService');
-        const { tier } = await calculateCreatorTier(pitch.userId, pitchPlatform);
+        const { resolveAgreedTier } = require('@services/creditTierService');
+        const { tier } = await resolveAgreedTier(
+          pitch.userId,
+          pitchPlatform,
+          parsePitchFollowerCount(pitch.followerCount),
+        );
         if (tier) {
           creditPerVideo = tier.creditsPerVideo;
           creditTierId = tier.id;
@@ -2723,4 +2731,10 @@ export const acceptInviteByCreator = async (req: Request, res: Response) => {
     console.error('Error accepting invite by creator:', error);
     return res.status(500).json({ message: 'Failed to accept invite' });
   }
+};
+
+const parsePitchFollowerCount = (followerCount?: string | null): number | null => {
+  const digits = String(followerCount ?? '').replace(/\D/g, '');
+  const parsed = Number.parseInt(digits, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };

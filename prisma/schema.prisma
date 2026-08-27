@@ -733,7 +733,6 @@ model Campaign {
   creditsPending            Int?
   creditsUtilized           Int?
   creditAllocationBreakdown Json? // Tracks which subscriptions were charged and how much
-  // Format: [{ subscriptionId: string, amount: number }, ...]
 
   brandId        String?
   subscriptionId String?
@@ -842,9 +841,12 @@ model Campaign {
 
   publishedAt DateTime?
   completedAt DateTime?
+  summaryUrl  String?
 
   approvalRequests ApprovalRequest[]
   uploadSessions   UploadSession[]
+
+  isForMobile Boolean @default(false)
 }
 
 model BookMarkCampaign {
@@ -1512,7 +1514,9 @@ model Video {
 
   feedbackRecords    Feedback[]
   submissionComments SubmissionComment[]
-  uploadSession      UploadSession?
+
+  uploadSessionId String? @unique
+  uploadSession   UploadSession? @relation(fields: [uploadSessionId], references: [id])
 }
 
 model RawFootage {
@@ -1833,17 +1837,23 @@ model Crawler {
 }
 
 model AgreementTemplate {
-  id            String     @id @unique @default(cuid())
-  url           String?
-  adminName     String?
-  adminICNumber String?
-  signURL       String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  userId        String?
-  user          User?      @relation(fields: [userId], references: [id])
-  isDefault     Boolean?   @default(false)
-  campaign      Campaign[]
+  id                    String                 @id @unique @default(cuid())
+  url                   String?
+  adminName             String?
+  adminICNumber         String?
+  signURL               String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  userId                String?
+  user                  User?                  @relation(fields: [userId], references: [id])
+  isDefault             Boolean?               @default(false)
+  agreementTemplateType AgreementTemplateType?
+  campaign              Campaign[]
+}
+
+enum AgreementTemplateType {
+  seedingCampaign
+  surfSharkCampaign
 }
 
 model Bugs {
@@ -1976,6 +1986,7 @@ model ApprovalRequestCreator {
   pitchId           String
   status            ApprovalCreatorStatus @default(PENDING)
   comment           String?
+  csComment         String?
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
@@ -2675,6 +2686,8 @@ enum TypeEnum {
 model UploadSession {
   id String @id @default(cuid())
 
+  fileName String?
+
   // GCS resumable session
   gcsSessionUri String? @db.Text // filled in after client reports the Location header
   gcsObjectPath String // e.g. "raw/{userId}/{timestamp}-{filename}"
@@ -2692,9 +2705,9 @@ model UploadSession {
   submissionId String?
   submission   Submission? @relation(fields: [submissionId], references: [id])
 
-  // Link to final Video once compression completes
-  videoId String? @unique
-  video   Video?  @relation(fields: [videoId], references: [id])
+  // // Link to final Video once compression completes
+  // videoId String? @unique
+  // video   Video?  @relation(fields: [videoId], references: [id])
 
   // Lifecycle
   expiresAt    DateTime
@@ -2703,6 +2716,7 @@ model UploadSession {
   completedAt  DateTime?
   failedAt     DateTime?
   errorMessage String?
+  video        Video?
 
   @@index([userId, status])
   @@index([status, expiresAt])

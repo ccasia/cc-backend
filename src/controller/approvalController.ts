@@ -257,10 +257,12 @@ async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, 
   }
 }
 
+const APPROVAL_COMMENT_MAX_LEN = 5000;
+
 // POST /api/approval-requests
 // Creates an approval request for selected pitches, provisions a client account for the approver
 export const createApprovalRequest = async (req: Request, res: Response) => {
-  const { campaignId, approverName, approverEmail, pitchIds } = req.body;
+  const { campaignId, approverName, approverEmail, pitchIds, csComments } = req.body;
 
   if (!campaignId || !approverName || !approverEmail || !Array.isArray(pitchIds) || pitchIds.length === 0) {
     return res.status(400).json({ message: 'campaignId, approverName, approverEmail, and pitchIds are required' });
@@ -278,9 +280,20 @@ export const createApprovalRequest = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'Invalid approver email' });
   }
 
+  const sanitizedCsComments: Record<string, string> = {};
+  if (csComments && typeof csComments === 'object') {
+    for (const pitchId of validPitchIds) {
+      const raw = (csComments as Record<string, unknown>)[pitchId];
+      if (typeof raw === 'string' && raw.trim().length > 0) {
+        sanitizedCsComments[pitchId] = raw.trim().slice(0, APPROVAL_COMMENT_MAX_LEN);
+      }
+    }
+  }
+
   try {
     const pitches = await prisma.pitch.findMany({
       where: { id: { in: validPitchIds }, campaignId },
+      include: { user: { select: { name: true } } },
     });
 
     if (pitches.length !== validPitchIds.length) {
@@ -385,7 +398,10 @@ export const createApprovalRequest = async (req: Request, res: Response) => {
           inviteToken,
           expiresAt,
           creators: {
-            create: validPitchIds.map((pitchId: string) => ({ pitchId })),
+            create: validPitchIds.map((pitchId: string) => ({
+              pitchId,
+              csComment: sanitizedCsComments[pitchId] ?? null,
+            })),
           },
         },
       });
@@ -402,11 +418,21 @@ export const createApprovalRequest = async (req: Request, res: Response) => {
     try {
       const count = validPitchIds.length;
       const countLabel = `${count} creator${count === 1 ? '' : 's'}`;
+      const approverEmailForLog = approverEmail.toLowerCase();
+      const nameByPitchId = new Map(pitches.map((p) => [p.id, p.user?.name?.trim() || 'Unknown']));
+      const creatorNames = validPitchIds.map((id: string) => nameByPitchId.get(id) || 'Unknown');
       await prisma.campaignLog.create({
         data: {
           campaignId,
           ...(senderIdForLog ? { adminId: senderIdForLog } : {}),
-          message: `sent creator shortlist for approval to approver ${approverName.trim()} (${countLabel})`,
+          message: `sent creator shortlist for approval to approver ${approverName.trim()} <${approverEmailForLog}> (${countLabel})`,
+          metadata: {
+            approverName: approverName.trim(),
+            approverEmail: approverEmailForLog,
+            pitchIds: validPitchIds,
+            creatorNames,
+            count,
+          },
         },
       });
     } catch (logErr) {
@@ -558,8 +584,6 @@ export const getApprovalRequest = async (req: Request, res: Response) => {
   }
 };
 
-const APPROVAL_COMMENT_MAX_LEN = 5000;
-
 // PATCH /api/approval-requests/:token/creators/:pitchId
 export const actionApprovalCreator = async (req: Request, res: Response) => {
   const { token, pitchId } = req.params;
@@ -647,16 +671,26 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
       try {
         const creatorLabel = pitchBefore?.user?.name?.trim() || 'Creator';
         const approverNameFromRequest = approvalRequest.approverName?.trim() || 'Approver';
+        const approverEmailFromRequest = approvalRequest.approverEmail?.trim();
+        const approverLabel = approverEmailFromRequest
+          ? `${approverNameFromRequest} <${approverEmailFromRequest}>`
+          : approverNameFromRequest;
         const logMessage =
           action === 'approve'
-            ? `${creatorLabel}'s profile has been approved by approver ${approverNameFromRequest}`
+            ? `${creatorLabel}'s profile has been approved by approver ${approverLabel}`
             : action === 'reject'
-              ? `${creatorLabel}'s profile has been rejected by approver ${approverNameFromRequest}`
-              : `Chose maybe for ${creatorLabel} by approver ${approverNameFromRequest}`;
+              ? `${creatorLabel}'s profile has been rejected by approver ${approverLabel}`
+              : `Chose maybe for ${creatorLabel} by approver ${approverLabel}`;
         await prisma.campaignLog.create({
           data: {
             campaignId: approvalRequest.campaignId,
             message: logMessage,
+            metadata: {
+              pitchId,
+              action,
+              approverName: approverNameFromRequest,
+              ...(approverEmailFromRequest ? { approverEmail: approverEmailFromRequest } : {}),
+            },
           },
         });
       } catch (logErr) {

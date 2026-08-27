@@ -346,8 +346,6 @@ export const getV4SubmissionsController = async (req: Request, res: Response) =>
       rawFootage: submissions.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
     };
 
-    console.log(`🔍 Found ${submissions.length} v4 submissions for campaign ${campaignId}`);
-
     res.status(200).json({
       submissions,
       grouped: groupedSubmissions,

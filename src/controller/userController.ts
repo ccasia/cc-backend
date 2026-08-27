@@ -23,23 +23,19 @@ const storage = new Storage({
   keyFilename: '@configs/test-cs.json',
 });
 
-const bucket = storage.bucket('app-test-cult-cretive');
-
 const prisma = new PrismaClient();
 
 export const updateProfileAdmin = async (req: Request, res: Response) => {
   const { files } = req;
   const body = req.body;
 
-  const permission = body.permission;
-
   try {
     if (files && files.image) {
       const { image } = files as any;
       const publicURL = await uploadProfileImage(image.tempFilePath, image.name, 'admin');
-      await updateAdmin(req.body, publicURL, req.userId as string | undefined);
+      await updateAdmin(req.body, publicURL, req.userId);
     } else {
-      await updateAdmin(req.body, undefined, req.userId as string | undefined);
+      await updateAdmin(req.body, undefined, req?.userId);
     }
 
     return res.status(200).json({ message: 'Successfully updated' });
@@ -98,9 +94,7 @@ export const getAdmins = async (req: Request, res: Response) => {
       const transformedAdmins = admins.map((admin) => {
         const isClient = admin.admin?.role?.name === 'Client';
         const picName = admin.client?.company?.pic?.[0]?.name || null;
-        const displayName = isClient
-          ? picName || admin.name || admin.client?.company?.name || ''
-          : admin.name;
+        const displayName = isClient ? picName || admin.name || admin.client?.company?.name || '' : admin.name;
 
         return {
           id: admin.id,
@@ -136,7 +130,32 @@ export const getAdminLogs = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    return res.status(200).json(logs);
+    // Admin-log messages are free-text but some (e.g. impersonation) embed the
+    // referenced user's email. Resolve those to the user's name + photo so the
+    // frontend can render their avatar instead of a plain initial.
+    const emailRegex = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+    const emails = new Set<string>();
+    logs.forEach((log) => {
+      const matches = log.message.match(emailRegex);
+      matches?.forEach((email) => emails.add(email.toLowerCase()));
+    });
+
+    let usersByEmail = new Map<string, { name: string | null; photoURL: string | null }>();
+    if (emails.size > 0) {
+      const users = await prisma.user.findMany({
+        where: { email: { in: Array.from(emails), mode: 'insensitive' } },
+        select: { email: true, name: true, photoURL: true },
+      });
+      usersByEmail = new Map(users.map((u) => [u.email.toLowerCase(), { name: u.name, photoURL: u.photoURL }]));
+    }
+
+    const enriched = logs.map((log) => {
+      const match = log.message.match(emailRegex)?.[0]?.toLowerCase();
+      const refUser = match ? usersByEmail.get(match) || null : null;
+      return { ...log, refUser };
+    });
+
+    return res.status(200).json(enriched);
   } catch (error) {
     return res.status(500).json({ error: 'Failed to fetch admin logs' });
   }

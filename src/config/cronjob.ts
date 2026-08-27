@@ -7,6 +7,11 @@ import timezone from 'dayjs/plugin/timezone';
 import LocalizedFormat from 'dayjs/plugin/localizedFormat';
 import { Title, saveNotification } from '@controllers/notificationController';
 import { notifications } from '@constants/reminders';
+import { clients } from '../server';
+
+import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
+import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
+import { runCreditDriftCheck } from '@services/creditDriftDetector';
 // import { clients, io } from '../server';
 import {
   reminderDueDate,
@@ -38,12 +43,17 @@ new CronJob(
     const today = dayjs().tz('Asia/Kuala_Lumpur').startOf('day').toISOString();
     const todayStart = dayjs().tz('Asia/Kuala_Lumpur').startOf('day').toDate();
     const todayEnd = dayjs().tz('Asia/Kuala_Lumpur').endOf('day').toDate();
+    const todayStart = dayjs().tz('Asia/Kuala_Lumpur').startOf('day').toDate();
+    const todayEnd = dayjs().tz('Asia/Kuala_Lumpur').endOf('day').toDate();
 
     await prisma.campaign.updateMany({
       where: {
         status: 'SCHEDULED',
+        status: 'SCHEDULED',
         campaignBrief: {
           startDate: {
+            gte: todayStart,
+            lte: todayEnd,
             gte: todayStart,
             lte: todayEnd,
           },
@@ -51,6 +61,7 @@ new CronJob(
       },
       data: {
         status: 'ACTIVE',
+        publishedAt: new Date(),
         publishedAt: new Date(),
       },
     });
