@@ -111,7 +111,7 @@ async function fetchTikTokMetrics(urlsByUser: Map<string, { url: string; userId:
 
       for (const urlData of urls) {
         const videoId = await extractTikTokVideoId(urlData.url);
-        console.log('Video URL', urlData);
+
         if (!videoId) continue;
 
         try {

@@ -48,31 +48,59 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
     where: { campaignId },
   });
 
-  const dbViews = snapshots.reduce((s, r) => s + r.totalViews, 0);
-  const dbLikes = snapshots.reduce((s, r) => s + r.totalLikes, 0);
-  const dbComments = snapshots.reduce((s, r) => s + r.totalComments, 0);
-  const dbShares = snapshots.reduce((s, r) => s + r.totalShares, 0);
+  const dailyPostSnapshots = await prisma.dailyPostEngagementSnapshot.findMany({
+    where: { campaignId },
+    orderBy: {
+      snapshotDate: 'desc',
+    },
+    distinct: ['userId'],
+  });
+
+  const manualEntries = await prisma.manualCreatorEntry.findMany({
+    where: {
+      campaignId: campaignId,
+    },
+  });
+
+  const consolidatedData = [...dailyPostSnapshots, ...manualEntries];
+
+  const dbViews = consolidatedData.reduce((s, r) => s + r.views, 0);
+  const dbLikes = consolidatedData.reduce((s, r) => s + r.likes, 0);
+  const dbComments = consolidatedData.reduce((s, r) => s + r.comments, 0);
+  const dbShares = consolidatedData.reduce((s, r) => s + r.shares, 0);
   const dbEngagements = dbLikes + dbComments + dbShares;
-  const dbEngRate = snapshots.length
-    ? +(snapshots.reduce((s, r) => s + r.averageEngagementRate, 0) / snapshots.length).toFixed(2)
+  const dbEngRate = consolidatedData.length
+    ? +(consolidatedData.reduce((s, r) => s + r.engagementRate, 0) / consolidatedData.length).toFixed(2)
     : null;
+
+  // const dbViews = snapshots.reduce((s, r) => s + r.totalViews, 0);
+  // const dbLikes = snapshots.reduce((s, r) => s + r.totalLikes, 0);
+  // const dbComments = snapshots.reduce((s, r) => s + r.totalComments, 0);
+  // const dbShares = snapshots.reduce((s, r) => s + r.totalShares, 0);
+  // const dbEngagements = dbLikes + dbComments + dbShares;
+  // const dbEngRate = snapshots.length
+  //   ? +(snapshots.reduce((s, r) => s + r.averageEngagementRate, 0) / snapshots.length).toFixed(2)
+  //   : null;
 
   const postCount = await prisma.submissionPostingUrl.count({ where: { campaignId } });
 
   // Merge: external overrides DB when present
-  const totalViews = ext?.totalViews ?? dbViews;
-  console.log('EXTERNAL', ext?.totalViews);
+  const totalViews = dbViews;
+  const totalEngagements = dbEngagements;
+  const engagementRate = dbEngRate;
+  const reach = null;
+  const shares = dbShares;
+  const likes = dbLikes;
+  const comments = dbComments;
 
-  console.log('DB', dbViews);
-
-  const totalEngagements = ext?.totalEngagements ?? dbEngagements;
-  const engagementRate = ext?.engagementRate ?? dbEngRate;
-  const reach = ext?.reach ?? null;
-  const impressions = ext?.impressions ?? null;
-  const roas = ext?.roas ?? null;
-  const shares = ext?.totalShares ?? dbShares;
-  const likes = ext?.totalLikes ?? dbLikes;
-  const comments = ext?.totalComments ?? dbComments;
+  // const totalEngagements = ext?.totalEngagements ?? dbEngagements;
+  // const engagementRate = ext?.engagementRate ?? dbEngRate;
+  // const reach = ext?.reach ?? null;
+  // const impressions = ext?.impressions ?? null;
+  // const roas = ext?.roas ?? null;
+  // const shares = ext?.totalShares ?? dbShares;
+  // const likes = ext?.totalLikes ?? dbLikes;
+  // const comments = ext?.totalComments ?? dbComments;
 
   return {
     // Meta
@@ -90,11 +118,11 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
     totalEngagements,
     engagementRate,
     reach,
-    impressions,
+    // impressions,
     shares,
     likes,
     comments,
-    roas,
+    // roas,
     totalPosts: postCount,
     // Credits (DB only)
     campaignCredits: campaign.campaignCredits ?? null,
@@ -422,6 +450,47 @@ async function collectTopCreatorPersonas(campaignId: string, ext?: ExternalMetri
   const approvedMap = Object.fromEntries(approvedCounts.map((s) => [s.userId, s._count.id]));
   const extMap = new Map((ext ?? []).map((c) => [c.userId, c]));
 
+  const [dailyPostSnapshots, manualEntries] = await Promise.all([
+    prisma.dailyPostEngagementSnapshot.findMany({
+      where: { campaignId },
+
+      orderBy: {
+        snapshotDate: 'desc',
+      },
+      distinct: ['userId'],
+    }),
+    prisma.manualCreatorEntry.findMany({
+      where: {
+        campaignId: campaignId,
+      },
+    }),
+  ]);
+
+  const userIds = dailyPostSnapshots.map((item) => item.userId);
+
+  const users = await prisma.user.findMany({
+    where: {
+      id: {
+        in: userIds,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  const newData = dailyPostSnapshots.map((item) => {
+    const name = users.find((a) => a.id === item.userId);
+
+    return {
+      ...item,
+      name,
+    };
+  });
+
+  const consolidatedData = [...newData, ...manualEntries];
+
   const creators = shortlisted
     .map((s) => {
       const userId = s.user?.id ?? '';
@@ -449,7 +518,7 @@ async function collectTopCreatorPersonas(campaignId: string, ext?: ExternalMetri
     })
     .sort((a, b) => (b.engagementRate ?? 0) - (a.engagementRate ?? 0));
 
-  return { creators };
+  return { consolidatedData };
 }
 
 // ── Section 6: Recommendations ────────────────────────────────────────────────

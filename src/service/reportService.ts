@@ -17,6 +17,7 @@ import {
   ExternalMetrics,
 } from '../types/index';
 import { PrismaClient } from '@prisma/client';
+import { getLatestCampaignPostEngagement } from './postEngagementSnapshotService';
 
 const prisma = new PrismaClient();
 
@@ -81,7 +82,10 @@ async function runSectionChain(section: ReportSection, data: Record<string, unkn
   const result = await prisma.aiModel.findFirst({ where: { userId } });
 
   const dbSections = result?.systemPrompt as unknown as Record<ReportSection, string> | undefined;
+  console.log('ASDASD', dbSections);
   const systemPrompt = dbSections?.[section] || SECTION_PROMPTS[section];
+
+  console.log(systemPrompt);
 
   const prompt = ChatPromptTemplate.fromMessages([
     ['system', systemPrompt],
@@ -104,6 +108,7 @@ export class ReportService {
     // Auto-fetch live Instagram metrics from Meta API, merged with any caller-supplied overrides
     try {
       const liveMetrics = await fetchInstagramCampaignMetrics(campaignId);
+
       externalMetrics = {
         summary: { ...liveMetrics.summary, ...externalMetrics?.summary },
         engagement: { ...liveMetrics.engagement, ...externalMetrics?.engagement },
@@ -114,8 +119,6 @@ export class ReportService {
     } catch (err) {
       console.warn('[ReportService] Instagram live fetch failed, falling back to snapshots:', (err as Error).message);
     }
-
-    // logger.info('Generating report', { campaignId, sections: sections.length });
 
     const campaign = await prisma.campaign.findUniqueOrThrow({
       where: { id: campaignId },
@@ -151,6 +154,7 @@ export class ReportService {
     const sectionResults: SectionResult[] | any = await Promise.all(
       collectedEntries.map(async ({ section, data }) => {
         const summaryData = section === 'campaign_recommendations' ? allSectionData : data;
+
         const summary = await runSectionChain(section, summaryData, req.userId);
 
         return { section, summary: summary, data };

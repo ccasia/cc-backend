@@ -204,13 +204,6 @@ export const getLatestCampaignPostSnapshots = async (req: Request, res: Response
   try {
     const { campaignId } = req.params;
 
-    if (!campaignId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Campaign ID is required',
-      });
-    }
-
     const snapshots = await getLatestCampaignPostEngagement(campaignId);
 
     return res.status(200).json({
