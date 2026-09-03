@@ -1906,6 +1906,8 @@ enum AgreementTemplateType {
 model Bugs {
   id               String   @id @unique @default(cuid())
   stepsToReproduce String
+  category         String?
+  context          Json?
   attachment       String?
   attachments      String[]
   campaignName     String?
@@ -2543,7 +2545,7 @@ model CampaignPCR {
   campaignId String   @unique
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  content Json // Stores all editable PCR content as JSON
+  content  Json // Stores all editable PCR content as JSON
   revision Int  @default(1)
 
   createdAt DateTime @default(now())
