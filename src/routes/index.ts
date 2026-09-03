@@ -47,6 +47,9 @@ import uploadRoute from './uploadRoute';
 
 import campaignCreationDraftRoute from './campaignCreationDraftRoute';
 
+import treasureHuntAdminRoute from './treasureHuntAdminRoute';
+import treasureHuntRoute from './treasureHuntRoute';
+
 export const router = express.Router();
 
 router.use('/user', userRoute);
