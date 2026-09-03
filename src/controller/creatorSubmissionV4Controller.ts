@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, LogisticStatus } from '@prisma/client';
 import amqplib, { ChannelModel } from 'amqplib';
 import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
@@ -533,18 +533,35 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       }
     }
 
-    const logistic = await prisma.logistic.findFirst({
-      where: {
-        campaignId: submission.campaignId,
-        creatorId: submission.userId,
-      },
-    });
+    let currentStatus: LogisticStatus | undefined;
 
-    let currentStatus = logistic?.status;
+    try {
+      const logistic = await prisma.logistic.findFirst({
+        where: {
+          campaignId: submission.campaignId,
+          creatorId: submission.userId,
+        },
+      });
 
-    if (logistic) {
-      const updatedLogistic = await completeLogisticService(logistic.id, 'COMPLETED');
-      currentStatus = updatedLogistic.status;
+      if (!logistic) {
+        console.warn(
+          `📦 No logistic found for submission ${submissionId} (campaign ${submission.campaignId}, creator ${submission.userId}) — nothing to complete`,
+        );
+      } else {
+        currentStatus = logistic.status;
+
+        const updatedLogistic = await completeLogisticService(logistic.id, 'COMPLETED');
+        currentStatus = updatedLogistic.status;
+
+        console.log(
+          `📦 Logistic ${logistic.id} ${logistic.status} → ${updatedLogistic.status} for submission ${submissionId}`,
+        );
+      }
+    } catch (error) {
+      console.error(
+        `📦 Failed to complete logistic for submission ${submissionId} (campaign ${submission.campaignId}, creator ${submission.userId}) — submission itself succeeded; reconciliation cron will retry:`,
+        error,
+      );
     }
 
     res.status(200).json({

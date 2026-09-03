@@ -19,6 +19,7 @@ import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
 import { clients, getIo } from './socket';
 import { snapshotLeaderboard } from '../modules/gamification';
+import { reconcileStuckLogistics } from '../service/logisticsService';
 
 const prisma = new PrismaClient();
 
@@ -290,6 +291,29 @@ new CronJob(
       });
     } catch (error) {
       console.error('[Cronjob] Leaderboard snapshot failed:', error);
+    }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur',
+);
+
+new CronJob(
+  '15 2 * * *', // 02:15 AM daily
+  async function () {
+    console.log('[Cronjob] Starting logistics reconciliation at', dayjs().tz('Asia/Kuala_Lumpur').format());
+
+    try {
+      const result = await reconcileStuckLogistics();
+
+      console.log('[Cronjob] Logistics reconciliation completed:', {
+        scanned: result.scanned,
+        completed: result.completed,
+        failed: result.failed,
+        timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+      });
+    } catch (error) {
+      console.error('[Cronjob] Logistics reconciliation failed:', error);
     }
   },
   null, // onComplete
