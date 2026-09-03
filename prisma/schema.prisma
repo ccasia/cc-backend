@@ -1859,6 +1859,8 @@ enum AgreementTemplateType {
 model Bugs {
   id               String   @id @unique @default(cuid())
   stepsToReproduce String
+  category         String?
+  context          Json?
   attachment       String?
   attachments      String[]
   campaignName     String?

@@ -2607,12 +2607,20 @@ export const getCampaignById = async (req: Request, res: Response) => {
   }
 };
 
-export const getAllActiveCampaign = async (_req: Request, res: Response) => {
+export const getAllActiveCampaign = async (req: Request, res: Response) => {
   try {
+    const { cursor, limit = 50 } = req.query;
+    const take = Number(limit);
+
     const campaigns = await prisma.campaign.findMany({
       where: {
         status: 'ACTIVE',
       },
+      take: take + 1,
+      ...(cursor && {
+        skip: 1,
+        cursor: { id: cursor as string },
+      }),
       include: {
         campaignBrief: true,
         campaignRequirement: true,
@@ -2643,9 +2651,18 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
           },
         },
       },
+      orderBy: { id: 'asc' },
     });
 
-    return res.status(200).json(campaigns);
+    const hasMore = campaigns.length > take;
+    const items = hasMore ? campaigns.slice(0, take) : campaigns;
+    const nextCursor = hasMore ? items[items.length - 1].id : null;
+
+    return res.status(200).json({
+      campaigns: items,
+      nextCursor,
+      hasMore,
+    });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -2723,7 +2740,8 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       where: {
         id: userid,
       },
-      include: {
+      select: {
+        id: true,
         creator: {
           include: {
             interests: true,
@@ -2741,10 +2759,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
-
       ...(campaignId
         ? {
-            cursor: { id: campaignId }, // start after this ID
+            cursor: { id: campaignId },
           }
         : {
             ...(cursor && {
@@ -2837,15 +2854,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
       return res.status(200).json(data);
     }
-
-    const beforeFilterCount = campaigns.length;
-
-    campaigns = campaigns.filter((campaign) => {
-      return campaign.status === 'ACTIVE';
-    });
-
-    console.log('🌍 Detected country:', country);
-    console.log('🔧 Environment:', process.env.NODE_ENV);
 
     const beforeCountryFilter = campaigns.length;
 
@@ -2944,7 +2952,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return interestMatch * interestWeight + requirementMatch * requirementWeight;
     };
 
-    console.log('🎯 Calculating matching percentages...');
     const matchedCampaignWithPercentage = campaigns.map((item, index) => {
       try {
         const interestPercentage = calculateInterestMatchingPercentage(
@@ -2974,25 +2981,14 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       }
     });
 
-    // Keep the original order from database (newest first) instead of overriding
     const sortedMatchedCampaigns = matchedCampaignWithPercentage;
 
-    console.log('📦 Final campaigns to return:', sortedMatchedCampaigns.length);
-    console.log('Campaign names being returned:', sortedMatchedCampaigns.map((c) => c.name).join(', '));
-
-    // Fix pagination logic: Check if we got the full 'take' amount from the database
-    // We need to use originalFetchedCount (BEFORE filtering) not campaigns.length (AFTER filtering)
-    // If we fetched the full 'take' amount, there might be more pages
     const hasNextPage = originalFetchedCount === Number(take);
 
-    // For the cursor, we need to use the ORIGINAL last campaign ID from the database fetch
-    // This ensures the next request starts from the correct position
     const lastCursor =
       hasNextPage && sortedMatchedCampaigns.length > 0
         ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id
         : null;
-
-    console.log('📄 Pagination:', { hasNextPage, lastCursor });
 
     const data = {
       data: {
