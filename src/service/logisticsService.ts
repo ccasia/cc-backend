@@ -1,4 +1,4 @@
-import { PrismaClient, LogisticStatus } from '@prisma/client';
+import { PrismaClient, LogisticStatus, SubmissionStatus, SubmissionEnum } from '@prisma/client';
 import { addMinutes, format, isSameDay, addDays, startOfDay, isBefore, isAfter, getDay } from 'date-fns';
 const prisma = new PrismaClient();
 
@@ -1492,4 +1492,72 @@ export const adminScheduleService = async (logisticId: string, data: { startTime
       include: { reservationDetails: { include: { slots: true } } },
     });
   });
+};
+
+const SUBMITTED_STATUSES: SubmissionStatus[] = [
+  'PENDING_REVIEW',
+  'APPROVED',
+  'CHANGES_REQUIRED',
+  'POSTED',
+  'APPROVE_LINK',
+  'SENT_TO_CLIENT',
+  'CLIENT_APPROVED',
+  'CLIENT_FEEDBACK',
+  'COMPLETED',
+];
+
+const SUBMISSION_TYPES: SubmissionEnum[] = ['FIRST_DRAFT', 'FINAL_DRAFT', 'POSTING', 'VIDEO', 'PHOTO', 'RAW_FOOTAGE'];
+
+const RECONCILIABLE_STATUSES: LogisticStatus[] = ['SCHEDULED', 'SHIPPED', 'DELIVERED', 'RECEIVED'];
+
+export const reconcileStuckLogistics = async () => {
+  const logistics = await prisma.logistic.findMany({
+    where: {
+      status: { in: RECONCILIABLE_STATUSES },
+      completedAt: null,
+      campaign: {
+        submission: {
+          some: {
+            submissionVersion: 'v4',
+            status: { in: SUBMITTED_STATUSES },
+          },
+        },
+      },
+    },
+    select: { id: true, status: true, campaignId: true, creatorId: true },
+  });
+
+  let completed = 0;
+  let failed = 0;
+
+  for (const logistic of logistics) {
+    const submission = await prisma.submission.findFirst({
+      where: {
+        campaignId: logistic.campaignId,
+        userId: logistic.creatorId,
+        submissionVersion: 'v4',
+        status: { in: SUBMITTED_STATUSES },
+        submissionType: {
+          type: { in: SUBMISSION_TYPES },
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!submission) continue;
+
+    try {
+      await completeLogisticService(logistic.id, 'COMPLETED');
+      completed += 1;
+
+      console.log(
+        `[Reconcile] Logistic ${logistic.id} ${logistic.status} → COMPLETED (submission ${submission.id}, creator ${logistic.creatorId})`,
+      );
+    } catch (error) {
+      failed += 1;
+      console.error(`[Reconcile] Failed to complete logistic ${logistic.id}:`, error);
+    }
+  }
+
+  return { scanned: logistics.length, completed, failed };
 };

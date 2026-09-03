@@ -11,7 +11,6 @@ import { clients } from '../server';
 
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
-import { runCreditDriftCheck } from '@services/creditDriftDetector';
 // import { clients, io } from '../server';
 import {
   reminderDueDate,
@@ -20,6 +19,7 @@ import {
   escalationPostingNotSubmitted,
 } from '@helper/notification';
 import { getIo } from './socket';
+import { reconcileStuckLogistics } from '../service/logisticsService';
 
 const prisma = new PrismaClient();
 
@@ -271,13 +271,36 @@ new CronJob(
   'Asia/Kuala_Lumpur',
 );
 
+// new CronJob(
+//   '0 2 * * *', // 02:00 AM daily
+//   async function () {
+//     try {
+//       await runCreditDriftCheck();
+//     } catch (error) {
+//       console.error('[Cronjob] Credit drift check failed:', error);
+//     }
+//   },
+//   null, // onComplete
+//   true, // start
+//   'Asia/Kuala_Lumpur',
+// );
+
 new CronJob(
-  '0 2 * * *', // 02:00 AM daily
+  '15 2 * * *', // 02:15 AM daily
   async function () {
+    console.log('[Cronjob] Starting logistics reconciliation at', dayjs().tz('Asia/Kuala_Lumpur').format());
+
     try {
-      await runCreditDriftCheck();
+      const result = await reconcileStuckLogistics();
+
+      console.log('[Cronjob] Logistics reconciliation completed:', {
+        scanned: result.scanned,
+        completed: result.completed,
+        failed: result.failed,
+        timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+      });
     } catch (error) {
-      console.error('[Cronjob] Credit drift check failed:', error);
+      console.error('[Cronjob] Logistics reconciliation failed:', error);
     }
   },
   null, // onComplete
