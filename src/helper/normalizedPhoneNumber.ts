@@ -52,7 +52,7 @@ export function normalizePhone(
   };
 }
 
-function getCountryShortCode(country: string | null): CountryCode | undefined {
+export function getCountryShortCode(country: string | null): CountryCode | undefined {
   if (!country) return;
 
   const shortCountryCode = PHONE_CODES.find((a) => a.country.toLowerCase().includes(country.toLowerCase()));
@@ -101,6 +101,6 @@ async function main() {
   console.table(flaggedUsers);
 }
 
-main()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect());
+// main()
+//   .catch(console.error)
+//   .finally(() => prisma.$disconnect());
