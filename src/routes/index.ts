@@ -41,7 +41,7 @@ import discoveryRoute from './discoveryRoute';
 import approvalRoute from './approvalRoute';
 import campaignBriefRoute from './campaignBriefRoute';
 import clientDemoRoute from './clientDemoRoute';
-import videoOfTheMonthRoute from './videoOfTheMonthRoute';
+import { videoOfTheMonthRoutes as videoOfTheMonthRoute } from '@modules/video-of-the-month';
 import financeRoute from './financeRoute';
 import uploadRoute from './uploadRoute';
 import treasureHuntRoute from './treasureHuntRoute';

@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 
-import { generateFeaturedVideoThumbnail } from '@services/videoOfTheMonthService';
+import { generateFeaturedVideoThumbnail } from '@modules/video-of-the-month';
 
 const prisma = new PrismaClient();
 
