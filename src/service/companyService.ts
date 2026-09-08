@@ -256,22 +256,22 @@ export const generateCustomId = async (type: any, client: Pick<typeof prisma, 'c
 };
 
 export const generateSubscriptionCustomId = async () => {
-  const lastSubscription = await prisma.subscription.findFirst({
-    orderBy: {
-      subscriptionId: 'desc',
-    },
-    select: {
-      subscriptionId: true,
-    },
+  const subscriptions = await prisma.subscription.findMany({
+    where: { subscriptionId: { not: null } },
+    select: { subscriptionId: true },
   });
 
-  let newIdNumber = 1; // Default if no records exist
-  if (lastSubscription && lastSubscription.subscriptionId) {
-    const lastNumber = parseInt(lastSubscription.subscriptionId.replace('P', ''), 10);
-    newIdNumber = lastNumber + 1;
+  let maxNumber = 0;
+  for (const sub of subscriptions) {
+    if (sub.subscriptionId) {
+      const num = parseInt(sub.subscriptionId.replace('P', ''), 10);
+      if (!isNaN(num) && num > maxNumber) {
+        maxNumber = num;
+      }
+    }
   }
 
-  return `P${newIdNumber.toString().padStart(4, '0')}`;
+  return `P${(maxNumber + 1).toString().padStart(4, '0')}`;
 };
 
 // New versions

@@ -288,6 +288,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
           data: {
             userId: pitch.userId,
             campaignId: pitch.campaignId,
+            round: 1,
             agreementUrl: '',
           },
         });
@@ -814,6 +815,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         data: {
           userId: pitch.userId,
           campaignId: pitch.campaignId,
+          round: 1,
           agreementUrl: '',
         },
       });

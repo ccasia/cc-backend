@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 
 interface AgreementCandidate {
+  contentOrder?: number | null;
   createdAt?: Date | string | null;
   id?: string;
   status?: string | null;
@@ -32,6 +33,12 @@ export function buildAgreementUploadFileName(
   const safeNonce = nonce.replace(/[^a-z0-9_-]/gi, '_');
 
   return `${safeSubmissionId}/${submittedAt.getTime()}-${safeNonce}.pdf`;
+}
+
+export function selectAgreementSubmissions<T extends AgreementCandidate>(submissions: T[]): T[] {
+  return submissions
+    .filter((submission) => submission.submissionType?.type === 'AGREEMENT_FORM')
+    .sort((a, b) => (a.contentOrder ?? 0) - (b.contentOrder ?? 0));
 }
 
 export function selectCurrentAgreementSubmission<T extends AgreementCandidate>(submissions: T[]): T | undefined {

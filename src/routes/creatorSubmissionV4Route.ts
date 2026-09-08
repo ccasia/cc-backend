@@ -4,6 +4,7 @@ import {
   submitMyV4Content,
   updateMyPostingLink,
   getMySubmissionDetails,
+  markSubmissionViewed,
   getMyCampaignOverview,
   createMyFeedbackReply,
   deleteMyReply,
@@ -40,6 +41,7 @@ router.get('/campaign-overview', authenticate, getMyCampaignOverview);
  * @param submissionId - Submission ID
  */
 router.get('/:submissionId', authenticate, getMySubmissionDetails);
+router.patch('/:submissionId/mark-viewed', authenticate, markSubmissionViewed);
 
 /**
  * @route POST /api/creator/submissions/v4/submit-content

@@ -30,7 +30,7 @@ import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
-import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
+import { selectCurrentAgreementSubmission, selectAgreementSubmissions } from '@utils/submissionAgreement';
 import { clients, getIo } from '../config/socket';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
 import { awardXp, onAgreementApproved } from '@/src/modules/gamification';
@@ -338,9 +338,12 @@ export const getV4SubmissionsController = async (req: Request, res: Response) =>
 
     const submissions = await getV4Submissions(campaignId as string, userId as string | undefined);
 
-    // Group submissions by type for easier frontend consumption
+    // Group submissions by type for easier frontend consumption. `agreements` holds one
+    // entry per agreement round (oldest first); `agreement` stays the single most-relevant
+    // one for older consumers.
     const groupedSubmissions = {
       agreement: selectCurrentAgreementSubmission(submissions),
+      agreements: selectAgreementSubmissions(submissions),
       videos: submissions.filter((s) => s.submissionType.type === 'VIDEO'),
       photos: submissions.filter((s) => s.submissionType.type === 'PHOTO'),
       rawFootage: submissions.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),

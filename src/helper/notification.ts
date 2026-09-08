@@ -82,6 +82,15 @@ const notificationAgreement = (campaignName: string, type: 'Admin' | 'Creator', 
   };
 };
 
+const notificationAdditionalAgreement = (campaignName: string, entity?: Entity) => {
+  return {
+    title: `📄 You've been sent a new agreement for ${campaignName}`,
+    message: 'Sign your agreement to lock it in.',
+    campaignId: entity?.campaignId,
+    submissionId: entity?.submissionId,
+  };
+};
+
 const notificationApproveAgreement = (campaignName: string) => {
   return {
     title: '🚀Agreement approved',
@@ -255,6 +264,7 @@ export {
   notificationPitch,
   notificationDraft,
   notificationAgreement,
+  notificationAdditionalAgreement,
   notificationPendingAgreement,
   notificationSignature,
   notificationApproveAgreement,

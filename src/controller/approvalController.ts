@@ -153,6 +153,7 @@ async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, 
       data: {
         userId: pitch.userId,
         campaignId: pitch.campaignId,
+        round: 1,
         agreementUrl: '',
       },
     });

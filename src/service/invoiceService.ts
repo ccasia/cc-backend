@@ -140,6 +140,7 @@ export const createInvoiceService = async (
               invoiceTo,
               task: item,
               amount: parseFloat(amount) || 0,
+              round: data.round ?? 1,
               bankAcc: bankInfo,
               user: {
                 connect: {

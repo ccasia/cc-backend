@@ -1783,6 +1783,7 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
             data: {
               userId: creatorUser.id,
               campaignId,
+              round: 1,
               agreementUrl: '',
             },
           });

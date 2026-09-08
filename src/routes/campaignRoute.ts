@@ -34,6 +34,7 @@ import {
   creatorAgreements,
   updateAmountAgreement,
   sendAgreement,
+  sendAdditionalAgreement,
   resendAgreement,
   editCampaignImages,
   draftPitch,
@@ -255,6 +256,7 @@ router.patch('/changePitchStatus', authenticate, isSuperAdmin, changePitchStatus
 // router.patch('/receiveLogistic', authenticate, receiveLogistic);
 router.patch('/updateAmountAgreement', authenticate, isSuperAdmin, updateAmountAgreement);
 router.patch('/sendAgreement', authenticate, isSuperAdmin, sendAgreement);
+router.patch('/sendAdditionalAgreement', authenticate, isSuperAdmin, sendAdditionalAgreement);
 router.patch('/resendAgreement', authenticate, resendAgreement);
 router.patch('/removePitchVideo', authenticate, removePitchVideo);
 router.patch('/linkNewAgreement', authenticate, isSuperAdmin, linkNewAgreement);

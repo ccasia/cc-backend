@@ -338,18 +338,12 @@ export async function rejectPendingPitchInternal(
       });
     }
 
-    // Step 5: Delete creator agreement
-    const agreement = await tx.creatorAgreement.findFirst({
+    // Step 5: Delete all agreement rounds for this creator on this campaign, if any exist
+    await tx.creatorAgreement.deleteMany({
       where: {
         AND: [{ userId }, { campaignId }],
       },
     });
-
-    if (agreement) {
-      await tx.creatorAgreement.delete({
-        where: { id: agreement.id },
-      });
-    }
 
     return {
       success: true,
