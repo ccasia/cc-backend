@@ -32,7 +32,7 @@ import { picRoutes as picRoute } from '@modules/pic';
 import logisticsRoute from './logisticsRoute';
 import creditTierRoute from './creditTierRoute';
 import { npsFeedbackRoutes as npsFeedbackRoute } from '@modules/nps-feedback';
-import dashboardRoute from './dashboardRoute';
+import { dashboardRoutes as dashboardRoute } from '@modules/dashboard';
 import { reportsRouter } from './reports';
 import aiRouter from './aiRoute';
 import analyticsV2Route from './analyticsV2Route';

@@ -10,7 +10,7 @@ import {
   getDashboardLinksPending,
   getDashboardClientFeedbacks,
   getDashboardOverdueInvoices,
-} from '@controllers/dashboardController';
+} from './dashboard.controller';
 import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();

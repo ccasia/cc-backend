@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { prisma } from '../prisma/prisma';
+import { prisma } from '../../prisma/prisma';
 
 /**
  * Returns assigned campaign IDs for CS users.
