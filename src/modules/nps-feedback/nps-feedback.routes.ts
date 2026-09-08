@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { authenticate } from '@middlewares/authenticate';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { isCreator, isCreatorOrClient } from '@middlewares/isCreator';
-import { submitFeedback, getAllFeedback, getFeedbackStats, checkCreatorNps } from '@controllers/npsFeedbackController';
+import { submitFeedback, getAllFeedback, getFeedbackStats, checkCreatorNps } from './nps-feedback.controller';
 
 const router = Router();
 

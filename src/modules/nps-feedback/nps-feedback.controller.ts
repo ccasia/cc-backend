@@ -4,7 +4,7 @@ import {
   checkShouldShowCreatorNPS,
   getNpsFeedbackList,
   getNpsFeedbackStats,
-} from '@services/npsFeedbackService';
+} from './nps-feedback.service';
 
 const ALLOWED_SORT_FIELDS = ['createdAt', 'rating'];
 const VALID_USER_TYPES = ['CLIENT', 'CREATOR'];

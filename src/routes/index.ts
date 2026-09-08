@@ -31,7 +31,7 @@ import childAccountRoute from './childAccountRoute';
 import { picRoutes as picRoute } from '@modules/pic';
 import logisticsRoute from './logisticsRoute';
 import creditTierRoute from './creditTierRoute';
-import npsFeedbackRoute from './npsFeedbackRoute';
+import { npsFeedbackRoutes as npsFeedbackRoute } from '@modules/nps-feedback';
 import dashboardRoute from './dashboardRoute';
 import { reportsRouter } from './reports';
 import aiRouter from './aiRoute';

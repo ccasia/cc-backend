@@ -29,7 +29,7 @@ import { notificationApproveDraft, notificationDraft } from '@helper/notificatio
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
-import { checkShouldShowNPS } from '@services/npsFeedbackService';
+import { checkShouldShowNPS } from '@modules/nps-feedback';
 import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 import { clients, getIo } from '../config/socket';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
