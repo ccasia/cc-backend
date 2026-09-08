@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { isAdmin, isSuperAdmin } from '@middlewares/onlySuperadmin';
-import { getUserByEmail, updatePIC, getPICById, getPICsByCompanyId, createPIC } from '@controllers/picController';
-import { authenticate } from '../middleware/authenticate';
+import { authenticate } from '@middlewares/authenticate';
+import { getUserByEmail, updatePIC, getPICById, getPICsByCompanyId, createPIC } from './pic.controller';
 
 const router = Router();
 

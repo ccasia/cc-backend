@@ -1,6 +1,6 @@
 import express from 'express';
-import { submitKWSPForm } from '../controller/kwspController';
-import { authenticate } from '../middleware/authenticate';
+import { authenticate } from '@middlewares/authenticate';
+import { submitKWSPForm } from './kwsp.controller';
 
 const router = express.Router();
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { getAllRoles, getSpecificRole, updateRole } from '@controllers/roleController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
-import { authenticate } from '../middleware/authenticate';
+import { authenticate } from '@middlewares/authenticate';
+import { getAllRoles, getSpecificRole, updateRole } from './role.controller';
 
 const router = Router();
 

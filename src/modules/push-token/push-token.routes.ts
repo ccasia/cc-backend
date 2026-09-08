@@ -1,7 +1,7 @@
 import { Router } from 'express';
 
-import { registerPushToken, removePushToken } from '@controllers/pushTokenController';
-import { authenticate } from '../middleware/authenticate';
+import { authenticate } from '@middlewares/authenticate';
+import { registerPushToken, removePushToken } from './push-token.controller';
 
 const router = Router();
 

@@ -1,6 +1,6 @@
-import { createNewBug } from '@controllers/bugController';
 import { authenticate } from '@middlewares/authenticate';
 import { Router } from 'express';
+import { createNewBug } from './bug.controller';
 
 const router = Router();
 
