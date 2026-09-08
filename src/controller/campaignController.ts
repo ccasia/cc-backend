@@ -8629,6 +8629,8 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
       },
     });
 
+    getIo().to(campaignId).emit('campaign:agreement:updated', { campaignId });
+
     return res.status(200).json({ message: 'Agreement sent successfully!', results });
   } catch (error) {
     console.error('Error in sendAdditionalAgreement:', error);
