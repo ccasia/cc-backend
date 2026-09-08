@@ -760,7 +760,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         // Add child accounts to the new campaign if it's a client-created campaign
         if (campaign.origin === 'CLIENT' && client) {
           try {
-            const { addChildAccountsToCampaign } = await import('./childAccountController.js');
+            const { addChildAccountsToCampaign } = await import('../modules/child-account/child-account.controller.js');
             await addChildAccountsToCampaign(client.id, campaign.id);
           } catch (error) {
             console.error('Error adding child accounts to campaign:', error);
@@ -1437,7 +1437,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         // Add child accounts for client-created campaigns
         if (campaign.origin === 'CLIENT' && client) {
           try {
-            const { addChildAccountsToCampaign } = await import('./childAccountController.js');
+            const { addChildAccountsToCampaign } = await import('../modules/child-account/child-account.controller.js');
             await addChildAccountsToCampaign(client.id, campaign.id);
           } catch (error) {
             console.error('Error adding child accounts to campaign:', error);
@@ -8928,7 +8928,7 @@ export const addClientManagers = async (req: Request, res: Response) => {
         });
 
         if (user?.client) {
-          const { addChildAccountsToCampaign } = await import('./childAccountController.js');
+          const { addChildAccountsToCampaign } = await import('../modules/child-account/child-account.controller.js');
           await addChildAccountsToCampaign(user.client.id, campaignId);
         }
       } catch (error) {

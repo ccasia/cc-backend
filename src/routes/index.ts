@@ -27,7 +27,7 @@ import { kwspRoutes as kwspRoute } from '@modules/kwsp';
 import clientRoute from './clientRoute';
 import pitchRoute from './pitchRoute';
 import pdfRoute from './pdfRoute';
-import childAccountRoute from './childAccountRoute';
+import { childAccountRoutes as childAccountRoute } from '@modules/child-account';
 import { picRoutes as picRoute } from '@modules/pic';
 import logisticsRoute from './logisticsRoute';
 import creditTierRoute from './creditTierRoute';

@@ -11,7 +11,7 @@ import {
   deleteChildAccount,
   getChildAccountByToken,
   activateChildAccount,
-} from '@controllers/childAccountController';
+} from './child-account.controller';
 
 const router = express.Router();
 
