@@ -17,6 +17,13 @@ module.exports = {
       autorestart: true,
     },
     {
+      // Paid provider work. One instance, low concurrency, its own process.
+      name: 'engagement-extraction-worker',
+      script: 'helper/engagementExtractionWorker.js',
+      instances: 1,
+      autorestart: true,
+    },
+    {
       name: 'whatsapp-worker',
       script: 'helper/verificationCodeWorker.js', // wherever your BullMQ worker entrypoint is
       instances: 1, // usually keep workers at 1 instance unless designed for horizontal scaling
