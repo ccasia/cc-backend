@@ -150,6 +150,7 @@ new CronJob(
             userId: agreement.userId,
             campaignId: agreement.campaignId,
             submissionType: { type: 'AGREEMENT_FORM' },
+            contentOrder: agreement.round,
           },
           include: { campaign: { select: { name: true } } },
         });

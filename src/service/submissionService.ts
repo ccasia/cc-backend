@@ -394,7 +394,7 @@ export const handleCompletedCampaign = async (submissionId: string, adminId?: st
     );
 
     const invoiceAmount = submission.user.creatorAgreement.find(
-      (elem: any) => elem.campaignId === submission.campaignId,
+      (elem: any) => elem.campaignId === submission.campaignId && elem.round === 1,
     )?.amount;
 
     console.log('💰 Invoice amount found:', invoiceAmount);

@@ -30,7 +30,9 @@ const worker = new Worker(
     const creatorUser = invoice.creator.user;
     const creatorPaymentForm = creatorUser?.paymentForm;
     const campaign = invoice.campaign;
-    const agreement = invoice.creator.user.creatorAgreement.find((item: any) => item.campaignId === invoice.campaignId);
+    const agreement = invoice.creator.user.creatorAgreement.find(
+      (item: any) => item.campaignId === invoice.campaignId && item.round === 1,
+    );
 
     let contactID = invoice.creator.xeroContactId;
 
@@ -293,7 +295,9 @@ export const bulkInvoiceWorker = new Worker(
       try {
         if (invoice.status === 'approved' || invoice.status === 'paid') continue;
 
-        const agreement = invoice.creator.user.creatorAgreement.find((a) => a.campaignId === invoice.campaignId);
+        const agreement = invoice.creator.user.creatorAgreement.find(
+          (a) => a.campaignId === invoice.campaignId && a.round === 1,
+        );
 
         // const currency = (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR';
 

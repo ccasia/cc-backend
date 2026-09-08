@@ -1340,7 +1340,9 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     const creatorUser = invoice.creator.user;
     const creatorPaymentForm = creatorUser?.paymentForm;
-    const agreement = invoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
+    const agreement = invoice.creator.user.creatorAgreement.find(
+      (item) => item.campaignId === campaignId && item.round === 1,
+    );
 
     if (status === 'approved') {
       await prisma.invoice.update({
@@ -1735,6 +1737,8 @@ export const attachInvoicePDF = async (tenantId: string, invoiceId: string, file
 
 export const generateInvoice = async (req: Request, res: Response) => {
   const { userId, campaignId } = req.body;
+  // Defaults to round 1 for callers that don't specify a round.
+  const round: number = req.body.round ?? 1;
 
   try {
     const creator = await prisma.shortListedCreator.findFirst({
@@ -1770,18 +1774,19 @@ export const generateInvoice = async (req: Request, res: Response) => {
       where: {
         campaignId: campaignId,
         creatorId: userId,
+        round,
       },
     });
 
-    if (invoice) return res.status(400).json({ message: 'Invoice has been generated for this campaign' });
+    if (invoice) return res.status(400).json({ message: `Invoice has already been generated for round ${round}.` });
 
     if (!creator.isCampaignDone && !invoice) {
       const invoiceAmount = creator?.user?.creatorAgreement.find(
-        (elem) => elem.campaignId === creator.campaign.id,
+        (elem) => elem.campaignId === creator.campaign.id && elem.round === round,
       )?.amount;
 
       const invoice = await createInvoiceService(
-        { ...creator, userId: creator.user?.id, campaignId: creator.campaign.id },
+        { ...creator, userId: creator.user?.id, campaignId: creator.campaign.id, round },
         req.userId,
         invoiceAmount,
         undefined,
@@ -1942,6 +1947,7 @@ export async function generateMissingInvoices(req: Request, res: Response) {
         where: {
           userId: item.userId,
           campaignId: item.campaignId,
+          round: 1,
         },
         include: {
           user: {

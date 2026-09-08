@@ -63,6 +63,7 @@ import {
   notificationPendingAgreement,
   notificationPitch,
   notificationSignature,
+  notificationAdditionalAgreement,
   notificationCampaignLive,
   notificationAdminAssign,
   notificationMaintenance,
@@ -3535,9 +3536,10 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
 
     const agreement = await prisma.creatorAgreement.findUnique({
       where: {
-        userId_campaignId: {
+        userId_campaignId_round: {
           userId: userid,
           campaignId: id,
+          round: 1,
         },
       },
     });
@@ -7202,7 +7204,11 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       credits,
       selectedPlatform,
       followerCount,
+      round: requestedRound,
     } = JSON.parse(req.body.data);
+
+    // Defaults to round 1 (the original agreement) for callers that don't specify a round.
+    const round: number = requestedRound ?? 1;
 
     const creator = await prisma.user.findUnique({
       where: {
@@ -7246,9 +7252,10 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       // For V3: Find by userId and campaignId
       currentAgreement = await prisma.creatorAgreement.findUnique({
         where: {
-          userId_campaignId: {
+          userId_campaignId_round: {
             userId: creator.id,
             campaignId: campaignId,
+            round,
           },
         },
       });
@@ -7416,6 +7423,19 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
     // Handle V3 agreement creation or V2 agreement update
     let updatedAgreement;
 
+    // Round-scoped snapshot, mirrored onto ShortListedCreator above for other consumers.
+    const roundSnapshotData = {
+      selectedPlatform: normalizedPlatform,
+      ...(newVideoCount !== null && { videoCount: newVideoCount }),
+      ...(effectiveFollowerCount > 0 && { followerCount: effectiveFollowerCount }),
+      ...(isCreditTierCampaign && creditPerVideo !== null && { creditPerVideo }),
+      ...(isCreditTierCampaign && tierSnapshot && { creditTierId: tierSnapshot.id }),
+      ...(newVideoCount !== null && {
+        creditsAssigned:
+          isCreditTierCampaign && creditPerVideo !== null ? creditPerVideo * newVideoCount : newVideoCount,
+      }),
+    };
+
     if (isNew) {
       // For V3: Get the campaign's agreement template URL if no new file was uploaded
       let finalAgreementUrl = url;
@@ -7431,9 +7451,10 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       // For V3: Create or update CreatorAgreement using upsert
       updatedAgreement = await prisma.creatorAgreement.upsert({
         where: {
-          userId_campaignId: {
+          userId_campaignId_round: {
             userId: creator.id,
             campaignId: campaignId,
+            round,
           },
         },
         update: {
@@ -7441,14 +7462,17 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
           amount: paymentAmount,
           currency: currency,
           isSent: false, // Not sent yet
+          ...roundSnapshotData,
         },
         create: {
           userId: creator.id,
           campaignId: campaignId,
+          round,
           agreementUrl: finalAgreementUrl, // Use template URL if no new file
           amount: paymentAmount,
           currency: currency,
           isSent: false, // Not sent yet
+          ...roundSnapshotData,
         },
         include: {
           user: {
@@ -7489,6 +7513,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
           updatedAt: dayjs().format(),
           amount: paymentAmount,
           currency: currency,
+          ...roundSnapshotData,
         },
         include: {
           user: {
@@ -7542,6 +7567,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
           where: {
             creatorId: creator.id,
             campaignId: campaignId,
+            round,
           },
         });
 
@@ -7608,17 +7634,20 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
             .filter((a) => a.user?.creator?.isGuest !== true)
             .map((a) => a.userId);
 
+          // Sum credits committed across every sent round for these creators (not
+          // ShortListedCreator's single cached value, which can't describe a creator with
+          // rounds on different platforms/tiers).
           let totalAssigned = 0;
           if (sentNonGuestUserIds.length) {
-            const shortlistedForCredits = await prisma.shortListedCreator.findMany({
+            const creditsAggregate = await prisma.creatorAgreement.aggregate({
               where: {
                 campaignId,
+                isSent: true,
                 userId: { in: sentNonGuestUserIds },
-                ugcVideos: { gt: 0 },
               },
-              select: { ugcVideos: true },
+              _sum: { creditsAssigned: true },
             });
-            totalAssigned = shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
+            totalAssigned = creditsAggregate._sum.creditsAssigned ?? 0;
           }
 
           // V4 campaigns: update both utilized and pending
@@ -7651,6 +7680,8 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 export const sendAgreement = async (req: Request, res: Response) => {
   const { user, id: agreementId, campaignId, isNew, credits, selectedPlatform, followerCount } = req.body;
   const requestedPlatform = normalizePlatform(selectedPlatform);
+  // Defaults to round 1 (the original agreement) for callers that don't specify a round.
+  const round: number = req.body.round ?? 1;
 
   const adminId = req.userId;
 
@@ -7683,9 +7714,10 @@ export const sendAgreement = async (req: Request, res: Response) => {
     if (isNew) {
       agreement = await prisma.creatorAgreement.findUnique({
         where: {
-          userId_campaignId: {
+          userId_campaignId_round: {
             userId: user.id,
             campaignId: campaignId,
+            round,
           },
         },
       });
@@ -7940,6 +7972,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
             submissionTypeId: agreementTimeline.submissionTypeId as string,
             dueDate: agreementTimeline.endDate,
             status: 'IN_PROGRESS',
+            contentOrder: 1, // round 1's AGREEMENT_FORM submission
             ...(isV4Campaign && { submissionVersion: 'v4' }),
             ...(inProgressColumn && {
               task: {
@@ -8029,41 +8062,22 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
         const otherUserIds = sentNonGuestUserIdsBefore.filter((id) => id !== isUserExist.id);
 
-        // Calculate credits used by other creators
+        // Calculate credits committed by other (non-guest) creators, summed across every sent
+        // agreement round they have — not read off ShortListedCreator's single cached
+        // creditPerVideo, since a creator's rounds can each sit on a different platform/tier.
         let creditsUsedBefore = 0;
         if (otherUserIds.length) {
-          if (isCreditTierCampaign) {
-            // For tier campaigns, sum (ugcVideos * creditPerVideo) for each creator
-            const otherShortlisted = await prisma.shortListedCreator.findMany({
-              where: {
-                campaignId,
-                userId: { in: otherUserIds },
-                ugcVideos: { gt: 0 },
-              },
-              select: {
-                ugcVideos: true,
-                creditPerVideo: true,
-              },
-            });
-            creditsUsedBefore = otherShortlisted.reduce((sum, creator) => {
-              const videos = creator.ugcVideos ?? 0;
-              const perVideo = creator.creditPerVideo ?? 1;
-              return sum + videos * perVideo;
-            }, 0);
-          } else {
-            // For non-tier campaigns, sum ugcVideos directly
-            const aggregate = await prisma.shortListedCreator.aggregate({
-              where: {
-                campaignId,
-                userId: { in: otherUserIds },
-                ugcVideos: { gt: 0 },
-              },
-              _sum: {
-                ugcVideos: true,
-              },
-            });
-            creditsUsedBefore = aggregate._sum.ugcVideos || 0;
-          }
+          const aggregate = await prisma.creatorAgreement.aggregate({
+            where: {
+              campaignId,
+              isSent: true,
+              userId: { in: otherUserIds },
+            },
+            _sum: {
+              creditsAssigned: true,
+            },
+          });
+          creditsUsedBefore = aggregate._sum.creditsAssigned ?? 0;
         }
 
         const remainingCredits = Number(campaign.campaignCredits) - creditsUsedBefore;
@@ -8085,18 +8099,33 @@ export const sendAgreement = async (req: Request, res: Response) => {
       }
     }
 
+    // Round-scoped snapshot, mirrored onto ShortListedCreator below for other consumers.
+    const roundSnapshotData = {
+      selectedPlatform: normalizedPlatform,
+      ...(videoCount > 0 && { videoCount }),
+      ...(effectiveFollowerCount > 0 && { followerCount: effectiveFollowerCount }),
+      ...(isCreditTierCampaign &&
+        tierSnapshot && {
+          creditPerVideo,
+          creditTierId: tierSnapshot.id,
+        }),
+      ...(creditsToAssign !== null && { creditsAssigned: creditsToAssign }),
+    };
+
     if (isNew) {
       await prisma.creatorAgreement.update({
         where: {
-          userId_campaignId: {
+          userId_campaignId_round: {
             userId: user.id,
             campaignId: campaignId,
+            round,
           },
         },
         data: {
           isSent: true,
           completedAt: new Date(),
           approvedByAdminId: adminId,
+          ...roundSnapshotData,
         },
       });
     } else {
@@ -8108,6 +8137,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
           isSent: true,
           completedAt: new Date(),
           approvedByAdminId: adminId,
+          ...roundSnapshotData,
         },
       });
     }
@@ -8220,29 +8250,21 @@ export const sendAgreement = async (req: Request, res: Response) => {
         approvedAgreementUserIds = approvedAgreementSubmissions.map((s) => s.userId);
       }
 
-      // Sum credits (ugcVideos, or ugcVideos * creditPerVideo for tier campaigns) for a set of creators
+      // Sum credits committed across every sent round for a set of creators. Reads from
+      // CreatorAgreement.creditsAssigned (not ShortListedCreator's single cached
+      // creditPerVideo) so a creator with rounds on different platforms/tiers is priced
+      // correctly.
       const calcAssignedCredits = async (userIds: string[]) => {
         if (!userIds.length) return 0;
-        const shortlistedForCredits = await prisma.shortListedCreator.findMany({
+        const aggregate = await prisma.creatorAgreement.aggregate({
           where: {
             campaignId,
+            isSent: true,
             userId: { in: userIds },
-            ugcVideos: { gt: 0 },
           },
-          select: {
-            ugcVideos: true,
-            creditPerVideo: true,
-          },
+          _sum: { creditsAssigned: true },
         });
-
-        if (isCreditTierCampaign) {
-          return shortlistedForCredits.reduce((sum, item) => {
-            const videos = Number(item.ugcVideos || 0);
-            const perVideo = Number(item.creditPerVideo || 1);
-            return sum + videos * perVideo;
-          }, 0);
-        }
-        return shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
+        return aggregate._sum.creditsAssigned ?? 0;
       };
 
       const totalAssigned = await calcAssignedCredits(approvedAgreementUserIds);
@@ -8345,6 +8367,271 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Agreement has been sent.' });
   } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+// Batch-sends a new round (max round + 1) to creators who already have round 1 — unlike
+// sendAgreement, always creates a fresh CreatorAgreement row rather than updating one.
+export const sendAdditionalAgreement = async (req: Request, res: Response) => {
+  const { campaignId, creators } = req.body as {
+    campaignId: string;
+    creators: {
+      userId: string;
+      selectedPlatform?: string;
+      videoCount: number;
+      amount?: string;
+      currency?: string;
+      followerCount?: number;
+    }[];
+  };
+  const adminId = req.userId;
+
+  if (!campaignId || !Array.isArray(creators) || creators.length === 0) {
+    return res.status(400).json({ message: 'campaignId and at least one creator are required.' });
+  }
+
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: {
+        id: true,
+        name: true,
+        campaignCredits: true,
+        isCreditTier: true,
+        submissionVersion: true,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found.' });
+    }
+
+    const { resolveAgreedTier } = require('@services/creditTierService');
+    const isCreditTierCampaign = campaign.isCreditTier === true;
+
+    // Resolve platform, tier and creditsAssigned for every creator up front so the
+    // insufficient-credit check and the transaction below use identical numbers.
+    const resolved: {
+      userId: string;
+      normalizedPlatform: SocialPlatform;
+      videoCount: number;
+      followerCount: number | null;
+      creditPerVideo: number;
+      creditTierId: string | null;
+      tierName: string | null;
+      creditsAssigned: number;
+      amount?: string;
+      currency?: string;
+      isGuest: boolean;
+    }[] = [];
+
+    for (const creatorInput of creators) {
+      const user = await prisma.user.findUnique({
+        where: { id: creatorInput.userId },
+        include: { creator: { select: { isGuest: true } } },
+      });
+      if (!user) {
+        return res.status(404).json({ message: `Creator ${creatorInput.userId} not found.` });
+      }
+
+      const existingFirstRound = await prisma.creatorAgreement.findUnique({
+        where: { userId_campaignId_round: { userId: creatorInput.userId, campaignId, round: 1 } },
+      });
+      if (!existingFirstRound?.isSent) {
+        return res.status(400).json({
+          message: `${user.name || 'This creator'} does not have a sent agreement yet — send their first agreement before sending an additional one.`,
+        });
+      }
+
+      const isGuest = user.creator?.isGuest === true;
+      const shortlisted = await prisma.shortListedCreator.findUnique({
+        where: { userId_campaignId: { userId: creatorInput.userId, campaignId } },
+      });
+      const normalizedPlatform = resolvePlatform(creatorInput.selectedPlatform, shortlisted?.selectedPlatform);
+      const videoCount = Math.floor(Number(creatorInput.videoCount));
+
+      if (!Number.isFinite(videoCount) || videoCount <= 0) {
+        return res.status(400).json({ message: `Video count for ${user.name || 'a creator'} must be greater than 0.` });
+      }
+
+      let creditPerVideo = 1;
+      let creditTierId: string | null = null;
+      let tierName: string | null = null;
+      let followerCount: number | null = null;
+
+      if (isCreditTierCampaign && !isGuest) {
+        const { tier, followerCount: resolvedFollowerCount } = await resolveAgreedTier(
+          creatorInput.userId,
+          normalizedPlatform,
+          creatorInput.followerCount || null,
+        );
+        if (!tier) {
+          return res.status(400).json({
+            message: `Could not resolve a credit tier for ${user.name || 'this creator'} — connect their media kit or set a follower count manually.`,
+          });
+        }
+        creditPerVideo = tier.creditsPerVideo;
+        creditTierId = tier.id;
+        tierName = tier.name;
+        followerCount = resolvedFollowerCount || null;
+      }
+
+      const creditsAssigned = isGuest ? 0 : isCreditTierCampaign ? creditPerVideo * videoCount : videoCount;
+
+      resolved.push({
+        userId: creatorInput.userId,
+        normalizedPlatform,
+        videoCount,
+        followerCount,
+        creditPerVideo,
+        creditTierId,
+        tierName,
+        creditsAssigned,
+        amount: creatorInput.amount,
+        currency: creatorInput.currency,
+        isGuest,
+      });
+    }
+
+    // Insufficient-credit check: aggregate credits already committed (all creators, all sent
+    // rounds) against what this batch would add.
+    if (campaign.campaignCredits != null) {
+      const usedAggregate = await prisma.creatorAgreement.aggregate({
+        where: { campaignId, isSent: true },
+        _sum: { creditsAssigned: true },
+      });
+      const creditsUsedBefore = usedAggregate._sum.creditsAssigned ?? 0;
+      const remainingCredits = Number(campaign.campaignCredits) - creditsUsedBefore;
+      const totalRequired = resolved.reduce((sum, r) => sum + r.creditsAssigned, 0);
+
+      if (totalRequired > remainingCredits) {
+        return res.status(400).json({
+          message: `Not enough credits available. Remaining: ${remainingCredits}, required: ${totalRequired}`,
+          remainingCredits,
+          totalRequired,
+          breakdown: resolved.map((r) => ({
+            userId: r.userId,
+            videosRequested: r.videoCount,
+            creditPerVideo: r.creditPerVideo,
+            totalCredits: r.creditsAssigned,
+            tierName: r.tierName,
+          })),
+        });
+      }
+    }
+
+    const { appendAdditionalAgreementSubmissions } = require('@services/submissionV4Service');
+    const isV4Campaign = campaign.submissionVersion === 'v4';
+
+    const results = await prisma.$transaction(async (tx) => {
+      const perCreatorResults: { userId: string; round: number; agreementId: string; submissionId?: string }[] = [];
+
+      for (const r of resolved) {
+        const latest = await tx.creatorAgreement.findFirst({
+          where: { userId: r.userId, campaignId },
+          orderBy: { round: 'desc' },
+          select: { round: true },
+        });
+        const nextRound = (latest?.round ?? 0) + 1;
+
+        const newAgreement = await tx.creatorAgreement.create({
+          data: {
+            userId: r.userId,
+            campaignId,
+            round: nextRound,
+            isSent: true,
+            agreementUrl: '',
+            amount: r.amount ?? null,
+            currency: r.currency ?? 'MYR',
+            completedAt: new Date(),
+            approvedByAdminId: adminId,
+            selectedPlatform: r.normalizedPlatform,
+            videoCount: r.videoCount,
+            followerCount: r.followerCount,
+            creditPerVideo: r.creditPerVideo,
+            creditTierId: r.creditTierId,
+            creditsAssigned: r.creditsAssigned,
+          },
+        });
+
+        await tx.shortListedCreator.updateMany({
+          where: { userId: r.userId, campaignId },
+          data: {
+            isAgreementReady: true,
+            selectedPlatform: r.normalizedPlatform,
+            ugcVideos: { increment: r.videoCount },
+            // New work now exists for this creator — a previous round finishing must not
+            // leave them stuck showing "done" while an additional round is outstanding.
+            isCampaignDone: false,
+            ...(r.creditTierId && { creditPerVideo: r.creditPerVideo, creditTierId: r.creditTierId }),
+          },
+        });
+
+        let submissionId: string | undefined;
+        if (isV4Campaign && !r.isGuest) {
+          const { agreementFormSubmissionId } = await appendAdditionalAgreementSubmissions(
+            r.userId,
+            campaignId,
+            r.videoCount,
+            nextRound,
+            tx,
+          );
+          submissionId = agreementFormSubmissionId;
+        }
+
+        perCreatorResults.push({ userId: r.userId, round: nextRound, agreementId: newAgreement.id, submissionId });
+      }
+
+      return perCreatorResults;
+    });
+
+    if (campaign.campaignCredits != null) {
+      const totalsAfter = await prisma.creatorAgreement.aggregate({
+        where: { campaignId, isSent: true },
+        _sum: { creditsAssigned: true },
+      });
+      const creditsUtilized = totalsAfter._sum.creditsAssigned ?? 0;
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: {
+          creditsPending: Math.max(0, Number(campaign.campaignCredits) - creditsUtilized),
+        },
+      });
+    }
+
+    for (const result of results) {
+      const { title, message } = notificationAdditionalAgreement(campaign.name, {
+        campaignId,
+        submissionId: result.submissionId,
+      });
+      const notification = await saveNotification({
+        userId: result.userId,
+        title,
+        message,
+        entity: 'Agreement',
+        entityId: campaignId,
+        submissionId: result.submissionId,
+      });
+      const socketId = clients.get(result.userId);
+      if (socketId) {
+        getIo().to(socketId).emit('notification', notification);
+        getIo().to(socketId).emit('agreementReady');
+      }
+    }
+
+    const admin = await prisma.user.findUnique({ where: { id: adminId } });
+    await prisma.campaignLog.create({
+      data: {
+        message: `${admin?.name || 'Admin'} sent an additional agreement to ${results.length} creator${results.length > 1 ? 's' : ''}`,
+        adminId: adminId,
+        campaignId: campaignId,
+      },
+    });
+
+    return res.status(200).json({ message: 'Agreement sent successfully!', results });
+  } catch (error) {
+    console.error('Error in sendAdditionalAgreement:', error);
     return res.status(400).json(error);
   }
 };
@@ -9277,51 +9564,28 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
         }
       }
 
-      // Delete creator agreement if it exists
+      // Delete all agreement rounds for this creator on this campaign, if any exist
       try {
-        await tx.creatorAgreement.delete({
+        await tx.creatorAgreement.deleteMany({
           where: {
-            userId_campaignId: {
-              userId: user.id,
-              campaignId: campaign.id,
-            },
+            userId: user.id,
+            campaignId: campaign.id,
           },
         });
-        console.log(`Deleted creator agreement`);
+        console.log(`Deleted creator agreement(s)`);
       } catch (error) {
         console.log('Error deleting creator agreement:', error);
         // Continue with other deletions
       }
 
-      // Delete invoice if it exists
+      // Delete all invoices (one per invoiced round) for this creator on this campaign, if any
       try {
-        const invoice = await tx.invoice.findFirst({
+        await tx.invoice.deleteMany({
           where: {
-            AND: [
-              {
-                creatorId: user.id,
-              },
-              {
-                campaignId: campaign.id,
-              },
-            ],
-          },
-          include: {
-            creator: {
-              include: {
-                user: true,
-              },
-            },
+            creatorId: user.id,
+            campaignId: campaign.id,
           },
         });
-
-        if (invoice) {
-          await tx.invoice.delete({
-            where: {
-              id: invoice.id,
-            },
-          });
-        }
       } catch (error) {
         console.log('Error deleting invoice:', error);
       }
@@ -9432,6 +9696,8 @@ export const getCampaignsTotal = async (req: Request, res: Response) => {
 
 export const resendAgreement = async (req: Request, res: Response) => {
   const { userId, campaignId } = req.body;
+  // Defaults to round 1 (the original agreement) for callers that don't specify a round.
+  const round: number = req.body.round ?? 1;
   const adminId = req.userId;
 
   try {
@@ -9469,11 +9735,14 @@ export const resendAgreement = async (req: Request, res: Response) => {
       }
     }
 
-    // Find the agreement
-    const agreement = await prisma.creatorAgreement.findFirst({
+    // Find the agreement for this specific round
+    const agreement = await prisma.creatorAgreement.findUnique({
       where: {
-        userId: userId,
-        campaignId: campaignId,
+        userId_campaignId_round: {
+          userId: userId,
+          campaignId: campaignId,
+          round,
+        },
       },
     });
 
@@ -9547,6 +9816,7 @@ export const resendAgreement = async (req: Request, res: Response) => {
         },
         campaignId: agreement.campaignId,
         userId: agreement.userId,
+        contentOrder: round,
       },
       select: { id: true },
     });
@@ -9604,9 +9874,10 @@ export const submitAgreementV3 = async (req: Request, res: Response) => {
     console.log('[submitAgreementV3] upserting agreement', { campaignId: pitch.campaignId, pitchUserId: pitch.userId });
     await prisma.creatorAgreement.upsert({
       where: {
-        userId_campaignId: {
+        userId_campaignId_round: {
           userId: pitch.userId,
           campaignId: pitch.campaignId,
+          round: 1,
         },
       },
       update: {
@@ -9617,6 +9888,7 @@ export const submitAgreementV3 = async (req: Request, res: Response) => {
       create: {
         userId: pitch.userId,
         campaignId: pitch.campaignId,
+        round: 1,
         agreementUrl: agreementUrl || '',
         isSent: true,
         completedAt: new Date(),
@@ -9925,15 +10197,17 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
           creatorData.map((creator) =>
             tx.creatorAgreement.upsert({
               where: {
-                userId_campaignId: {
+                userId_campaignId_round: {
                   userId: creator.id,
                   campaignId: campaign.id,
+                  round: 1,
                 },
               },
               update: {},
               create: {
                 userId: creator.id,
                 campaignId: campaign.id,
+                round: 1,
                 agreementUrl: '',
               },
             }),
@@ -13240,6 +13514,10 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
         },
       });
     });
+
+    // Push the change to anyone with this campaign open right now (e.g. the "Send Additional
+    // Agreement" modal's credits-remaining header) so it updates without a manual refresh.
+    getIo().to(campaignId).emit('campaign:credits:updated', { campaignId });
 
     res.status(200).json({ message: 'Successfully changed campaign credits' });
   } catch (error) {

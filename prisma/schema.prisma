@@ -1316,6 +1316,7 @@ model Submission {
   startDate            DateTime?
   endDate              DateTime?
   approvedAt           DateTime?
+  viewedAt             DateTime? 
   submittedByAdminId   String? // Track if admin submitted for creator
   feedback             Feedback[]
   Notification         Notification[]
@@ -1740,6 +1741,7 @@ model Invoice {
   creatorId  String
   campaignId String
   adminId    String?
+  round      Int      @default(1) 
 
   xeroInvoiceId String?
 
@@ -1826,23 +1828,30 @@ model TaskAssignee {
 }
 
 model CreatorAgreement {
-  id                String    @id @unique @default(cuid())
+  id                String          @id @unique @default(cuid())
   agreementUrl      String
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  isSent            Boolean   @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  isSent            Boolean         @default(false)
   amount            String?
   currency          String?
   userId            String
   campaignId        String
   completedAt       DateTime?
   approvedByAdminId String?
-  version           Int?      @default(1)
-  campaign          Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  admin             Admin?    @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
+  round             Int             @default(1) 
+  selectedPlatform  SocialPlatform?
+  videoCount        Int? 
+  followerCount     Int?
+  creditPerVideo    Int?
+  creditTierId      String?
+  creditsAssigned   Int? 
+  campaign          Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin             Admin?          @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
+  creditTier        CreditTier?     @relation(fields: [creditTierId], references: [id])
 
-  @@unique([userId, campaignId])
+  @@unique([userId, campaignId, round])
 }
 
 model Crawler {
@@ -2536,6 +2545,7 @@ model CreditTier {
 
   creators            Creator[]            @relation("UserCurrentTier")
   shortlistedCreators ShortListedCreator[]
+  creatorAgreements   CreatorAgreement[]
 
   @@index([minFollowers])
 }

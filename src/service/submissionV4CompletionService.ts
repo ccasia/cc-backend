@@ -20,6 +20,39 @@ interface CompletionStatus {
   missingDeliverables: string[];
 }
 
+interface RoundVideoRange {
+  round: number;
+  start: number;
+  end: number;
+}
+
+/**
+ * The cumulative VIDEO contentOrder range each sent agreement round owns, oldest round
+ * first — round 1 owns 1..N1, round 2 owns (N1+1)..(N1+N2), etc. Mirrors how
+ * appendAdditionalAgreementSubmissions numbers new VIDEO submissions when a round is sent.
+ */
+async function getRoundVideoRanges(campaignId: string, userId: string): Promise<RoundVideoRange[]> {
+  const agreements = await prisma.creatorAgreement.findMany({
+    where: { campaignId, userId, isSent: true },
+    orderBy: { round: 'asc' },
+    select: { round: true, videoCount: true },
+  });
+
+  let cursor = 0;
+  return agreements.map((a) => {
+    const count = a.videoCount ?? 0;
+    const start = cursor + 1;
+    cursor += count;
+    return { round: a.round, start, end: cursor };
+  });
+}
+
+/** Which round a VIDEO submission's contentOrder belongs to (PHOTO/RAW_FOOTAGE are single, one-time deliverables that always belong to round 1). */
+function roundForContentOrder(ranges: RoundVideoRange[], contentOrder: number | null | undefined): number {
+  if (contentOrder == null) return 1;
+  return ranges.find((r) => contentOrder >= r.start && contentOrder <= r.end)?.round ?? 1;
+}
+
 /**
  * Check if all V4 deliverables are complete for a creator in a campaign
  * This function implements the completion criteria specified:
@@ -35,9 +68,13 @@ interface CompletionStatus {
  * "Fully approved" is CLIENT_APPROVED on campaigns with a client; on campaigns
  * without one, admin approval (APPROVED) is final.
  */
-export const checkV4SubmissionCompletion = async (campaignId: string, userId: string): Promise<CompletionStatus> => {
+export const checkV4SubmissionCompletion = async (
+  campaignId: string,
+  userId: string,
+  round?: number,
+): Promise<CompletionStatus> => {
   try {
-    console.log(`🔍 Checking V4 completion for user ${userId} in campaign ${campaignId}`);
+    console.log(`Checking V4 completion for user ${userId} in campaign ${campaignId}, round ${round ?? '(latest)'}`);
 
     // Get campaign details and all V4 submissions for the user
     const campaign = await prisma.campaign.findUnique({
@@ -80,15 +117,6 @@ export const checkV4SubmissionCompletion = async (campaignId: string, userId: st
       };
     }
 
-    // Skip if already marked as done
-    if (shortlistedCreator.isCampaignDone) {
-      console.log(`✅ Campaign already marked as complete for user ${userId}`);
-      return {
-        isComplete: true,
-        reason: 'Already completed',
-        missingDeliverables: [],
-      };
-    }
 
     // Get all V4 content submissions (excluding agreement forms)
     const submissions = await prisma.submission.findMany({
@@ -118,6 +146,18 @@ export const checkV4SubmissionCompletion = async (campaignId: string, userId: st
       };
     }
 
+    const ranges = await getRoundVideoRanges(campaignId, userId);
+    const targetRound = round ?? ranges[ranges.length - 1]?.round ?? 1;
+    const targetRange = ranges.find((r) => r.round === targetRound);
+
+    if (!targetRange) {
+      return {
+        isComplete: false,
+        reason: `No sent agreement found for round ${targetRound}`,
+        missingDeliverables: [],
+      };
+    }
+
     const isUGCCampaign = campaign.campaignType === 'ugc';
     const missingDeliverables: string[] = [];
     let allComplete = true;
@@ -129,9 +169,16 @@ export const checkV4SubmissionCompletion = async (campaignId: string, userId: st
     const approvedStatuses: string[] = hasClientFlow ? ['CLIENT_APPROVED'] : ['CLIENT_APPROVED', 'APPROVED'];
 
     // Group submissions by type for easier analysis
-    const videoSubmissions = submissions.filter((s) => s.submissionType.type === 'VIDEO');
-    const photoSubmissions = submissions.filter((s) => s.submissionType.type === 'PHOTO');
-    const rawFootageSubmissions = submissions.filter((s) => s.submissionType.type === 'RAW_FOOTAGE');
+    const videoSubmissions = submissions.filter(
+      (s) =>
+        s.submissionType.type === 'VIDEO' &&
+        targetRange &&
+        (s.contentOrder ?? 0) >= targetRange.start &&
+        (s.contentOrder ?? 0) <= targetRange.end,
+    );
+    const photoSubmissions = targetRound === 1 ? submissions.filter((s) => s.submissionType.type === 'PHOTO') : [];
+    const rawFootageSubmissions =
+      targetRound === 1 ? submissions.filter((s) => s.submissionType.type === 'RAW_FOOTAGE') : [];
 
     console.log(
       `📊 Submission breakdown - Videos: ${videoSubmissions.length}, Photos: ${photoSubmissions.length}, Raw Footage: ${rawFootageSubmissions.length}`,
@@ -225,13 +272,18 @@ export const handleV4CompletedCampaign = async (
   campaignId: string,
   userId: string,
   adminId?: string,
+  round?: number,
 ): Promise<boolean> => {
   try {
-    // Check if campaign is actually complete
-    const completionStatus = await checkV4SubmissionCompletion(campaignId, userId);
+    const ranges = await getRoundVideoRanges(campaignId, userId);
+    const targetRound = round ?? ranges[ranges.length - 1]?.round ?? 1;
+    const isLatestRound = targetRound === (ranges[ranges.length - 1]?.round ?? 1);
+
+    // Check if this specific round is actually complete
+    const completionStatus = await checkV4SubmissionCompletion(campaignId, userId, targetRound);
 
     if (!completionStatus.isComplete) {
-      console.log(`⏳ Campaign not yet complete: ${completionStatus.reason}`);
+      console.log(`⏳ Round ${targetRound} not yet complete: ${completionStatus.reason}`);
       return false;
     }
 
@@ -247,7 +299,7 @@ export const handleV4CompletedCampaign = async (
             creator: true,
             paymentForm: true,
             creatorAgreement: {
-              where: { campaignId },
+              where: { campaignId, round: targetRound },
             },
           },
         },
@@ -271,8 +323,12 @@ export const handleV4CompletedCampaign = async (
 
     const isSeedingCampaign = campaign?.campaignType === 'seedingCampaign';
 
-    // Check if already processed to prevent duplicates
-    if (creatorData.isCampaignDone) {
+    // Check if this round was already invoiced, to prevent duplicates (not the blanket
+    const existingInvoice = await prisma.invoice.findFirst({
+      where: { campaignId, creatorId: userId, round: targetRound },
+      select: { id: true },
+    });
+    if (existingInvoice) {
       return true;
     }
 
@@ -291,6 +347,7 @@ export const handleV4CompletedCampaign = async (
           user: creatorData.user,
           campaignId,
           updatedAt: new Date(),
+          round: targetRound,
         },
         userId,
         creatorAgreement.amount,
@@ -298,20 +355,28 @@ export const handleV4CompletedCampaign = async (
         undefined, // tx - not in transaction
         adminId,
       );
+
+      getIo().to(campaignId).emit('v4:invoice:generated', {
+        campaignId,
+        creatorId: userId,
+        round: targetRound,
+        invoiceId: invoice?.id,
+      });
     }
 
-    // Mark campaign as done
-    await prisma.shortListedCreator.update({
-      where: {
-        userId_campaignId: {
-          userId,
-          campaignId,
+    if (isLatestRound) {
+      await prisma.shortListedCreator.update({
+        where: {
+          userId_campaignId: {
+            userId,
+            campaignId,
+          },
         },
-      },
-      data: {
-        isCampaignDone: true,
-      },
-    });
+        data: {
+          isCampaignDone: true,
+        },
+      });
+    }
 
     // Notify the creator's app so the campaign moves from Active to Done in real time
     const completedPayload = createCreatorCampaignCompletedPayload({ userId, campaignId });
@@ -379,6 +444,7 @@ export const checkAndCompleteV4Campaign = async (submissionId: string, adminId?:
         userId: true,
         status: true,
         submissionVersion: true,
+        contentOrder: true,
       },
     });
 
@@ -403,8 +469,11 @@ export const checkAndCompleteV4Campaign = async (submissionId: string, adminId?:
 
     console.log(`🔄 Checking V4 campaign completion for submission ${submissionId} with status ${submission.status}`);
 
+    const ranges = await getRoundVideoRanges(submission.campaignId, submission.userId);
+    const round = roundForContentOrder(ranges, submission.contentOrder);
+
     // Attempt to complete the campaign
-    await handleV4CompletedCampaign(submission.campaignId, submission.userId, adminId);
+    await handleV4CompletedCampaign(submission.campaignId, submission.userId, adminId, round);
   } catch (error) {
     console.error('Error in checkAndCompleteV4Campaign:', error);
     // Don't throw - we don't want submission approval to fail if completion check fails

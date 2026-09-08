@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { V4SubmissionCreateData } from '../types/submissionV4Types';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { MAX_POSTING_LINKS, joinPostingLinksToContent } from '../utils/postingLinkValidation';
@@ -296,6 +296,45 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
       const orderB = b.contentOrder || 0;
       return orderA - orderB;
     });
+
+    // Tag each VIDEO with its agreement round and that round's approval state, so a creator
+    // can't act on round 2's videos before round 2 is signed (round 1 stays unaffected).
+    if (userId) {
+      const agreements = await prisma.creatorAgreement.findMany({
+        where: { campaignId, userId, isSent: true },
+        orderBy: { round: 'asc' },
+        select: { round: true, videoCount: true },
+      });
+
+      let cursor = 0;
+      const videoRoundRanges = agreements.map((a) => {
+        const count = a.videoCount ?? 0;
+        const start = cursor + 1;
+        cursor += count;
+        return { round: a.round, start, end: cursor };
+      });
+
+      const roundForContentOrder = (contentOrder: number | null | undefined): number => {
+        if (contentOrder == null) return 1;
+        return videoRoundRanges.find((r) => contentOrder >= r.start && contentOrder <= r.end)?.round ?? 1;
+      };
+
+      const agreementStatusByRound = new Map<number, string>();
+      allSubmissions.forEach((s: any) => {
+        if (s.submissionType.type === 'AGREEMENT_FORM') {
+          agreementStatusByRound.set(s.contentOrder ?? 1, s.status);
+        }
+      });
+
+      allSubmissions.forEach((s: any) => {
+        if (s.submissionType.type === 'VIDEO') {
+          const round = roundForContentOrder(s.contentOrder);
+          const status = agreementStatusByRound.get(round);
+          s.round = round;
+          s.isRoundApproved = status === 'APPROVED' || status === 'CLIENT_APPROVED';
+        }
+      });
+    }
 
     return allSubmissions;
   } catch (error) {
@@ -900,6 +939,68 @@ export const updateV4Submissions = async (
     console.error('Error updating V4 submissions:', error);
     throw error;
   }
+};
+
+/**
+ * Adds a new round's submissions (N VIDEOs + 1 AGREEMENT_FORM) on top of existing ones —
+ * purely additive, unlike updateV4Submissions, since earlier rounds may already be posted.
+ */
+export const appendAdditionalAgreementSubmissions = async (
+  userId: string,
+  campaignId: string,
+  additionalVideoCount: number,
+  round: number,
+  tx: Prisma.TransactionClient | typeof prisma = prisma,
+): Promise<{ agreementFormSubmissionId: string; createdVideoCount: number }> => {
+  const submissionTypes = await tx.submissionType.findMany({
+    where: { type: { in: ['VIDEO', 'AGREEMENT_FORM'] } },
+  });
+
+  const getSubmissionTypeId = (type: string) => {
+    const found = submissionTypes.find((st) => st.type === type);
+    if (!found) throw new Error(`Submission type '${type}' not found`);
+    return found.id;
+  };
+
+  const videoTypeId = getSubmissionTypeId('VIDEO');
+  const agreementFormTypeId = getSubmissionTypeId('AGREEMENT_FORM');
+
+  const lastVideo = await tx.submission.findFirst({
+    where: { userId, campaignId, submissionTypeId: videoTypeId },
+    orderBy: { contentOrder: 'desc' },
+    select: { contentOrder: true },
+  });
+  const startOrder = (lastVideo?.contentOrder ?? 0) + 1;
+
+  if (additionalVideoCount > 0) {
+    await tx.submission.createMany({
+      data: Array.from({ length: additionalVideoCount }, (_, i) => ({
+        campaignId,
+        userId,
+        submissionTypeId: videoTypeId,
+        contentOrder: startOrder + i,
+        submissionVersion: 'v4' as const,
+        status: 'NOT_STARTED' as const,
+        content: null,
+        viewedAt: null,
+      })),
+    });
+  }
+
+  const agreementFormSubmission = await tx.submission.create({
+    data: {
+      campaignId,
+      userId,
+      submissionTypeId: agreementFormTypeId,
+      contentOrder: round,
+      submissionVersion: 'v4' as const,
+      status: 'IN_PROGRESS' as const,
+      content: null,
+      viewedAt: null,
+    },
+  });
+
+  return { agreementFormSubmissionId: agreementFormSubmission.id, createdVideoCount: additionalVideoCount };
 };
 
 /**

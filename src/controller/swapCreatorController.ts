@@ -335,6 +335,7 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
               submissionTypeId: agreementTimeline.submissionTypeId as string,
               dueDate: agreementTimeline.endDate,
               status: 'IN_PROGRESS',
+              contentOrder: 1, // round 1's AGREEMENT_FORM submission
               ...(inProgressColumn && {
                 task: {
                   create: {
