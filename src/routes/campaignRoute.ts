@@ -84,7 +84,7 @@ import {
   swapGuestWithPlatformCreator,
   cleanupOrphanedGuestUsers,
   getGuestCreatorsForCampaign,
-} from '@controllers/swapCreatorController';
+} from '@modules/swap-creator';
 import {
   getPCRData,
   generatePCRData,
@@ -98,20 +98,20 @@ import {
   savePCRSessionDraft,
   deletePCRSessionDraft,
   flushPCRSessionDraft,
-} from '@controllers/pcrController';
+} from '@modules/pcr';
 import { markPCRAsReady } from '@controllers/campaignController';
 import {
   getEngagementHeatmapController,
   getTopCreatorsTrendController,
   getTrendsSummaryController,
   refreshCampaignInsightsController,
-} from '@controllers/trendController';
+} from '@modules/trend';
 import {
   createEntry as createManualCreator,
   getEntries as getManualCreators,
   deleteEntry as deleteManualCreator,
   updateEntry as updateManualCreator,
-} from '@controllers/manualCreatorController';
+} from '@modules/manual-creator';
 import {
   getCampaignPostSnapshots,
   triggerManualSnapshot,
@@ -120,7 +120,7 @@ import {
   getCampaignDailyTrends,
   getLatestCampaignPostSnapshots,
   triggerDailyCapture,
-} from '@controllers/postEngagementSnapshotController';
+} from '@modules/post-engagement-snapshot';
 import { isSuperAdmin, isAdmin, isBdOrSuperadmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
 import { checkCampaignAccess } from '@middlewares/checkCampaignAccess';
@@ -132,10 +132,10 @@ import {
   getDefaultTimeline,
   getTimelineType,
   updateOrCreateDefaultTimeline,
-} from '@controllers/timelineController';
+} from '@modules/timeline';
 import { authenticate } from '@middlewares/authenticate';
 
-import { createNewTemplate, getAllTemplate, getTemplatebyId } from '@controllers/templateController';
+import { createNewTemplate, getAllTemplate, getTemplatebyId } from '@modules/template';
 
 const router = Router();
 

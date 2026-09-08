@@ -12,8 +12,8 @@ import {
   rebaseSessionDraft,
   setDraft,
   setSessionDraft,
-} from '../service/pcrDraftService';
-import type { SessionPcrDraft } from '../service/pcrDraftService';
+} from '../../service/pcrDraftService';
+import type { SessionPcrDraft } from '../../service/pcrDraftService';
 
 const prisma = new PrismaClient();
 

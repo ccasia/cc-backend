@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import { Entity, PrismaClient } from '@prisma/client';
 import { time } from 'console';
-import { Title, saveNotification } from './notificationController';
-import { clients, getIo } from '../config/socket';
+import { Title, saveNotification } from '@controllers/notificationController';
+import { clients, getIo } from '../../config/socket';
 
 const prisma = new PrismaClient();
 
