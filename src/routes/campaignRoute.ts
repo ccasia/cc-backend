@@ -120,6 +120,13 @@ import { authenticate } from '@middlewares/authenticate';
 
 import { createNewTemplate, getAllTemplate, getTemplatebyId } from '@controllers/templateController';
 
+import {
+  getGuestProfileExtraction,
+  getGuestProfileMetricsDecision,
+  listResumableExtractions,
+  startGuestProfileExtraction,
+} from '@controllers/guestProfileExtractionController';
+
 const router = Router();
 
 router.get('/total', authenticate, isSuperAdmin, getCampaignsTotal);
@@ -225,7 +232,15 @@ router.post('/removeCreatorFromCampaign', authenticate, isSuperAdmin, removeCrea
 router.post('/v2/shortlistCreator', authenticate, isSuperAdmin, shortlistCreatorV2);
 router.post('/v2/shortlistCreator/client', authenticate, isSuperAdmin, shortlistCreatorV2ForClient);
 router.post('/v3/shortlistCreator', authenticate, shortlistCreatorV3);
-router.post('/v3/shortlistCreator/guest', authenticate, shortlistGuestCreators);
+router.post('/v3/shortlistCreator/guest', authenticate, isAdmin, shortlistGuestCreators);
+// Guest profile extraction. Every route applies the feature decision and
+// canManageCampaignCreators inside the controller; status also requires the
+// requesting admin to own the record.
+router.get('/v3/guest-profile-metrics/decision', authenticate, isAdmin, getGuestProfileMetricsDecision);
+router.post('/v3/:campaignId/guest-profile-extractions', authenticate, isAdmin, startGuestProfileExtraction);
+router.get('/v3/:campaignId/guest-profile-extractions', authenticate, isAdmin, listResumableExtractions);
+router.get('/v3/guest-profile-extractions/:extractionId', authenticate, isAdmin, getGuestProfileExtraction);
+
 router.post('/v3/assignUGCCredits', authenticate, assignUGCCreditsV3);
 
 router.patch('/v4/changeCredits', authenticate, isSuperAdmin, changeCampaignCredit);

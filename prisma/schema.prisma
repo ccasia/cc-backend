@@ -333,6 +333,12 @@ model Creator {
 
   profileLink String? // Profile link for creator (Instagram/TikTok/etc.)
 
+  /// Canonical guest identity, for example `instagram:example`. Derived from
+  /// profileLink by profileUrlNormalizer. Unique, so two requests can never
+  /// create two guest identities for the same creator. Null for a platform
+  /// creator, or for a legacy guest that is part of an unresolved conflict.
+  guestProfileKey String? @unique @db.VarChar(120)
+
   instagramProfileLink String? @db.VarChar(255)
   tiktokProfileLink    String? @db.VarChar(255)
 
@@ -341,12 +347,21 @@ model Creator {
   dietaryRestrictions String?
 
   // Credit Tier fields
-  manualFollowerCount          Int?        @default(0) // Legacy fallback manual follower count
-  manualInstagramFollowerCount Int?        @default(0) // Platform-specific manual Instagram followers
-  manualTiktokFollowerCount    Int?        @default(0) // Platform-specific manual TikTok followers
-  creditTierId                 String?
-  creditTier                   CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
-  tierUpdatedAt                DateTime? // Last time tier was calculated
+  manualFollowerCount          Int? @default(0) // Legacy fallback manual follower count
+  manualInstagramFollowerCount Int? @default(0) // Platform-specific manual Instagram followers
+  manualTiktokFollowerCount    Int? @default(0) // Platform-specific manual TikTok followers
+
+  /// Engagement rate for a creator with no connected account, as a percentage
+  /// ("4.27" is 4.27%). Written by an Apify scrape or by an admin override in
+  /// the Add Platform Creators modal. `Float?` matches
+  /// InstagramUser.engagement_rate and TiktokUser.engagement_rate, so every
+  /// read site sees one type. Null means never measured; it is not zero.
+  manualInstagramEngagementRate Float?
+  manualTiktokEngagementRate    Float?
+
+  creditTierId  String?
+  creditTier    CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
+  tierUpdatedAt DateTime? // Last time tier was calculated
 
   @@index([formCompletedAt])
 }
@@ -846,6 +861,9 @@ model Campaign {
   approvalRequests ApprovalRequest[]
   uploadSessions   UploadSession[]
 
+  guestProfileExtractions    GuestProfileExtraction[]
+  guestCreatorCreateRequests GuestCreatorCreateRequest[]
+
   isForMobile Boolean @default(false)
 }
 
@@ -1164,7 +1182,8 @@ model Pitch {
   maybeByClient           User?    @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
   acceptedInviteByCreator User?    @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
 
-  approvalRequestCreators ApprovalRequestCreator[]
+  approvalRequestCreators  ApprovalRequestCreator[]
+  guestCreatorMetricAudits GuestCreatorMetricAudit[]
 
   @@unique([userId, campaignId])
 }
@@ -1515,7 +1534,7 @@ model Video {
   feedbackRecords    Feedback[]
   submissionComments SubmissionComment[]
 
-  uploadSessionId String? @unique
+  uploadSessionId String?        @unique
   uploadSession   UploadSession? @relation(fields: [uploadSessionId], references: [id])
 }
 
@@ -2866,10 +2885,10 @@ model UserXpBalance {
   total           Int       @default(0)
   mediaKitBonusAt DateTime?
 
-  userId        String @id
+  userId        String  @id
   currentRankId String?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   rank Rank? @relation(fields: [currentRankId], references: [id])
 
   updatedAt DateTime @updatedAt
@@ -3025,4 +3044,250 @@ model Rank {
   updatedAt DateTime @updatedAt
 
   userXpBalances UserXpBalance[]
+}
+
+// =============================================================================
+// Guest profile extraction
+//
+// Automatic engagement rate for non-platform creators. See
+// engagement-rate-new/02-architecture.md.
+// =============================================================================
+
+enum GuestProfileExtractionStatus {
+  QUEUED
+  RUNNING
+  POLLING
+  READY
+  INSUFFICIENT_DATA
+  FAILED
+  CANCELLED
+  STALE
+  /// The provider start response was ambiguous, so the run ID is unknown.
+  /// Reconciliation resolves this. It never starts a second paid run.
+  REQUIRES_RECONCILIATION
+}
+
+enum GuestMetricSource {
+  automatic
+  manual_override
+  unavailable
+}
+
+enum GuestIdentityConflictStatus {
+  UNRESOLVED
+  RESOLVED
+}
+
+enum GuestCreateRequestStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+/// One durable unit of provider work.
+///
+/// Written before the job is enqueued, so a restart can recover it. Holds
+/// typed results only. Raw provider JSON is never persisted.
+model GuestProfileExtraction {
+  id String @id @default(cuid())
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  /// The admin who started the work. Status and receipt access require this
+  /// exact user. Not a relation, so a user record change never deletes work.
+  requestedByUserId String
+
+  /// Canonical identity, for example `instagram:example`.
+  canonicalProfileKey String         @db.VarChar(120)
+  canonicalProfileUrl String         @db.VarChar(255)
+  platform            SocialPlatform
+
+  actorId        String  @db.VarChar(120)
+  /// Exact pinned build. Never `latest`.
+  actorBuild     String  @db.VarChar(40)
+  actorRunId     String? @db.VarChar(60)
+  actorDatasetId String? @db.VarChar(60)
+
+  /// Instagram only. The actor caps `details` mode at 12 posts, so the metrics
+  /// come from a `posts` run and the follower count from a second `details`
+  /// run. Recorded before polling, so a paid run is never untracked.
+  profileActorRunId     String? @db.VarChar(60)
+  profileActorDatasetId String? @db.VarChar(60)
+
+  status GuestProfileExtractionStatus @default(QUEUED)
+
+  /// Typed result. Present only for READY.
+  resultName           String?  @db.VarChar(255)
+  resultFollowerCount  Int?
+  /// Percentage without the sign. `"4.27"` means 4.27%.
+  resultEngagementRate String?  @db.VarChar(24)
+  sampleSize           Int?
+  formulaVersion       String?  @db.VarChar(60)
+  /// Selected-post evidence built by this backend. Not provider JSON.
+  selectedPosts        Json?
+  /// Every candidate the actor returned, with the verdict the policy gave it.
+  /// Counters, IDs and timestamps only. No caption, media URL, avatar or bio.
+  candidatePosts       Json?
+  /// Policy flags the pinned actor build did not report.
+  unverifiedFlags      String[]
+
+  failureCode    String? @db.VarChar(60)
+  failureMessage String?
+
+  /// Start idempotency. The same key with a different body is a conflict.
+  idempotencyKey     String @db.VarChar(120)
+  requestFingerprint String @db.VarChar(64)
+
+  /// Receipt binding. The nonce is consumed inside the create transaction.
+  receiptNonce      String?   @unique @db.VarChar(64)
+  receiptDigest     String?   @db.VarChar(64)
+  receiptExpiresAt  DateTime?
+  receiptConsumedAt DateTime?
+
+  /// Measured charge for this run, from the provider. Null until a run
+  /// finishes. Release gate 2 needs this recorded, not estimated.
+  costUsd Decimal? @db.Decimal(10, 6)
+
+  /// Measured charge for the secondary profile run, where one was needed.
+  profileCostUsd Decimal? @db.Decimal(10, 6)
+
+  /// Set when this row copied a completed result instead of paying again.
+  reusedFromExtractionId String?
+
+  /// Starts refused because the same work was already running or already
+  /// done. A high number means the browser is asking twice.
+  duplicateStartAttempts Int @default(0)
+
+  reconcileAttempts Int       @default(0)
+  lastReconciledAt  DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+  /// Cleanup boundary. Removing a row here must never remove an audit.
+  expiresAt   DateTime?
+
+  metricAudits GuestCreatorMetricAudit[]
+
+  @@unique([requestedByUserId, idempotencyKey])
+  @@index([canonicalProfileKey, platform, actorBuild, status])
+  @@index([requestedByUserId, status])
+  @@index([campaignId, status])
+  @@index([status, updatedAt])
+  @@index([expiresAt])
+  @@index([completedAt])
+}
+
+/// Provenance for every guest metric written to a Pitch.
+///
+/// Denormalized on purpose. It must stay readable after the extraction row is
+/// cleaned up, so the extraction link is optional and set to null on delete.
+model GuestCreatorMetricAudit {
+  id String @id @default(cuid())
+
+  pitchId String
+  pitch   Pitch  @relation(fields: [pitchId], references: [id], onDelete: Cascade)
+
+  extractionId String?
+  extraction   GuestProfileExtraction? @relation(fields: [extractionId], references: [id], onDelete: SetNull)
+
+  /// The guest User the pitch belongs to.
+  guestUserId         String?
+  canonicalProfileKey String?         @db.VarChar(120)
+  platform            SocialPlatform?
+
+  /// What the fetch produced. Null when there was no fetch.
+  originalName           String? @db.VarChar(255)
+  originalFollowerCount  Int?
+  originalEngagementRate String? @db.VarChar(24)
+
+  /// What was saved.
+  finalName           String? @db.VarChar(255)
+  finalFollowerCount  Int?
+  finalEngagementRate String? @db.VarChar(24)
+
+  source         GuestMetricSource
+  overrideReason String?
+
+  /// Copied from the extraction so cleanup cannot erase it.
+  actorId        String? @db.VarChar(120)
+  actorBuild     String? @db.VarChar(40)
+  actorRunId     String? @db.VarChar(60)
+  formulaVersion String? @db.VarChar(60)
+
+  /// The authenticated admin who made the request.
+  performedByUserId String
+  /// The admin who reviewed the values, when that differs.
+  reviewerUserId    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([pitchId])
+  @@index([extractionId])
+  @@index([canonicalProfileKey])
+  @@index([performedByUserId, createdAt])
+}
+
+/// Database idempotency for the final create call.
+///
+/// The same key with the same body returns the saved response. The same key
+/// with a different body is a conflict.
+model GuestCreatorCreateRequest {
+  id String @id @default(cuid())
+
+  /// Scoped to the authenticated actor and the operation, never global.
+  performedByUserId String @db.VarChar(60)
+  operation         String @db.VarChar(60)
+  idempotencyKey    String @db.VarChar(120)
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  /// Hash of the normalized request body.
+  requestHash String @db.VarChar(64)
+
+  status GuestCreateRequestStatus @default(IN_PROGRESS)
+
+  /// Saved response, replayed for a repeated key.
+  responseStatus Int?
+  responseBody   Json?
+  resultPitchIds String[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+  expiresAt   DateTime?
+
+  @@unique([performedByUserId, operation, idempotencyKey])
+  @@index([campaignId])
+  @@index([expiresAt])
+}
+
+/// A legacy group of guest creators that share one canonical identity.
+///
+/// Created by the backfill. While UNRESOLVED it blocks both extraction and
+/// creation for that key. A conflicting key is never set to null so that a
+/// duplicate can be created instead.
+model GuestProfileIdentityConflict {
+  id String @id @default(cuid())
+
+  canonicalProfileKey String         @unique @db.VarChar(120)
+  platform            SocialPlatform
+
+  /// Every Creator and User record in the conflicting group.
+  creatorIds   String[]
+  userIds      String[]
+  /// The raw profileLink values that produced the same canonical key.
+  profileLinks String[]
+
+  status GuestIdentityConflictStatus @default(UNRESOLVED)
+
+  detectedAt       DateTime  @default(now())
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  resolutionNote   String?
+
+  @@index([status])
 }

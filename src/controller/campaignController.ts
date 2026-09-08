@@ -74,6 +74,18 @@ import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer
 import { createNewSpreadSheet, upsertSheetAndWriteRows } from '@services/google_sheets/sheets';
 import { getRemainingCredits } from '@services/companyService';
 import { handleGuestForShortListing } from '@services/shortlistService';
+import { maxProfilesPerBatch } from '@configs/guestProfileExtractionConfig';
+import { canManageCampaignCreators } from '@services/guestProfileExtraction/campaignCreatorPolicy';
+import { getReceiptSecret } from '@services/guestProfileExtraction/extractionReceiptService';
+import {
+  GUEST_CREATE_OPERATION,
+  claimReceiptNonce,
+  hashCreateRequest,
+  provenanceFor,
+  resolveCreateIdempotency,
+  validateManualGuests,
+  validateSubmittedGuests,
+} from '@services/guestProfileExtraction/guestCreateService';
 import { saveCampaignBookmark, unsaveCampaignBookmark } from '@services/campaignBookmarkService';
 import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
@@ -11473,6 +11485,71 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
       }
     }
 
+    /**
+     * Verify anything that claims to have been scraped.
+     *
+     * A row carrying a profile link went through an Apify run, so its metrics
+     * must be provable rather than merely typed. They run through the same
+     * single-use receipt check the guest flow uses, so one standard covers
+     * both. A row with no link never enters this block, which keeps the
+     * existing manual path byte-for-byte unchanged.
+     */
+    const linkedCreators = (creators as any[]).filter(
+      (c) => typeof c?.profileLink === 'string' && c.profileLink.trim().length > 0,
+    );
+    const verifiedByLink = new Map<string, any>();
+    let scrapeRejections: { profileLink: string; code: string; message: string }[] = [];
+
+    if (linkedCreators.length > 0) {
+      // The creator's own name, read from the database rather than the body.
+      // A scrape never renames a platform creator; the name is only here
+      // because the fallback path refuses to save a nameless row.
+      const named = await prisma.user.findMany({
+        where: { id: { in: linkedCreators.map((c) => c.id) } },
+        select: { id: true, name: true },
+      });
+      const nameById = new Map(named.map((u) => [u.id, u.name ?? '']));
+
+      const validated = await validateSubmittedGuests(
+        linkedCreators.map((c) => ({
+          profileLink: c.profileLink,
+          name: nameById.get(c.id) || 'platform creator',
+          followerCount: c.followerCount,
+          engagementRate: c.engagementRate,
+          adminComments: c.adminComments,
+          completionReceipt: c.completionReceipt,
+          extractionId: c.extractionId,
+          fallbackReason: c.fallbackReason,
+          fallbackConfirmed: c.fallbackConfirmed,
+        })),
+        {
+          requesterUserId: userId as string,
+          campaignId,
+          receiptSecret: getReceiptSecret(),
+          loadExtraction: (id: string) =>
+            id ? prisma.guestProfileExtraction.findUnique({ where: { id } }) : Promise.resolve(null),
+        },
+      );
+
+      validated.accepted.forEach((row) => verifiedByLink.set(row.rawProfileLink, row));
+      scrapeRejections = validated.rejected;
+
+      // Every linked row failed. Saving now would shortlist unverified numbers,
+      // so stop and say which rows failed and why.
+      if (verifiedByLink.size === 0) {
+        return res.status(400).json({
+          message: 'No scraped creator in this batch could be verified.',
+          rejected: scrapeRejections,
+        });
+      }
+    }
+
+    // A rejected row is dropped, not fatal. The rest of the batch still saves.
+    const rejectedLinks = new Set(scrapeRejections.map((r) => r.profileLink));
+    const creatorsToProcess = (creators as any[]).filter(
+      (c) => !(typeof c?.profileLink === 'string' && rejectedLinks.has(c.profileLink)),
+    );
+
     // Allow superadmin to bypass campaign admin check
     const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
     const isSuperadmin = currentUser?.role === 'superadmin';
@@ -11561,14 +11638,31 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
       }
 
       // Process each creator
-      for (const creator of creators) {
+      for (const creator of creatorsToProcess) {
         const user = creatorData.find((u) => u.id === creator.id);
         if (!user) continue;
-        // The shortlist form requires the admin to pick a platform, so this never falls back.
-        const selectedPlatform = resolvePlatform(creator.selectedPlatform);
+
+        // Present only for a row whose link passed receipt verification above.
+        const verified = creator.profileLink ? verifiedByLink.get(creator.profileLink) : undefined;
+
+        // A scraped link names its own platform, and that reading beats the
+        // dropdown: the link is what was actually measured. Without a link the
+        // form still requires a choice, so this never falls back.
+        const selectedPlatform = resolvePlatform(verified?.platform, creator.selectedPlatform);
         let resolvedFollowerCount = 0;
 
         console.log(`Processing creator: ${user.name} (${user.id})`);
+
+        // Spend the receipt here, inside the transaction, and only once. A
+        // replay or a second batch finds the nonce already consumed and the
+        // whole save rolls back.
+        if (verified?.extraction) {
+          await claimReceiptNonce(tx, {
+            extractionId: verified.extraction.id,
+            nonce: verified.extraction.nonce,
+            profileLabel: verified.canonicalProfileUrl ?? verified.rawProfileLink,
+          });
+        }
 
         // If manual follower count provided, ALWAYS update the creator's manualFollowerCount and tier
         // This allows admins to correct follower count mistakes when re-adding creators
@@ -11596,12 +11690,25 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               orderBy: [{ minFollowers: 'desc' }],
             });
 
+            // A verified rate rides along on the same platform-specific
+            // column. `verified.engagementRate` is a string percentage
+            // ("4.27"); the column is Float, matching the connected-account
+            // models. Absent stays absent — it is never written as zero.
+            const verifiedRate = verified?.engagementRate != null ? Number(verified.engagementRate) : null;
+            const rateData =
+              verifiedRate != null && Number.isFinite(verifiedRate)
+                ? selectedPlatform === 'instagram'
+                  ? { manualInstagramEngagementRate: verifiedRate }
+                  : { manualTiktokEngagementRate: verifiedRate }
+                : {};
+
             await tx.creator.update({
               where: { userId: user.id },
               data: {
                 ...(selectedPlatform === 'instagram'
                   ? { manualInstagramFollowerCount: creator.followerCount }
                   : { manualTiktokFollowerCount: creator.followerCount }),
+                ...rateData,
                 ...(tier && {
                   creditTierId: tier.id,
                   tierUpdatedAt: new Date(),
@@ -11645,15 +11752,23 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           },
         });
 
+        // Captured so a scraped row can be audited against the pitch it produced.
+        let savedPitchId: string | null = null;
+
         if (existingPitch) {
           console.log(`Creator ${user.id} already has a pitch, syncing platform/tier snapshot`);
-          await tx.pitch.update({
+          const updatedPitch = await tx.pitch.update({
             where: { id: existingPitch.id },
             data: {
               selectedPlatform,
               ...(resolvedFollowerCount > 0 ? { followerCount: String(resolvedFollowerCount) } : {}),
+              // The pitch row is what the admin and client tables read. Only a
+              // verified rate is written; a row with no scrape keeps whatever
+              // it had.
+              ...(verified?.engagementRate != null ? { engagementRate: verified.engagementRate } : {}),
             },
           });
+          savedPitchId = updatedPitch.id;
         } else {
           // Campaigns with a client: SENT_TO_CLIENT (client approves the shortlist).
           // No client (or non-v4): APPROVED directly.
@@ -11669,7 +11784,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           console.log(
             `Creating pitch for creator ${user.id} with status ${pitchStatus}${hasComments ? ' and admin comments' : ''}`,
           );
-          await tx.pitch.create({
+          const createdPitch = await tx.pitch.create({
             data: {
               userId: user.id,
               campaignId: campaign.id,
@@ -11681,7 +11796,48 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               approvedByAdminId: userId,
               selectedPlatform,
               ...(resolvedFollowerCount > 0 ? { followerCount: String(resolvedFollowerCount) } : {}),
+              // The pitch row is what the admin and client tables read. Only a
+              // verified rate is written; a row with no scrape keeps whatever
+              // it had.
+              ...(verified?.engagementRate != null ? { engagementRate: verified.engagementRate } : {}),
               ...(hasComments ? { adminComments: creatorAdminComments, adminCommentedBy: userId } : {}),
+            },
+          });
+          savedPitchId = createdPitch.id;
+        }
+
+        /**
+         * Record where a scraped number came from.
+         *
+         * `provenanceFor` marks the row `automatic` when the saved values match
+         * the extraction, and `manual_override` when the admin edited one. The
+         * audit table is named for guests but has no guest coupling:
+         * `guestUserId` is a nullable plain string with no foreign key, so a
+         * platform creator's id sits in it unchanged.
+         */
+        if (verified && savedPitchId) {
+          const provenance = provenanceFor(verified);
+          await tx.guestCreatorMetricAudit.create({
+            data: {
+              pitchId: savedPitchId,
+              extractionId: verified.extraction?.id ?? null,
+              guestUserId: user.id,
+              canonicalProfileKey: verified.canonicalProfileKey ?? null,
+              platform: selectedPlatform,
+              originalName: provenance.original.name,
+              originalFollowerCount: provenance.original.followerCount,
+              originalEngagementRate: provenance.original.engagementRate,
+              finalName: provenance.final.name,
+              finalFollowerCount: provenance.final.followerCount,
+              finalEngagementRate: provenance.final.engagementRate,
+              source: provenance.source,
+              overrideReason: provenance.overrideReason,
+              actorId: verified.extraction?.actorId ?? null,
+              actorBuild: verified.extraction?.actorBuild ?? null,
+              actorRunId: verified.extraction?.actorRunId ?? null,
+              formulaVersion: verified.extraction?.formulaVersion ?? null,
+              performedByUserId: userId as string,
+              reviewerUserId: userId as string,
             },
           });
         }
@@ -11971,7 +12127,12 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
       }
     }
 
-    return res.status(200).json({ message: 'Successfully shortlisted creators for V3 flow' });
+    // A dropped row is reported, not hidden. The modal keeps it on screen with
+    // its reason so the admin can fix the link and try again.
+    return res.status(200).json({
+      message: 'Successfully shortlisted creators for V3 flow',
+      ...(scrapeRejections.length > 0 ? { rejected: scrapeRejections } : {}),
+    });
   } catch (error) {
     console.error('Error shortlisting creators for V3:', error);
     return res.status(400).json({
@@ -12602,24 +12763,59 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'Campaign ID and a list of guest creators are required.' });
   }
 
-  if (guestCreators.length > 3) {
-    return res.status(400).json({ message: 'You can add a maximum of 3 guest creators at a time' });
+  const batchLimit = maxProfilesPerBatch();
+  if (guestCreators.length > batchLimit) {
+    return res.status(400).json({ message: `You can add a maximum of ${batchLimit} guest creators at a time` });
   }
 
-  // Validate follower counts - max 10 billion (prevents 64-bit integer overflow)
-  const MAX_FOLLOWER_COUNT = 10_000_000_000;
-  for (const guest of guestCreators) {
-    if (guest.followerCount) {
-      const parsedCount = parseInt(guest.followerCount, 10);
-      if (!isNaN(parsedCount) && parsedCount > MAX_FOLLOWER_COUNT) {
-        return res.status(400).json({
-          message: `Follower count exceeds maximum allowed value (${MAX_FOLLOWER_COUNT.toLocaleString()}). Please enter a valid follower count.`,
-        });
-      }
-    }
+  // Exact campaign authorization. `isAdmin` on the route proves the caller is
+  // internal; this proves they may manage creators on THIS campaign.
+  const policy = await canManageCampaignCreators(adminId, campaignId, prisma as never);
+  if (!policy.allowed) {
+    return res
+      .status(policy.code === 'CAMPAIGN_NOT_FOUND' ? 404 : 403)
+      .json({ message: policy.message, code: policy.code });
   }
+
+  // A batch that carries a receipt or a fallback decision comes from the
+  // automatic dialog and gets the strict rule. Anything else is the separate
+  // manual mode, whose metrics are manual or unavailable, never automatic.
+  const isAutomaticBatch = guestCreators.some((guest: any) => guest?.completionReceipt || guest?.fallbackReason);
+
+  const requestHash = hashCreateRequest(campaignId, guestCreators);
+  // A caller that sends no key still gets replay safety, because the same body
+  // always derives the same key.
+  const idempotencyKey = (req.header('Idempotency-Key') || '').trim() || `derived:${requestHash.slice(0, 32)}`;
 
   try {
+    const idempotency = await resolveCreateIdempotency(
+      { performedByUserId: adminId as string, campaignId, idempotencyKey, requestHash },
+      prisma as never,
+    );
+    if (idempotency.kind === 'conflict') {
+      return res.status(409).json({ message: idempotency.message });
+    }
+    if (idempotency.kind === 'replay') {
+      return res.status(idempotency.status).json(idempotency.body);
+    }
+
+    const validated = isAutomaticBatch
+      ? await validateSubmittedGuests(guestCreators, {
+          requesterUserId: adminId as string,
+          campaignId,
+          receiptSecret: getReceiptSecret(),
+          loadExtraction: (id: string) =>
+            id ? prisma.guestProfileExtraction.findUnique({ where: { id } }) : Promise.resolve(null),
+        })
+      : validateManualGuests(guestCreators);
+
+    if (validated.accepted.length === 0) {
+      return res.status(400).json({
+        message: 'No creator in this batch could be saved.',
+        rejected: validated.rejected,
+      });
+    }
+
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
       include: {
@@ -12633,43 +12829,52 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
 
     const createdCreators: { id: string }[] = [];
     await prisma.$transaction(async (tx) => {
-      for (const guest of guestCreators) {
-        // give guest a userId
-        const { userId } = await handleGuestForShortListing(guest, tx);
-        // The Add Non-Platform Creator modal always submits a platform.
-        const selectedPlatform = resolvePlatform(guest.selectedPlatform);
+      for (const guest of validated.accepted) {
+        // Spend the receipt here, inside the transaction, and only once. A
+        // replay or a second batch finds the nonce already consumed.
+        if (guest.extraction) {
+          await claimReceiptNonce(tx, {
+            extractionId: guest.extraction.id,
+            nonce: guest.extraction.nonce,
+            profileLabel: guest.canonicalProfileUrl ?? guest.rawProfileLink,
+          });
+        }
 
-        // Update guest creator's manualFollowerCount and credit tier if followerCount provided
+        const { userId } = await handleGuestForShortListing(
+          { name: guest.name, profileLink: guest.canonicalProfileUrl ?? guest.rawProfileLink },
+          tx,
+        );
+        // Platform is derived from the canonical link, never taken from the body.
+        const selectedPlatform = resolvePlatform(guest.platform);
+
         if (guest.followerCount) {
-          const parsedFollowerCount = parseInt(guest.followerCount, 10);
-          if (!isNaN(parsedFollowerCount) && parsedFollowerCount > 0) {
-            // Find tier by follower count using transaction client to avoid timeout
-            const tier = await tx.creditTier.findFirst({
-              where: {
-                isActive: true,
-                minFollowers: { lte: parsedFollowerCount },
-                OR: [{ maxFollowers: { gte: parsedFollowerCount } }, { maxFollowers: null }],
-              },
-              orderBy: [{ minFollowers: 'desc' }],
-            });
+          const parsedFollowerCount = guest.followerCount;
+          // Find tier by follower count using transaction client to avoid timeout
+          const tier = await tx.creditTier.findFirst({
+            where: {
+              isActive: true,
+              minFollowers: { lte: parsedFollowerCount },
+              OR: [{ maxFollowers: { gte: parsedFollowerCount } }, { maxFollowers: null }],
+            },
+            orderBy: [{ minFollowers: 'desc' }],
+          });
 
-            await tx.creator.update({
-              where: { userId },
-              data: {
-                ...(selectedPlatform === 'instagram'
-                  ? { manualInstagramFollowerCount: parsedFollowerCount }
-                  : { manualTiktokFollowerCount: parsedFollowerCount }),
-                ...(tier && {
-                  creditTierId: tier.id,
-                  tierUpdatedAt: new Date(),
-                }),
-              },
-            });
-
-            console.log(
-              `Updated guest creator ${userId} manualFollowerCount to ${parsedFollowerCount}, tier: ${tier?.name || 'none'}`,
-            );
-          }
+          await tx.creator.update({
+            where: { userId },
+            data: {
+              // `manualFollowerCount` is the single column the UI reads, so
+              // both write paths keep it in step. The platform-specific
+              // columns stay as extra detail. See risk R2.
+              manualFollowerCount: parsedFollowerCount,
+              ...(selectedPlatform === 'instagram'
+                ? { manualInstagramFollowerCount: parsedFollowerCount }
+                : { manualTiktokFollowerCount: parsedFollowerCount }),
+              ...(tier && {
+                creditTierId: tier.id,
+                tierUpdatedAt: new Date(),
+              }),
+            },
+          });
         }
 
         // Check if guest has already been shortlisted
@@ -12683,7 +12888,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
         });
 
         if (existingShortlist) {
-          console.log(`Guest creator ${guest.profileLink} is already shortlisted. Skipping.`);
+          console.log(`Guest creator ${guest.rawProfileLink} is already shortlisted. Skipping.`);
           continue; // Skip and move to the next guest
         }
 
@@ -12699,7 +12904,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
           // For non-v4 campaigns: APPROVED (admin approval is final)
           const pitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
 
-          await tx.pitch.create({
+          const pitch = await tx.pitch.create({
             data: {
               userId,
               campaignId,
@@ -12710,11 +12915,36 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               agreementTemplateId: null,
               approvedByAdminId: adminId,
               selectedPlatform,
-              ...(guest.followerCount && { followerCount: guest.followerCount }),
+              ...(guest.followerCount !== null && { followerCount: String(guest.followerCount) }),
               ...(guest.engagementRate && { engagementRate: guest.engagementRate }),
-              ...(guest.adminComments && guest.adminComments.trim().length > 0
-                ? { adminComments: guest.adminComments.trim(), adminCommentedBy: adminId }
-                : {}),
+              ...(guest.adminComments ? { adminComments: guest.adminComments, adminCommentedBy: adminId } : {}),
+            },
+          });
+
+          // Provenance for this metric. Written in the same transaction, and
+          // it outlives extraction cleanup.
+          const provenance = provenanceFor(guest);
+          await tx.guestCreatorMetricAudit.create({
+            data: {
+              pitchId: pitch.id,
+              extractionId: guest.extraction?.id ?? null,
+              guestUserId: userId,
+              canonicalProfileKey: guest.canonicalProfileKey ?? null,
+              platform: selectedPlatform,
+              originalName: provenance.original.name,
+              originalFollowerCount: provenance.original.followerCount,
+              originalEngagementRate: provenance.original.engagementRate,
+              finalName: provenance.final.name,
+              finalFollowerCount: provenance.final.followerCount,
+              finalEngagementRate: provenance.final.engagementRate,
+              source: provenance.source,
+              overrideReason: provenance.overrideReason,
+              actorId: guest.extraction?.actorId ?? null,
+              actorBuild: guest.extraction?.actorBuild ?? null,
+              actorRunId: guest.extraction?.actorRunId ?? null,
+              formulaVersion: guest.extraction?.formulaVersion ?? null,
+              performedByUserId: adminId as string,
+              reviewerUserId: adminId as string,
             },
           });
         }
@@ -12821,6 +13051,35 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
         createdCreators.push({ id: userId });
       }
 
+      // Same transaction. A crash after this point cannot leave a saved
+      // response without the records it describes.
+      await tx.guestCreatorCreateRequest.create({
+        data: {
+          performedByUserId: adminId as string,
+          operation: GUEST_CREATE_OPERATION,
+          idempotencyKey,
+          campaignId,
+          requestHash,
+          status: 'COMPLETED',
+          responseStatus: 200,
+          responseBody: {
+            message: `Guest creators successfully ${isV4Campaign ? 'shortlisted' : 'approved'}.`,
+            createdCreators,
+            isV4Campaign,
+            // Spelled out field by field because this lands in a JSON column.
+            // An interface has no index signature, so `RejectedGuest[]` is not
+            // assignable to Prisma's `InputJsonValue`; a plain literal is.
+            rejected: validated.rejected.map((r) => ({
+              profileLink: r.profileLink,
+              code: r.code,
+              message: r.message,
+            })),
+          },
+          resultPitchIds: [],
+          completedAt: new Date(),
+        },
+      });
+
       // Log campaign activity for each guest creator shortlisted
       for (const creatorId of createdCreators) {
         const guestUser = await tx.user.findUnique({
@@ -12846,6 +13105,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
       message: `Guest creators successfully ${isV4Campaign ? 'shortlisted' : 'approved'}.`,
       createdCreators,
       isV4Campaign,
+      rejected: validated.rejected,
     });
   } catch (error) {
     console.error('GUEST SHORTLIST ERROR:', error);
