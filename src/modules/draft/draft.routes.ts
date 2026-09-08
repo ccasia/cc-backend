@@ -4,8 +4,8 @@ import {
   getFirstDraft,
   submitFeedBackFirstDraft,
   submitFinalDraft,
-} from '@controllers/draftController';
-import { submitFirstDraft } from '@controllers/draftController';
+  submitFirstDraft,
+} from './draft.controller';
 import { authenticate } from '@middlewares/authenticate';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 

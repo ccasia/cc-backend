@@ -1,4 +1,4 @@
-import { getAllSubscriptions, updateSubscription, syncSubscriptionCredits } from '@controllers/subscriptionController';
+import { getAllSubscriptions, updateSubscription, syncSubscriptionCredits } from './subscription.controller';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { authenticate } from '@middlewares/authenticate';
 import { Router } from 'express';

@@ -7,7 +7,7 @@ import {
   validateCampaignPassword,
   regenerateCampaignPassword,
   publicSubmitFeedback,
-} from '@controllers/acessController';
+} from './access.controller';
 import { getCampaignById } from '@controllers/campaignController';
 
 router.post('/generate', generateCampaignAccess);

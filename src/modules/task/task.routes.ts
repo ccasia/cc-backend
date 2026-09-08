@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { creatorUploadAgreement } from '@controllers/tasksController';
+import { creatorUploadAgreement } from './task.controller';
 
 import { authenticate } from '@middlewares/authenticate';
 

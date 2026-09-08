@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { Entity, PrismaClient } from '@prisma/client';
 import { uploadAgreementForm } from '@configs/cloudStorage.config';
-import { Title, saveNotification } from './notificationController';
+import { Title, saveNotification } from '@controllers/notificationController';
 
 const prisma = new PrismaClient();
 
