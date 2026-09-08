@@ -4,7 +4,7 @@ import authRoute from './authRoute';
 import adminRoute from './adminRoute';
 import creatorRoute from './creatorRoute';
 import companyRoute from './companyRoute';
-import eventRoute from './eventRoute';
+import { eventRoutes as eventRoute } from '@modules/event';
 import campaignRoute from './campaignRoute';
 import notificationRoute from './notificationRoute';
 import pushTokenRoute from './pushTokenRoute';
