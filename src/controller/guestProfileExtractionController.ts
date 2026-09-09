@@ -9,6 +9,10 @@ import { isInternalSuperAdmin } from '@services/guestProfileExtraction/campaignC
 import { decideGuestProfileMetrics, loadFeatureFlags } from '@services/guestProfileExtraction/featureDecision';
 import { getReceiptSecret, issueReceipt } from '@services/guestProfileExtraction/extractionReceiptService';
 import { startExtraction, type ExtractionDeps } from '@services/guestProfileExtraction/guestProfileExtractionService';
+import {
+  applyExtractionToPendingPitchesSafe,
+  PENDING_FAILURE_STATUSES,
+} from '@services/guestProfileExtraction/pendingPitchMetrics';
 import { enqueueExtraction } from '@utils/queue';
 
 /**
@@ -150,6 +154,19 @@ export const getGuestProfileExtraction = async (req: Request, res: Response) => 
 
   const allowed = await guard(req, res, record.campaignId);
   if (!allowed) return;
+
+  const extractionIsFinished =
+    record.status === 'READY' || (PENDING_FAILURE_STATUSES as readonly string[]).includes(record.status);
+  if (extractionIsFinished) {
+    try {
+      await applyExtractionToPendingPitchesSafe(record.id, prisma as never);
+    } catch (error) {
+      console.error('pending pitch apply failed', {
+        extractionId: record.id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   let receipt: string | null = null;
   if (record.status === 'READY' && record.receiptNonce && record.receiptDigest) {

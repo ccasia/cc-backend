@@ -2,6 +2,7 @@ import { Prisma, Status } from '@prisma/client';
 
 import type { CanonicalProfile } from '@/src/types/guestProfileExtraction';
 import { normalizeProfileUrl } from './profileUrlNormalizer';
+import { scrapedProfileLinkPatch } from './scrapedProfileLink';
 
 /**
  * Canonical identity for guest creators.
@@ -71,6 +72,10 @@ export async function resolveGuestByCanonicalProfile(
   });
   if (byKey) {
     await renameIfChanged(tx, byKey.userId, byKey.user?.name ?? null, name);
+    const linkPatch = scrapedProfileLinkPatch(byKey, profile.platform, profile.canonicalUrl);
+    if (linkPatch.instagramProfileLink || linkPatch.tiktokProfileLink) {
+      await tx.creator.update({ where: { id: byKey.id }, data: linkPatch });
+    }
     return { userId: byKey.userId, isGuest: true, resolution: 'byCanonicalKey' };
   }
 
@@ -84,7 +89,10 @@ export async function resolveGuestByCanonicalProfile(
     try {
       await tx.creator.update({
         where: { id: byLink.id },
-        data: { guestProfileKey: canonicalKey },
+        data: {
+          guestProfileKey: canonicalKey,
+          ...scrapedProfileLinkPatch(byLink, profile.platform, profile.canonicalUrl),
+        },
       });
       await renameIfChanged(tx, byLink.userId, byLink.user?.name ?? null, name);
       return { userId: byLink.userId, isGuest: true, resolution: 'byLegacyLink' };
@@ -106,6 +114,7 @@ export async function resolveGuestByCanonicalProfile(
             isGuest: true,
             profileLink,
             guestProfileKey: canonicalKey,
+            ...scrapedProfileLinkPatch({}, profile.platform, profile.canonicalUrl),
           },
         },
       },
