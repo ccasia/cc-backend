@@ -1185,6 +1185,10 @@ model Pitch {
   approvalRequestCreators  ApprovalRequestCreator[]
   guestCreatorMetricAudits GuestCreatorMetricAudit[]
 
+  /// Set while an Apify run still owns Followers and ER for this pitch.
+  pendingExtractionId String?                  @unique
+  pendingExtraction   GuestProfileExtraction? @relation("PendingPitchExtraction", fields: [pendingExtractionId], references: [id], onDelete: SetNull)
+
   @@unique([userId, campaignId])
 }
 
@@ -3179,7 +3183,8 @@ model GuestProfileExtraction {
   /// Cleanup boundary. Removing a row here must never remove an audit.
   expiresAt   DateTime?
 
-  metricAudits GuestCreatorMetricAudit[]
+  metricAudits    GuestCreatorMetricAudit[]
+  pendingPitches Pitch[]                   @relation("PendingPitchExtraction")
 
   @@unique([requestedByUserId, idempotencyKey])
   @@index([canonicalProfileKey, platform, actorBuild, status])

@@ -49,7 +49,26 @@ export type GuestRejectionCode =
   | 'INVALID_ENGAGEMENT_RATE'
   | 'DUPLICATE_PROFILE'
   | 'EXTRACTION_NOT_FOUND'
-  | 'EXTRACTION_NOT_READY';
+  | 'EXTRACTION_NOT_READY'
+  | 'EXTRACTION_NOT_ATTACHABLE';
+
+/** Statuses that may be bound to a pitch before metrics exist. */
+export const ATTACHABLE_STATUSES = [
+  'QUEUED',
+  'RUNNING',
+  'POLLING',
+  'REQUIRES_RECONCILIATION',
+] as const;
+
+export type AcceptedExtraction = {
+  kind: 'ready' | 'pending';
+  id: string;
+  nonce: string | null;
+  actorId: string | null;
+  actorBuild: string | null;
+  actorRunId: string | null;
+  formulaVersion: string | null;
+};
 
 export interface AcceptedGuest {
   /** Null when the link is outside Instagram and TikTok. */
@@ -62,15 +81,8 @@ export interface AcceptedGuest {
   followerCount: number | null;
   engagementRate: string | null;
   adminComments: string | null;
-  /** Set only for a verified automatic row. */
-  extraction: {
-    id: string;
-    nonce: string;
-    actorId: string;
-    actorBuild: string;
-    actorRunId: string | null;
-    formulaVersion: string | null;
-  } | null;
+  /** Set for a receipt-backed row or an in-flight attach. */
+  extraction: AcceptedExtraction | null;
   baseline: MetricBaseline;
   fallbackReason: string | null;
 }
@@ -134,6 +146,26 @@ export function parseEngagementRate(value: unknown): string | null | 'invalid' {
   return parsed.toFixed(2);
 }
 
+/* --------------------------------------------------------------- names */
+
+/** Username half of `instagram:handle`. Used when scrape has not named the guest yet. */
+export function usernameFromCanonicalKey(canonicalKey: string): string {
+  const colon = canonicalKey.indexOf(':');
+  return colon === -1 ? canonicalKey : canonicalKey.slice(colon + 1);
+}
+
+export function displayNameFromProfile(canonicalKey: string, submittedName: string): string {
+  const trimmed = submittedName.trim();
+  return trimmed || usernameFromCanonicalKey(canonicalKey);
+}
+
+/** True when the batch came from the automatic dialog, including an in-flight scrape. */
+export function isAutomaticGuestBatch(guests: readonly SubmittedGuest[]): boolean {
+  return guests.some(
+    (guest) => Boolean(guest?.completionReceipt) || Boolean(guest?.fallbackReason) || Boolean(guest?.extractionId),
+  );
+}
+
 /* ------------------------------------------------------------ eligibility */
 
 export interface ValidateContext {
@@ -150,11 +182,43 @@ export interface ValidateResult {
   rejected: RejectedGuest[];
 }
 
+function extractionOwnedByRequester(
+  extraction: { requestedByUserId?: string; campaignId?: string; canonicalProfileKey?: string },
+  context: ValidateContext,
+  canonicalKey: string,
+): boolean {
+  return (
+    extraction.requestedByUserId === context.requesterUserId &&
+    extraction.campaignId === context.campaignId &&
+    extraction.canonicalProfileKey === canonicalKey
+  );
+}
+
+function readyExtractionFields(extraction: {
+  id: string;
+  receiptNonce: string;
+  actorId: string;
+  actorBuild: string;
+  actorRunId?: string | null;
+  formulaVersion?: string | null;
+}): AcceptedExtraction {
+  return {
+    kind: 'ready',
+    id: extraction.id,
+    nonce: extraction.receiptNonce,
+    actorId: extraction.actorId,
+    actorBuild: extraction.actorBuild,
+    actorRunId: extraction.actorRunId ?? null,
+    formulaVersion: extraction.formulaVersion ?? null,
+  };
+}
+
 /**
  * Decide which submitted rows may be saved.
  *
- * Only two kinds pass: a READY row with a valid receipt, or an explicitly
- * confirmed fallback for a permitted reason with a name and a follower count.
+ * Three kinds pass: a READY row with a valid receipt, an in-flight extraction
+ * the requester owns, or an explicitly confirmed fallback for a permitted
+ * reason with a name and a follower count.
  */
 export async function validateSubmittedGuests(
   guests: readonly SubmittedGuest[],
@@ -180,15 +244,22 @@ export async function validateSubmittedGuests(
       continue;
     }
 
-    const follower = parseFollowerCount(guest.followerCount);
-    if (follower === 'invalid') {
-      reject('INVALID_FOLLOWER_COUNT', 'Follower count must be a whole number above zero.');
-      continue;
-    }
-    const rate = parseEngagementRate(guest.engagementRate);
-    if (rate === 'invalid') {
-      reject('INVALID_ENGAGEMENT_RATE', 'Engagement rate must be a percentage between 0 and 100.');
-      continue;
+    let follower = parseFollowerCount(guest.followerCount);
+    let rate = parseEngagementRate(guest.engagementRate);
+    // An in-flight attach ignores client-typed numbers, including junk left
+    // in the modal. A receipt-backed row still rejects a bad override.
+    if (guest.extractionId && !guest.completionReceipt) {
+      if (follower === 'invalid') follower = null;
+      if (rate === 'invalid') rate = null;
+    } else {
+      if (follower === 'invalid') {
+        reject('INVALID_FOLLOWER_COUNT', 'Follower count must be a whole number above zero.');
+        continue;
+      }
+      if (rate === 'invalid') {
+        reject('INVALID_ENGAGEMENT_RATE', 'Engagement rate must be a percentage between 0 and 100.');
+        continue;
+      }
     }
     const name = (guest.name ?? '').trim();
     const adminComments = (guest.adminComments ?? '').trim() || null;
@@ -240,14 +311,7 @@ export async function validateSubmittedGuests(
         followerCount: follower,
         engagementRate: rate,
         adminComments,
-        extraction: {
-          id: extraction.id,
-          nonce: extraction.receiptNonce,
-          actorId: extraction.actorId,
-          actorBuild: extraction.actorBuild,
-          actorRunId: extraction.actorRunId ?? null,
-          formulaVersion: extraction.formulaVersion ?? null,
-        },
+        extraction: readyExtractionFields(extraction),
         baseline: {
           name: extraction.resultName ?? null,
           followerCount: extraction.resultFollowerCount ?? null,
@@ -258,7 +322,75 @@ export async function validateSubmittedGuests(
       continue;
     }
 
-    // No receipt. The only other way in is an explicitly confirmed fallback.
+    if (guest.extractionId) {
+      // eslint-disable-next-line no-await-in-loop
+      const extraction = await context.loadExtraction(guest.extractionId);
+      if (!extraction) {
+        reject('EXTRACTION_NOT_FOUND', 'The fetch for this profile could not be found.');
+        continue;
+      }
+      if (!extractionOwnedByRequester(extraction, context, profile.canonicalKey)) {
+        reject('EXTRACTION_NOT_ATTACHABLE', 'This fetch does not belong to this campaign and admin.');
+        continue;
+      }
+
+      const resolvedName = displayNameFromProfile(profile.canonicalKey, name);
+      const attachable = (ATTACHABLE_STATUSES as readonly string[]).includes(extraction.status);
+      const readyToCopy = extraction.status === 'READY' && typeof extraction.receiptNonce === 'string';
+
+      if (readyToCopy) {
+        seenKeys.add(profile.canonicalKey);
+        accepted.push({
+          canonicalProfileKey: profile.canonicalKey,
+          canonicalProfileUrl: profile.canonicalUrl,
+          rawProfileLink: guest.profileLink,
+          platform: profile.platform,
+          name: resolvedName || extraction.resultName || usernameFromCanonicalKey(profile.canonicalKey),
+          followerCount: extraction.resultFollowerCount ?? null,
+          engagementRate: extraction.resultEngagementRate ?? null,
+          adminComments,
+          extraction: readyExtractionFields(extraction),
+          baseline: {
+            name: extraction.resultName ?? null,
+            followerCount: extraction.resultFollowerCount ?? null,
+            engagementRate: extraction.resultEngagementRate ?? null,
+          },
+          fallbackReason: null,
+        });
+        continue;
+      }
+
+      if (!attachable) {
+        reject('EXTRACTION_NOT_ATTACHABLE', 'This fetch can no longer be used. Fetch the details again.');
+        continue;
+      }
+
+      seenKeys.add(profile.canonicalKey);
+      accepted.push({
+        canonicalProfileKey: profile.canonicalKey,
+        canonicalProfileUrl: profile.canonicalUrl,
+        rawProfileLink: guest.profileLink,
+        platform: profile.platform,
+        name: resolvedName,
+        followerCount: null,
+        engagementRate: null,
+        adminComments,
+        extraction: {
+          kind: 'pending',
+          id: extraction.id,
+          nonce: null,
+          actorId: extraction.actorId ?? null,
+          actorBuild: extraction.actorBuild ?? null,
+          actorRunId: extraction.actorRunId ?? null,
+          formulaVersion: extraction.formulaVersion ?? null,
+        },
+        baseline: { name: null, followerCount: null, engagementRate: null },
+        fallbackReason: null,
+      });
+      continue;
+    }
+
+    // No receipt and no in-flight fetch. The only other way in is a confirmed fallback.
     const reason = guest.fallbackReason ?? null;
     if (!reason || !(ALLOWED_FALLBACK_REASONS as readonly string[]).includes(reason)) {
       reject('FALLBACK_NOT_ALLOWED', 'This row has no verified result and no permitted manual fallback.');
@@ -300,7 +432,7 @@ export async function validateSubmittedGuests(
 /** Provenance for one accepted row, ready for the audit table. */
 export function provenanceFor(guest: AcceptedGuest) {
   return classifyMetricProvenance({
-    receiptVerified: guest.extraction !== null,
+    receiptVerified: guest.extraction?.kind === 'ready',
     original: guest.baseline,
     final: { name: guest.name, followerCount: guest.followerCount, engagementRate: guest.engagementRate },
     fallbackReason: guest.fallbackReason,

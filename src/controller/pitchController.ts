@@ -3,6 +3,8 @@ import { canManageCampaignCreators } from '@services/guestProfileExtraction/camp
 import { classifyMetricProvenance } from '@services/guestProfileExtraction/metricProvenance';
 import { normalizeProfileUrl } from '@services/guestProfileExtraction/profileUrlNormalizer';
 import { parseEngagementRate, parseFollowerCount } from '@services/guestProfileExtraction/guestCreateService';
+import { applyExtractionToPendingPitchesSafe } from '@services/guestProfileExtraction/pendingPitchMetrics';
+import { averageLikesFromSelectedPosts } from '@services/guestProfileExtraction/selectedPostStats';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 
@@ -17,6 +19,30 @@ import { clients, getIo } from '../config/socket';
 import { awardXp, onShortlisted, progressAchievement } from '@/src/modules/gamification';
 
 const prisma = new PrismaClient();
+
+const LATEST_SCRAPE_EVIDENCE = {
+  guestCreatorMetricAudits: {
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+    select: {
+      extraction: {
+        select: { selectedPosts: true },
+      },
+    },
+  },
+};
+
+const withScrapedAverageLikes = <T extends { guestCreatorMetricAudits?: Array<{ extraction?: { selectedPosts?: unknown } | null }> }>(
+  pitch: T
+) => {
+  const { guestCreatorMetricAudits, ...rest } = pitch;
+  return {
+    ...rest,
+    scrapedAverageLikes: averageLikesFromSelectedPosts(
+      guestCreatorMetricAudits?.[0]?.extraction?.selectedPosts
+    ),
+  };
+};
 
 const emitCreatorCampaignMembershipUpdated = ({
   userId,
@@ -1653,47 +1679,86 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       whereClause.status = status as string;
     }
 
-    const pitches = await prisma.pitch.findMany({
-      where: {
-        ...whereClause,
-      },
-      include: {
-        campaign: true,
-        user: {
-          include: {
-            creator: {
-              include: {
-                instagramUser: true,
-                tiktokUser: true,
-                mediaKit: true,
-                creditTier: {
-                  select: {
-                    id: true,
-                    name: true,
-                    creditsPerVideo: true,
-                  },
+    const pitchInclude = {
+      campaign: true,
+      ...LATEST_SCRAPE_EVIDENCE,
+      user: {
+        include: {
+          creator: {
+            include: {
+              instagramUser: true,
+              tiktokUser: true,
+              mediaKit: true,
+              // The pitch modal shows interest chips; without this they would
+              // only arrive on the secondary creator fetch and pop in late.
+              interests: {
+                select: {
+                  id: true,
+                  name: true,
+                  rank: true,
+                },
+              },
+              creditTier: {
+                select: {
+                  id: true,
+                  name: true,
+                  creditsPerVideo: true,
                 },
               },
             },
           },
         },
-        admin: {
-          include: {
-            user: true,
-          },
-        },
-        client: true,
-        rejectedByAdmin: {
-          include: {
-            user: true,
-          },
-        },
-        rejectedByClient: true,
       },
-      orderBy: {
-        createdAt: 'desc',
+      admin: {
+        include: {
+          user: true,
+        },
       },
-    });
+      client: true,
+      rejectedByAdmin: {
+        include: {
+          user: true,
+        },
+      },
+      rejectedByClient: true,
+    };
+
+    const loadPitches = () =>
+      prisma.pitch.findMany({
+        where: {
+          ...whereClause,
+        },
+        include: pitchInclude,
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+    let pitches = await loadPitches();
+
+    const pendingExtractionIds = [
+      ...new Set(
+        pitches
+          .map((pitch) => pitch.pendingExtractionId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    ];
+    let appliedPendingMetrics = false;
+    for (const extractionId of pendingExtractionIds) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        appliedPendingMetrics =
+          (await applyExtractionToPendingPitchesSafe(extractionId, prisma as never)) || appliedPendingMetrics;
+      } catch (error) {
+        console.error('pending pitch apply failed', {
+          extractionId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (appliedPendingMetrics) {
+      pitches = await loadPitches();
+    }
 
     const transformedPitches = pitches
       .filter((pitch) => {
@@ -1750,12 +1815,12 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
           sanitizedUser = { ...restUser };
         }
 
-        return {
+        return withScrapedAverageLikes({
           ...pitch,
           status: normalizedStatus,
           user: sanitizedUser,
           displayStatus, // Add display status for frontend
-        };
+        });
       });
 
     return res.status(200).json(transformedPitches);
@@ -1785,6 +1850,7 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       where: { id: pitchId },
       include: {
         campaign: true,
+        ...LATEST_SCRAPE_EVIDENCE,
         user: {
           include: {
             creator: {
@@ -1792,6 +1858,21 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
                 instagramUser: true,
                 tiktokUser: true,
                 mediaKit: true,
+                // Same shape as getPitchesV3, so either endpoint can feed the modal.
+                interests: {
+                  select: {
+                    id: true,
+                    name: true,
+                    rank: true,
+                  },
+                },
+                creditTier: {
+                  select: {
+                    id: true,
+                    name: true,
+                    creditsPerVideo: true,
+                  },
+                },
               },
             },
           },
@@ -1851,10 +1932,10 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       }
     }
 
-    const transformedPitch = {
+    const transformedPitch = withScrapedAverageLikes({
       ...pitch,
       displayStatus, // Add display status for frontend
-    };
+    });
 
     return res.status(200).json(transformedPitch);
   } catch (error) {

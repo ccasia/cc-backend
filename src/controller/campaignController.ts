@@ -82,11 +82,14 @@ import {
   GUEST_CREATE_OPERATION,
   claimReceiptNonce,
   hashCreateRequest,
+  isAutomaticGuestBatch,
   provenanceFor,
   resolveCreateIdempotency,
   validateManualGuests,
   validateSubmittedGuests,
 } from '@services/guestProfileExtraction/guestCreateService';
+import { applyExtractionToPendingPitches } from '@services/guestProfileExtraction/pendingPitchMetrics';
+import { ensureScrapedProfileLink } from '@services/guestProfileExtraction/scrapedProfileLink';
 import { saveCampaignBookmark, unsaveCampaignBookmark } from '@services/campaignBookmarkService';
 import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
@@ -2483,6 +2486,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
             isAgreementReady: true,
             creditPerVideo: true,
             creditTierId: true,
+            selectedPlatform: true,
             adminRating: true,
             adminRatingTags: true,
             adminRatingNote: true,
@@ -2508,6 +2512,14 @@ export const getCampaignById = async (req: Request, res: Response) => {
                 creator: {
                   select: {
                     isGuest: true,
+                    // The master list shows followers and engagement rate for
+                    // shortlisted-only rows too, so they need the same social
+                    // stats a real pitch carries.
+                    instagramUser: true,
+                    tiktokUser: true,
+                    manualFollowerCount: true,
+                    manualInstagramEngagementRate: true,
+                    manualTiktokEngagementRate: true,
                     creditTier: {
                       select: {
                         id: true,
@@ -9549,12 +9561,10 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       // Delete user thread if it exists
       if (threadId) {
         try {
-          await tx.userThread.delete({
+          await tx.userThread.deleteMany({
             where: {
-              userId_threadId: {
-                userId: user.id,
-                threadId: threadId!,
-              },
+              userId: user.id,
+              threadId: threadId!,
             },
           });
           console.log(`Deleted user thread for creator`);
@@ -11925,12 +11935,19 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         const selectedPlatform = resolvePlatform(verified?.platform, creator.selectedPlatform);
         let resolvedFollowerCount = 0;
 
+        await ensureScrapedProfileLink(
+          tx,
+          user.id,
+          selectedPlatform,
+          verified?.canonicalProfileUrl ?? creator.profileLink,
+        );
+
         console.log(`Processing creator: ${user.name} (${user.id})`);
 
         // Spend the receipt here, inside the transaction, and only once. A
         // replay or a second batch finds the nonce already consumed and the
         // whole save rolls back.
-        if (verified?.extraction) {
+        if (verified?.extraction?.nonce) {
           await claimReceiptNonce(tx, {
             extractionId: verified.extraction.id,
             nonce: verified.extraction.nonce,
@@ -12040,6 +12057,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               // verified rate is written; a row with no scrape keeps whatever
               // it had.
               ...(verified?.engagementRate != null ? { engagementRate: verified.engagementRate } : {}),
+              ...(verified?.extraction?.kind === 'pending'
+                ? { pendingExtractionId: verified.extraction.id }
+                : {}),
             },
           });
           savedPitchId = updatedPitch.id;
@@ -12074,6 +12094,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               // verified rate is written; a row with no scrape keeps whatever
               // it had.
               ...(verified?.engagementRate != null ? { engagementRate: verified.engagementRate } : {}),
+              ...(verified?.extraction?.kind === 'pending'
+                ? { pendingExtractionId: verified.extraction.id }
+                : {}),
               ...(hasComments ? { adminComments: creatorAdminComments, adminCommentedBy: userId } : {}),
             },
           });
@@ -12089,7 +12112,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
          * `guestUserId` is a nullable plain string with no foreign key, so a
          * platform creator's id sits in it unchanged.
          */
-        if (verified && savedPitchId) {
+        if (verified && savedPitchId && verified.extraction?.kind !== 'pending') {
           const provenance = provenanceFor(verified);
           await tx.guestCreatorMetricAudit.create({
             data: {
@@ -12382,6 +12405,18 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         }
       }
     });
+
+    const pendingExtractionIds = [...verifiedByLink.values()]
+      .filter((row) => row.extraction?.kind === 'pending')
+      .map((row) => row.extraction.id);
+    for (const pendingExtractionId of pendingExtractionIds) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await applyExtractionToPendingPitches(pendingExtractionId, prisma as never);
+      } catch (applyError) {
+        console.error(`applyExtractionToPendingPitches failed for ${pendingExtractionId}:`, applyError);
+      }
+    }
 
     // Emit to campaign room for real-time updates
     getIo().to(campaignId).emit('v3:pitch:status-updated', {
@@ -13051,10 +13086,10 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
       .json({ message: policy.message, code: policy.code });
   }
 
-  // A batch that carries a receipt or a fallback decision comes from the
-  // automatic dialog and gets the strict rule. Anything else is the separate
-  // manual mode, whose metrics are manual or unavailable, never automatic.
-  const isAutomaticBatch = guestCreators.some((guest: any) => guest?.completionReceipt || guest?.fallbackReason);
+  // A batch that carries a receipt, a fallback, or an in-flight extraction
+  // comes from the automatic dialog and gets the strict rule. Anything else
+  // is the separate manual mode.
+  const isAutomaticBatch = isAutomaticGuestBatch(guestCreators);
 
   const requestHash = hashCreateRequest(campaignId, guestCreators);
   // A caller that sends no key still gets replay safety, because the same body
@@ -13106,7 +13141,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
       for (const guest of validated.accepted) {
         // Spend the receipt here, inside the transaction, and only once. A
         // replay or a second batch finds the nonce already consumed.
-        if (guest.extraction) {
+        if (guest.extraction?.nonce) {
           await claimReceiptNonce(tx, {
             extractionId: guest.extraction.id,
             nonce: guest.extraction.nonce,
@@ -13120,6 +13155,13 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
         );
         // Platform is derived from the canonical link, never taken from the body.
         const selectedPlatform = resolvePlatform(guest.platform);
+
+        await ensureScrapedProfileLink(
+          tx,
+          userId,
+          selectedPlatform,
+          guest.canonicalProfileUrl ?? guest.rawProfileLink,
+        );
 
         if (guest.followerCount) {
           const parsedFollowerCount = guest.followerCount;
@@ -13173,6 +13215,14 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
           where: { userId, campaignId },
         });
 
+          const pitchMetricData = {
+            selectedPlatform,
+            ...(guest.followerCount !== null && { followerCount: String(guest.followerCount) }),
+            ...(guest.engagementRate && { engagementRate: guest.engagementRate }),
+            ...(guest.extraction?.kind === 'pending' ? { pendingExtractionId: guest.extraction.id } : {}),
+            ...(guest.adminComments ? { adminComments: guest.adminComments, adminCommentedBy: adminId } : {}),
+          };
+
         if (!existingPitch) {
           // For V4 campaigns: SENT_TO_CLIENT (awaiting client approval)
           // For non-v4 campaigns: APPROVED (admin approval is final)
@@ -13188,13 +13238,11 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               amount: null,
               agreementTemplateId: null,
               approvedByAdminId: adminId,
-              selectedPlatform,
-              ...(guest.followerCount !== null && { followerCount: String(guest.followerCount) }),
-              ...(guest.engagementRate && { engagementRate: guest.engagementRate }),
-              ...(guest.adminComments ? { adminComments: guest.adminComments, adminCommentedBy: adminId } : {}),
+              ...pitchMetricData,
             },
           });
 
+          if (guest.extraction?.kind !== 'pending') {
           // Provenance for this metric. Written in the same transaction, and
           // it outlives extraction cleanup.
           const provenance = provenanceFor(guest);
@@ -13221,6 +13269,39 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               reviewerUserId: adminId as string,
             },
           });
+          }
+        } else {
+          await tx.pitch.update({
+            where: { id: existingPitch.id },
+            data: pitchMetricData,
+          });
+
+          if (guest.extraction?.kind !== 'pending') {
+            const provenance = provenanceFor(guest);
+            await tx.guestCreatorMetricAudit.create({
+              data: {
+                pitchId: existingPitch.id,
+                extractionId: guest.extraction?.id ?? null,
+                guestUserId: userId,
+                canonicalProfileKey: guest.canonicalProfileKey ?? null,
+                platform: selectedPlatform,
+                originalName: provenance.original.name,
+                originalFollowerCount: provenance.original.followerCount,
+                originalEngagementRate: provenance.original.engagementRate,
+                finalName: provenance.final.name,
+                finalFollowerCount: provenance.final.followerCount,
+                finalEngagementRate: provenance.final.engagementRate,
+                source: provenance.source,
+                overrideReason: provenance.overrideReason,
+                actorId: guest.extraction?.actorId ?? null,
+                actorBuild: guest.extraction?.actorBuild ?? null,
+                actorRunId: guest.extraction?.actorRunId ?? null,
+                formulaVersion: guest.extraction?.formulaVersion ?? null,
+                performedByUserId: adminId as string,
+                reviewerUserId: adminId as string,
+              },
+            });
+          }
         }
 
         // For non-v4 campaigns, create submissions and agreement immediately since admin approval is final
@@ -13370,6 +13451,16 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
         }
       }
     });
+
+    for (const guest of validated.accepted) {
+      if (guest.extraction?.kind !== 'pending') continue;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await applyExtractionToPendingPitches(guest.extraction.id, prisma as never);
+      } catch (applyError) {
+        console.error(`applyExtractionToPendingPitches failed for ${guest.extraction.id}:`, applyError);
+      }
+    }
 
     const statusText = isV4Campaign ? 'sent to client for review' : 'approved and added';
     const adminLogMessage = `Shortlisted ${guestCreators.length} guest creator(s) for Campaign "${campaign.name}" - ${statusText}`;

@@ -639,7 +639,11 @@ export async function reconcileExtractions(
  */
 export async function cleanupExpiredExtractions(deps: ExtractionDeps): Promise<{ deleted: number }> {
   const result = await deps.store.guestProfileExtraction.deleteMany({
-    where: { expiresAt: { lte: now(deps) }, status: { in: [...TERMINAL_STATUSES] } },
+    where: {
+      expiresAt: { lte: now(deps) },
+      status: { in: [...TERMINAL_STATUSES] },
+      pendingPitches: { none: {} },
+    },
   });
   return { deleted: result.count };
 }

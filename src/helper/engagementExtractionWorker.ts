@@ -18,6 +18,7 @@ import {
   reconcileExtractions,
   type ExtractionDeps,
 } from '@services/guestProfileExtraction/guestProfileExtractionService';
+import { applyExtractionToPendingPitchesSafe } from '@services/guestProfileExtraction/pendingPitchMetrics';
 import { enqueueExtraction } from '@utils/queue';
 import { PrismaClient } from '@prisma/client';
 
@@ -52,6 +53,16 @@ const worker = new Worker(
   async (job) => {
     const { extractionId } = job.data as { extractionId: string };
     await processExtraction(extractionId, deps);
+    try {
+      await applyExtractionToPendingPitchesSafe(extractionId, prisma as never, (message, context) =>
+        console.error(`[engagement-worker] ${message}`, context ?? ''),
+      );
+    } catch (error) {
+      console.error(
+        `[engagement-worker] pending pitch apply failed for ${extractionId}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
   },
   { connection, concurrency: config.workerConcurrency },
 );
@@ -77,6 +88,19 @@ async function reconcileNow(): Promise<void> {
     const report = await reconcileExtractions(deps);
     if (report.exhausted.length > 0) {
       console.error('[engagement-worker] ALERT reconciliation gave up on:', report.exhausted.join(', '));
+      for (const extractionId of report.exhausted) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await applyExtractionToPendingPitchesSafe(extractionId, prisma as never, (message, context) =>
+            console.error(`[engagement-worker] ${message}`, context ?? ''),
+          );
+        } catch (error) {
+          console.error(
+            `[engagement-worker] pending pitch apply failed for ${extractionId}:`,
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }
     }
   } catch (error) {
     console.error('[engagement-worker] ALERT reconciliation failed:', (error as Error)?.message);
