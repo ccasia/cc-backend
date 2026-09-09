@@ -452,11 +452,14 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
       if (otherShortlists === 0 && otherPitches === 0 && otherSubmissions === 0) {
         console.log(`[SWAP] Guest user has no other relationships, deleting...`);
 
-        // Delete guest user's notifications first (foreign key constraint)
         const deletedNotifications = await tx.userNotification.deleteMany({
           where: { userId: guestUserId },
         });
         console.log(`[SWAP] Deleted ${deletedNotifications.count} notification(s)`);
+
+        await tx.xpTransaction.deleteMany({
+          where: { userId: guestUserId },
+        });
 
         // Delete guest creator (foreign key constraint)
         await tx.creator.delete({
@@ -546,8 +549,10 @@ export const cleanupOrphanedGuestUsers = async (req: Request, res: Response) => 
 
       for (const guest of orphanedGuests) {
         try {
-          // Delete user notifications first (foreign key constraint)
           await tx.userNotification.deleteMany({
+            where: { userId: guest.id },
+          });
+          await tx.xpTransaction.deleteMany({
             where: { userId: guest.id },
           });
 

@@ -9642,6 +9642,11 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
         });
         console.log(`Deleted ${deletedAllNotifications.count} total notifications for guest user`);
 
+        const deletedXp = await tx.xpTransaction.deleteMany({
+          where: { userId: user.id },
+        });
+        console.log(`Deleted ${deletedXp.count} XP transactions for guest user`);
+
         if (user.creator) {
           await tx.creator.delete({
             where: {
