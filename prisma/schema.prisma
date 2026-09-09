@@ -123,6 +123,45 @@ model User {
 
   creatorAchievements  CreatorAchievement[]
   leaderboardSnapshots LeaderboardSnapshot[]
+
+  campaignCreationDrafts CampaignCreationDraft[]
+  campaignCreationDraftUploadLeases CampaignCreationDraftUploadLease[]
+}
+
+model CampaignCreationDraft {
+  id                    String   @id
+  ownerId               String
+  name                  String
+  payload               Json
+  activeStep            Int
+  showAdditionalDetails Boolean
+  revision              Int
+  legacyFileStorage     Boolean  @default(false)
+  filesCleanupPending   Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  uploadLeases CampaignCreationDraftUploadLease[]
+
+  @@index([ownerId, updatedAt])
+}
+
+model CampaignCreationDraftUploadLease {
+  id             String   @id @default(uuid())
+  draftId        String
+  ownerId        String
+  expiresAt      DateTime
+  objectUrl      String?
+  cleanupPending Boolean  @default(false)
+  releasedAt     DateTime?
+  createdAt      DateTime @default(now())
+
+  draft CampaignCreationDraft @relation(fields: [draftId], references: [id], onDelete: Restrict)
+  owner User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([draftId, expiresAt])
+  @@index([ownerId, draftId])
 }
 
 model RefreshToken {

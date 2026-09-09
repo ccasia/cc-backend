@@ -4,6 +4,8 @@ import { z } from 'zod';
 
 import {
   getCampaignCreationDraft,
+  getLatestCampaignCreationDraft,
+  listCampaignCreationDrafts,
   createCampaignCreationDraft as createDraft,
   updateCampaignCreationDraft as updateDraft,
   deleteCampaignCreationDraft as deleteDraft,
@@ -33,9 +35,32 @@ export const createCampaignCreationDraft = async (req: Request, res: Response) =
   }
 };
 
+export const listCampaignCreationDraft = async (req: Request, res: Response) => {
+  try {
+    return res.status(200).json({ drafts: await listCampaignCreationDrafts(req.userId!) });
+  } catch (error) {
+    console.error('Failed to list campaign creation drafts:', error);
+    return res.status(500).json({ drafts: [] });
+  }
+};
+
+// Keep the former endpoint available for older clients. New clients should use GET /.
 export const getActiveCampaignCreationDraft = async (req: Request, res: Response) => {
   try {
-    return res.status(200).json({ draft: await getCampaignCreationDraft(req.userId!) });
+    return res.status(200).json({ draft: await getLatestCampaignCreationDraft(req.userId!) });
+  } catch (error) {
+    console.error('Failed to get latest campaign creation draft:', error);
+    return res.status(500).json({ draft: null });
+  }
+};
+
+export const getCampaignCreationDraftById = async (req: Request, res: Response) => {
+  const id = idSchema.safeParse(req.params.id);
+  if (!id.success) return res.status(404).json({ draft: null });
+
+  try {
+    const draft = await getCampaignCreationDraft(req.userId!, id.data);
+    return res.status(draft ? 200 : 404).json({ draft });
   } catch (error) {
     console.error('Failed to get campaign creation draft:', error);
     return res.status(500).json({ draft: null });
@@ -113,8 +138,11 @@ export const deleteCampaignCreationDraft = async (req: Request, res: Response) =
   if (!id.success) return res.status(400).json({ draft: null });
 
   try {
-    const draft = await deleteDraft(req.userId!, id.data);
-    return res.status(200).json({ draft });
+    const result = await deleteDraft(req.userId!, id.data);
+    if (result.status === 'locked') {
+      return res.status(409).json({ code: 'DRAFT_LOCKED', draft: null });
+    }
+    return res.status(200).json({ draft: result.draft });
   } catch (error) {
     console.error('Failed to delete campaign creation draft:', error);
     return res.status(500).json({ draft: null });
