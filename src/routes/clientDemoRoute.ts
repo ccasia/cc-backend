@@ -17,12 +17,7 @@ const router = Router();
 
 router.post('/', authenticate, isBdOrSuperadmin, createClientDemo);
 router.get('/company/:companyId/link', authenticate, isBdOrSuperadmin, getClientDemoLinkByCompany);
-router.post(
-  '/company/:companyId/regenerate',
-  authenticate,
-  isBdOrSuperadmin,
-  regenerateClientDemoLink
-);
+router.post('/company/:companyId/regenerate', authenticate, isBdOrSuperadmin, regenerateClientDemoLink);
 router.post('/session/:token', createClientDemoSession);
 
 // Demo campaign creation/listing — only reachable by a client_demo session.

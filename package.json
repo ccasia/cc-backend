@@ -26,7 +26,9 @@
     "push-campaigns": "ts-node campaignLogs.ts",
     "run-worker": "npx tsx src/helper/worker",
     "seed-gamification": "npx tsx prisma/seedGamification.ts",
-    "seed-leaderboard": "npx tsx src/scripts/snapshotLeaderboard.ts"
+    "seed-leaderboard": "npx tsx src/scripts/snapshotLeaderboard.ts",
+    "backfill-guest-keys": "npx tsx src/scripts/backfillGuestProfileKeys.ts",
+    "run-engagement-worker": "npx tsx src/helper/engagementExtractionWorker"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.9.0",
@@ -43,6 +45,7 @@
     "@socket.io/redis-emitter": "^5.1.0",
     "@types/bcryptjs": "^2.4.6",
     "amqplib": "^0.10.4",
+    "apify-client": "^2.25.0",
     "apple-signin-auth": "^2.0.0",
     "axios": "^1.7.7",
     "bcrypt": "^5.1.1",

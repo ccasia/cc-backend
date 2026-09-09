@@ -1,12 +1,13 @@
 import { CronJob } from 'cron';
 
-import { Entity, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import LocalizedFormat from 'dayjs/plugin/localizedFormat';
-import { Title, saveNotification } from '@controllers/notificationController';
+import { saveNotification } from '@controllers/notificationController';
 import { notifications } from '@constants/reminders';
+
 // import { clients, io } from '../server';
 import {
   reminderDueDate,
@@ -18,6 +19,7 @@ import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
 import { clients, getIo } from './socket';
 import { snapshotLeaderboard } from '../modules/gamification';
+import { reconcileStuckLogistics } from '../service/logisticsService';
 
 const prisma = new PrismaClient();
 
@@ -42,6 +44,7 @@ new CronJob(
     await prisma.campaign.updateMany({
       where: {
         status: 'SCHEDULED',
+
         campaignBrief: {
           startDate: {
             gte: todayStart,
@@ -147,6 +150,7 @@ new CronJob(
             userId: agreement.userId,
             campaignId: agreement.campaignId,
             submissionType: { type: 'AGREEMENT_FORM' },
+            contentOrder: agreement.round,
           },
           include: { campaign: { select: { name: true } } },
         });
@@ -288,6 +292,29 @@ new CronJob(
       });
     } catch (error) {
       console.error('[Cronjob] Leaderboard snapshot failed:', error);
+    }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur',
+);
+
+new CronJob(
+  '15 2 * * *', // 02:15 AM daily
+  async function () {
+    console.log('[Cronjob] Starting logistics reconciliation at', dayjs().tz('Asia/Kuala_Lumpur').format());
+
+    try {
+      const result = await reconcileStuckLogistics();
+
+      console.log('[Cronjob] Logistics reconciliation completed:', {
+        scanned: result.scanned,
+        completed: result.completed,
+        failed: result.failed,
+        timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+      });
+    } catch (error) {
+      console.error('[Cronjob] Logistics reconciliation failed:', error);
     }
   },
   null, // onComplete

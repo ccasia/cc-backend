@@ -64,7 +64,7 @@ export const updateAiSettings = async (req: AISettingsRequest, res: Response) =>
       await prisma.aiModel.create({
         data: {
           apiKey,
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.5-flash-lite',
           temperature,
           maxOutputTokens: maxTokens,
           systemPrompt: sectionPrompts,
@@ -78,7 +78,7 @@ export const updateAiSettings = async (req: AISettingsRequest, res: Response) =>
         },
         data: {
           apiKey,
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.5-flash-lite',
           temperature,
           maxOutputTokens: maxTokens,
           systemPrompt: sectionPrompts,

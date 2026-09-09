@@ -18,7 +18,6 @@ import { PrismaClient } from '@prisma/client';
 import { xero } from '@configs/xero';
 
 import { users } from '@utils/activeUsers';
-import { getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -31,7 +30,9 @@ const worker = new Worker(
     const creatorUser = invoice.creator.user;
     const creatorPaymentForm = creatorUser?.paymentForm;
     const campaign = invoice.campaign;
-    const agreement = invoice.creator.user.creatorAgreement.find((item: any) => item.campaignId === invoice.campaignId);
+    const agreement = invoice.creator.user.creatorAgreement.find(
+      (item: any) => item.campaignId === invoice.campaignId && item.round === 1,
+    );
 
     let contactID = invoice.creator.xeroContactId;
 
@@ -159,6 +160,7 @@ const worker = new Worker(
     }
 
     const { title, message } = notificationInvoiceUpdate(campaign.name);
+
     // Notify CSM admins
     const adminNotifications = await Promise.all(
       campaign.campaignAdmin
@@ -172,7 +174,8 @@ const worker = new Worker(
             threadId: invoice.id,
             entityId: invoice.campaignId,
           });
-          getIo().to(users.get(admin.adminId)).emit('notification', notification);
+
+          // getIo().to(users.get(admin.adminId)).emit('notification', notification);
           return notification;
         }),
     );
@@ -214,7 +217,7 @@ const worker = new Worker(
       entityId: invoice.campaignId,
     });
 
-    getIo().to(users.get(invoice.creatorId)).emit('notification', creatorNotification);
+    // getIo().to(users.get(invoice.creatorId)).emit('notification', creatorNotification);
   },
   {
     connection,
@@ -292,7 +295,9 @@ export const bulkInvoiceWorker = new Worker(
       try {
         if (invoice.status === 'approved' || invoice.status === 'paid') continue;
 
-        const agreement = invoice.creator.user.creatorAgreement.find((a) => a.campaignId === invoice.campaignId);
+        const agreement = invoice.creator.user.creatorAgreement.find(
+          (a) => a.campaignId === invoice.campaignId && a.round === 1,
+        );
 
         // const currency = (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR';
 
@@ -469,7 +474,7 @@ export const bulkInvoiceWorker = new Worker(
                       entityId: updatedInvoice.campaignId,
                     });
                     const userId = users.get(admin.adminId);
-                    if (userId) getIo().to(userId).emit('notification', notification);
+                    // if (userId) getIo().to(userId).emit('notification', notification);
                   } catch (e) {
                     console.error('CSM Notif failed', admin.adminId);
                   }
@@ -485,7 +490,7 @@ export const bulkInvoiceWorker = new Worker(
             entity: 'Invoice',
             entityId: updatedInvoice.campaignId,
           });
-          getIo().to(updatedInvoice.creatorId).emit('notification', creatorNotification);
+          // getIo().to(updatedInvoice.creatorId).emit('notification', creatorNotification);
         }
       } catch (batchError) {
         console.error(`Critical Batch Error for tenant ${tenantId}:`, batchError.message);

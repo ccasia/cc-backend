@@ -1,4 +1,10 @@
 import { Request, Response } from 'express';
+import { canManageCampaignCreators } from '@services/guestProfileExtraction/campaignCreatorPolicy';
+import { classifyMetricProvenance } from '@services/guestProfileExtraction/metricProvenance';
+import { normalizeProfileUrl } from '@services/guestProfileExtraction/profileUrlNormalizer';
+import { parseEngagementRate, parseFollowerCount } from '@services/guestProfileExtraction/guestCreateService';
+import { applyExtractionToPendingPitchesSafe } from '@services/guestProfileExtraction/pendingPitchMetrics';
+import { averageLikesFromSelectedPosts } from '@services/guestProfileExtraction/selectedPostStats';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 
@@ -13,6 +19,30 @@ import { clients, getIo } from '../config/socket';
 import { awardXp, onShortlisted, progressAchievement } from '@/src/modules/gamification';
 
 const prisma = new PrismaClient();
+
+const LATEST_SCRAPE_EVIDENCE = {
+  guestCreatorMetricAudits: {
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+    select: {
+      extraction: {
+        select: { selectedPosts: true },
+      },
+    },
+  },
+};
+
+const withScrapedAverageLikes = <T extends { guestCreatorMetricAudits?: Array<{ extraction?: { selectedPosts?: unknown } | null }> }>(
+  pitch: T
+) => {
+  const { guestCreatorMetricAudits, ...rest } = pitch;
+  return {
+    ...rest,
+    scrapedAverageLikes: averageLikesFromSelectedPosts(
+      guestCreatorMetricAudits?.[0]?.extraction?.selectedPosts
+    ),
+  };
+};
 
 const emitCreatorCampaignMembershipUpdated = ({
   userId,
@@ -222,8 +252,12 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       const pitchPlatform = normalizePlatform(pitch.selectedPlatform);
       if (pitch.campaign.isCreditTier) {
         try {
-          const { calculateCreatorTier } = require('@services/creditTierService');
-          const { tier } = await calculateCreatorTier(pitch.userId, pitchPlatform);
+          const { resolveAgreedTier } = require('@services/creditTierService');
+          const { tier } = await resolveAgreedTier(
+            pitch.userId,
+            pitchPlatform,
+            parsePitchFollowerCount(pitch.followerCount),
+          );
           if (tier) {
             creditPerVideo = tier.creditsPerVideo;
             creditTierId = tier.id;
@@ -284,6 +318,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
           data: {
             userId: pitch.userId,
             campaignId: pitch.campaignId,
+            round: 1,
             agreementUrl: '',
           },
         });
@@ -736,8 +771,12 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     const pitchPlatform = normalizePlatform(pitch.selectedPlatform);
     if (pitch.campaign.isCreditTier) {
       try {
-        const { calculateCreatorTier } = require('@services/creditTierService');
-        const { tier } = await calculateCreatorTier(pitch.userId, pitchPlatform);
+        const { resolveAgreedTier } = require('@services/creditTierService');
+        const { tier } = await resolveAgreedTier(
+          pitch.userId,
+          pitchPlatform,
+          parsePitchFollowerCount(pitch.followerCount),
+        );
         if (tier) {
           creditPerVideo = tier.creditsPerVideo;
           creditTierId = tier.id;
@@ -806,6 +845,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         data: {
           userId: pitch.userId,
           campaignId: pitch.campaignId,
+          round: 1,
           agreementUrl: '',
         },
       });
@@ -1639,47 +1679,86 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       whereClause.status = status as string;
     }
 
-    const pitches = await prisma.pitch.findMany({
-      where: {
-        ...whereClause,
-      },
-      include: {
-        campaign: true,
-        user: {
-          include: {
-            creator: {
-              include: {
-                instagramUser: true,
-                tiktokUser: true,
-                mediaKit: true,
-                creditTier: {
-                  select: {
-                    id: true,
-                    name: true,
-                    creditsPerVideo: true,
-                  },
+    const pitchInclude = {
+      campaign: true,
+      ...LATEST_SCRAPE_EVIDENCE,
+      user: {
+        include: {
+          creator: {
+            include: {
+              instagramUser: true,
+              tiktokUser: true,
+              mediaKit: true,
+              // The pitch modal shows interest chips; without this they would
+              // only arrive on the secondary creator fetch and pop in late.
+              interests: {
+                select: {
+                  id: true,
+                  name: true,
+                  rank: true,
+                },
+              },
+              creditTier: {
+                select: {
+                  id: true,
+                  name: true,
+                  creditsPerVideo: true,
                 },
               },
             },
           },
         },
-        admin: {
-          include: {
-            user: true,
-          },
-        },
-        client: true,
-        rejectedByAdmin: {
-          include: {
-            user: true,
-          },
-        },
-        rejectedByClient: true,
       },
-      orderBy: {
-        createdAt: 'desc',
+      admin: {
+        include: {
+          user: true,
+        },
       },
-    });
+      client: true,
+      rejectedByAdmin: {
+        include: {
+          user: true,
+        },
+      },
+      rejectedByClient: true,
+    };
+
+    const loadPitches = () =>
+      prisma.pitch.findMany({
+        where: {
+          ...whereClause,
+        },
+        include: pitchInclude,
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+    let pitches = await loadPitches();
+
+    const pendingExtractionIds = [
+      ...new Set(
+        pitches
+          .map((pitch) => pitch.pendingExtractionId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    ];
+    let appliedPendingMetrics = false;
+    for (const extractionId of pendingExtractionIds) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        appliedPendingMetrics =
+          (await applyExtractionToPendingPitchesSafe(extractionId, prisma as never)) || appliedPendingMetrics;
+      } catch (error) {
+        console.error('pending pitch apply failed', {
+          extractionId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (appliedPendingMetrics) {
+      pitches = await loadPitches();
+    }
 
     const transformedPitches = pitches
       .filter((pitch) => {
@@ -1736,12 +1815,12 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
           sanitizedUser = { ...restUser };
         }
 
-        return {
+        return withScrapedAverageLikes({
           ...pitch,
           status: normalizedStatus,
           user: sanitizedUser,
           displayStatus, // Add display status for frontend
-        };
+        });
       });
 
     return res.status(200).json(transformedPitches);
@@ -1771,6 +1850,7 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       where: { id: pitchId },
       include: {
         campaign: true,
+        ...LATEST_SCRAPE_EVIDENCE,
         user: {
           include: {
             creator: {
@@ -1778,6 +1858,21 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
                 instagramUser: true,
                 tiktokUser: true,
                 mediaKit: true,
+                // Same shape as getPitchesV3, so either endpoint can feed the modal.
+                interests: {
+                  select: {
+                    id: true,
+                    name: true,
+                    rank: true,
+                  },
+                },
+                creditTier: {
+                  select: {
+                    id: true,
+                    name: true,
+                    creditsPerVideo: true,
+                  },
+                },
               },
             },
           },
@@ -1837,10 +1932,10 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       }
     }
 
-    const transformedPitch = {
+    const transformedPitch = withScrapedAverageLikes({
       ...pitch,
       displayStatus, // Add display status for frontend
-    };
+    });
 
     return res.status(200).json(transformedPitch);
   } catch (error) {
@@ -2442,25 +2537,24 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
   const userId = req.userId;
 
   try {
-    console.log(`User ${userId} updating guest creator info for pitch ${pitchId}`);
-
-    // Find the pitch with user information
     const pitch = await prisma.pitch.findUnique({
       where: { id: pitchId },
-      include: {
-        user: {
-          include: {
-            creator: true,
-          },
-        },
-      },
+      include: { user: { include: { creator: true } } },
     });
 
     if (!pitch) {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if the user is a guest creator
+    // Exact campaign authorization. The old `isAdminOrClient` middleware let
+    // any client edit any guest creator's metrics.
+    const policy = await canManageCampaignCreators(userId, pitch.campaignId, prisma as never);
+    if (!policy.allowed) {
+      return res
+        .status(policy.code === 'CAMPAIGN_NOT_FOUND' ? 404 : 403)
+        .json({ message: policy.message, code: policy.code });
+    }
+
     const isGuest =
       pitch.user?.email?.includes('@tempmail.com') ||
       pitch.user?.email?.startsWith('guest_') ||
@@ -2470,93 +2564,155 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for guest creators' });
     }
 
-    // Validate required fields
     if (!name?.trim() || !profileLink?.trim()) {
       return res.status(400).json({ message: 'Creator name and profile link are required' });
     }
 
-    // Update user name
-    await prisma.user.update({
-      where: { id: pitch.userId },
-      data: {
-        name: name.trim(),
-      },
-    });
+    // Numeric validation. A count must be a whole number above zero, and a
+    // rate must be a percentage between 0 and 100.
+    const parsedFollowerCount = parseFollowerCount(followerCount);
+    if (parsedFollowerCount === 'invalid') {
+      return res.status(400).json({ message: 'Follower count must be a whole number above zero.' });
+    }
+    const parsedEngagementRate = parseEngagementRate(engagementRate);
+    if (parsedEngagementRate === 'invalid') {
+      return res.status(400).json({ message: 'Engagement rate must be a percentage between 0 and 100.' });
+    }
 
-    // Update creator profileLink and manualFollowerCount + credit tier
-    if (pitch.user?.creator) {
-      const creatorUpdateData: any = {
-        profileLink: profileLink.trim(),
-      };
+    // Canonicalize a supported link so identity stays consistent. A link this
+    // backend cannot canonicalize keeps its raw form, as it does today.
+    const trimmedLink = profileLink.trim();
+    const normalized = normalizeProfileUrl(trimmedLink);
+    if (!normalized.ok && /instagram\.com|tiktok\.com/i.test(trimmedLink)) {
+      return res.status(400).json({ message: normalized.message, code: normalized.code });
+    }
+    const canonicalKey = normalized.ok ? normalized.profile.canonicalKey : null;
+    const storedLink = normalized.ok ? normalized.profile.canonicalUrl : trimmedLink;
+    const platform = normalized.ok ? normalized.profile.platform : (pitch.selectedPlatform ?? null);
 
-      // If followerCount is provided, update manualFollowerCount and recalculate credit tier
-      if (followerCount !== undefined) {
-        const parsedFollowerCount = parseInt(followerCount, 10);
-        if (!isNaN(parsedFollowerCount) && parsedFollowerCount > 0) {
-          creatorUpdateData.manualFollowerCount = parsedFollowerCount;
+    if (canonicalKey) {
+      const conflict = await prisma.guestProfileIdentityConflict.findUnique({
+        where: { canonicalProfileKey: canonicalKey },
+      });
+      if (conflict && conflict.status === 'UNRESOLVED') {
+        return res.status(409).json({
+          message: `${canonicalKey} matches more than one existing guest creator. Resolve the conflict first.`,
+          code: 'GUEST_IDENTITY_CONFLICT',
+        });
+      }
 
-          // Find tier by follower count (same logic as shortlistGuestCreators)
-          const tier = await prisma.creditTier.findFirst({
-            where: {
-              isActive: true,
-              minFollowers: { lte: parsedFollowerCount },
-              OR: [{ maxFollowers: { gte: parsedFollowerCount } }, { maxFollowers: null }],
-            },
-            orderBy: [{ minFollowers: 'desc' }],
-          });
+      const owner = await prisma.creator.findFirst({
+        where: { guestProfileKey: canonicalKey },
+        select: { userId: true },
+      });
+      if (owner && owner.userId !== pitch.userId) {
+        return res.status(409).json({
+          message: 'Another creator already uses this profile link.',
+          code: 'PROFILE_LINK_TAKEN',
+        });
+      }
+    }
 
-          if (tier) {
-            creatorUpdateData.creditTierId = tier.id;
+    const finalName = name.trim();
+    const finalComments = adminComments?.trim() || null;
+
+    // One transaction. The old code did three separate writes, so a failure
+    // between them left the name, the creator, and the pitch inconsistent.
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: pitch.userId }, data: { name: finalName } });
+
+      if (pitch.user?.creator) {
+        const creatorUpdateData: any = { profileLink: storedLink };
+        if (canonicalKey) creatorUpdateData.guestProfileKey = canonicalKey;
+
+        if (followerCount !== undefined) {
+          if (parsedFollowerCount === null) {
+            creatorUpdateData.manualFollowerCount = null;
+            creatorUpdateData.creditTierId = null;
             creatorUpdateData.tierUpdatedAt = new Date();
-            console.log(
-              `Updated guest creator ${pitch.userId} tier to ${tier.name} based on ${parsedFollowerCount} followers`,
-            );
+          } else {
+            const tier = await tx.creditTier.findFirst({
+              where: {
+                isActive: true,
+                minFollowers: { lte: parsedFollowerCount },
+                OR: [{ maxFollowers: { gte: parsedFollowerCount } }, { maxFollowers: null }],
+              },
+              orderBy: [{ minFollowers: 'desc' }],
+            });
+
+            // `manualFollowerCount` is the column the UI reads. Both write
+            // paths keep it in step; see risk R2.
+            creatorUpdateData.manualFollowerCount = parsedFollowerCount;
+            if (platform === 'tiktok') {
+              creatorUpdateData.manualTiktokFollowerCount = parsedFollowerCount;
+            } else if (platform === 'instagram') {
+              creatorUpdateData.manualInstagramFollowerCount = parsedFollowerCount;
+            }
+            if (tier) {
+              creatorUpdateData.creditTierId = tier.id;
+              creatorUpdateData.tierUpdatedAt = new Date();
+            }
           }
-        } else if (followerCount?.trim?.() === '' || followerCount === null) {
-          // Clear follower count if empty
-          creatorUpdateData.manualFollowerCount = null;
-          creatorUpdateData.creditTierId = null;
-          creatorUpdateData.tierUpdatedAt = new Date();
         }
+
+        await tx.creator.update({ where: { userId: pitch.userId }, data: creatorUpdateData });
       }
 
-      await prisma.creator.update({
-        where: { userId: pitch.userId },
-        data: creatorUpdateData,
+      const pitchUpdateData: any = {};
+      if (followerCount !== undefined) {
+        pitchUpdateData.followerCount = parsedFollowerCount === null ? null : String(parsedFollowerCount);
+      }
+      if (engagementRate !== undefined) pitchUpdateData.engagementRate = parsedEngagementRate;
+      if (adminComments !== undefined) pitchUpdateData.adminComments = finalComments;
+      if (platform) pitchUpdateData.selectedPlatform = platform;
+
+      if (Object.keys(pitchUpdateData).length > 0) {
+        await tx.pitch.update({ where: { id: pitchId }, data: pitchUpdateData });
+      }
+
+      // An update has no receipt, so its provenance is manual or unavailable.
+      const provenance = classifyMetricProvenance({
+        receiptVerified: false,
+        original: {
+          name: pitch.user?.name ?? null,
+          followerCount: pitch.followerCount ? Number(pitch.followerCount) : null,
+          engagementRate: pitch.engagementRate ?? null,
+        },
+        final: {
+          name: finalName,
+          followerCount: parsedFollowerCount === null ? null : parsedFollowerCount,
+          engagementRate: parsedEngagementRate,
+        },
       });
-    }
 
-    // Update pitch with followerCount and adminComments
-    const pitchUpdateData: any = {};
-
-    const fieldsToUpdate = {
-      followerCount,
-      engagementRate,
-      adminComments,
-    };
-
-    Object.entries(fieldsToUpdate).forEach(([key, value]) => {
-      if (value !== undefined) {
-        pitchUpdateData[key] = value?.trim?.() || null;
-      }
+      await tx.guestCreatorMetricAudit.create({
+        data: {
+          pitchId,
+          guestUserId: pitch.userId,
+          canonicalProfileKey: canonicalKey,
+          platform,
+          originalName: provenance.original.name,
+          originalFollowerCount: provenance.original.followerCount,
+          originalEngagementRate: provenance.original.engagementRate,
+          finalName: provenance.final.name,
+          finalFollowerCount: provenance.final.followerCount,
+          finalEngagementRate: provenance.final.engagementRate,
+          source: provenance.source,
+          overrideReason: provenance.overrideReason ?? 'Edited by hand on the pitch row.',
+          performedByUserId: userId as string,
+          reviewerUserId: userId as string,
+        },
+      });
     });
 
-    if (Object.keys(pitchUpdateData).length > 0) {
-      await prisma.pitch.update({
-        where: { id: pitchId },
-        data: pitchUpdateData,
-      });
-    }
-
-    console.log(`Guest creator info updated for pitch ${pitchId}`);
     return res.status(200).json({
       message: 'Guest creator information updated successfully!',
       data: {
-        name: name.trim(),
-        followerCount: followerCount?.trim?.() || null,
-        engagementRate: engagementRate?.trim?.() || null,
-        profileLink: profileLink.trim(),
-        adminComments: adminComments?.trim() || null,
+        name: finalName,
+        followerCount: parsedFollowerCount === null ? null : String(parsedFollowerCount),
+        engagementRate: parsedEngagementRate,
+        profileLink: storedLink,
+        adminComments: finalComments,
       },
     });
   } catch (error) {
@@ -2723,4 +2879,10 @@ export const acceptInviteByCreator = async (req: Request, res: Response) => {
     console.error('Error accepting invite by creator:', error);
     return res.status(500).json({ message: 'Failed to accept invite' });
   }
+};
+
+const parsePitchFollowerCount = (followerCount?: string | null): number | null => {
+  const digits = String(followerCount ?? '').replace(/\D/g, '');
+  const parsed = Number.parseInt(digits, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };

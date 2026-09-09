@@ -190,6 +190,31 @@ export const batchUpdateCreatorTiers = async (
 };
 
 /**
+ * Resolve the tier for a campaign agreement.
+ *
+ * The admin's submitted follower count is authoritative: they source the creator
+ * themselves and a media kit can be stale or absent. Only when no count is
+ * submitted do we fall back to the creator's live follower data.
+ *
+ * Callers persist the result on ShortListedCreator as a per-campaign snapshot.
+ * Do NOT use this to maintain Creator.creditTier, which tracks live socials.
+ */
+export const resolveAgreedTier = async (
+  userId: string,
+  selectedPlatform?: PlatformType,
+  submittedFollowerCount?: number | null,
+): Promise<TierCalculationResult> => {
+  if (submittedFollowerCount && submittedFollowerCount > 0) {
+    return {
+      followerCount: submittedFollowerCount,
+      tier: await getTierByFollowerCount(submittedFollowerCount),
+    };
+  }
+
+  return calculateCreatorTier(userId, selectedPlatform);
+};
+
+/**
  * Calculate total credit cost for a creator based on video count and their tier
  * Used when shortlisting/assigning creators to credit tier campaigns
  */
@@ -331,21 +356,20 @@ export const updateManualFollowerCount = async (userId: string, followerCount: n
  * Calculate total credits used/assigned in a credit tier campaign
  * Considers per-video costs for each shortlisted creator
  */
-export const calculateCampaignCreditsUsed = async (campaignId: string): Promise<number> => {
-  const shortlisted = await prisma.shortListedCreator.findMany({
+// Reads CreatorAgreement, not ShortListedCreator's single cached creditPerVideo — a
+// creator's rounds can each use a different platform/tier, so one cached value won't do.
+export const calculateCampaignCreditsUsed = async (
+  campaignId: string,
+  excludeUserId?: string,
+): Promise<number> => {
+  const result = await prisma.creatorAgreement.aggregate({
     where: {
       campaignId,
-      ugcVideos: { gt: 0 },
+      isSent: true,
+      ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
     },
-    select: {
-      ugcVideos: true,
-      creditPerVideo: true,
-    },
+    _sum: { creditsAssigned: true },
   });
 
-  return shortlisted.reduce((total, creator) => {
-    const videos = creator.ugcVideos ?? 0;
-    const perVideo = creator.creditPerVideo ?? 1; // Default to 1 for non-tier assignments
-    return total + videos * perVideo;
-  }, 0);
+  return result._sum.creditsAssigned ?? 0;
 };

@@ -89,7 +89,9 @@ async function main() {
         } as any,
       });
 
-      console.log(`✅ ${creator.userId}: engagement_rate=${engagement_rate.toFixed(2)}%, analyticsData=${!!analyticsData}`);
+      console.log(
+        `✅ ${creator.userId}: engagement_rate=${engagement_rate.toFixed(2)}%, analyticsData=${!!analyticsData}`,
+      );
       success++;
     } catch (error: any) {
       console.error(`❌ ${creator.userId}: ${error.message}`);

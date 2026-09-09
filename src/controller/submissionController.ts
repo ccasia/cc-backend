@@ -1444,7 +1444,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       // Handle UGC campaign specific logic
       if (submission.campaign.campaignType === 'ugc' && result.status === 'APPROVED') {
         const invoiceAmount = submission.user.creatorAgreement.find(
-          (elem: any) => elem.campaignId === submission.campaign.id,
+          (elem: any) => elem.campaignId === submission.campaign.id && elem.round === 1,
         )?.amount;
 
         const invoice = await createInvoiceService(submission, userId, invoiceAmount, undefined, undefined, userId);
@@ -2125,7 +2125,9 @@ export const approvePostingLinkBySuperadminV2 = async (req: Request, res: Respon
         include: { user: { include: { creatorAgreement: true } }, campaign: { include: { campaignBrief: true } } },
       });
       if (creator && !creator.isCampaignDone) {
-        const amount = creator.user?.creatorAgreement.find((e) => e.campaignId === creator.campaign.id)?.amount;
+        const amount = creator.user?.creatorAgreement.find(
+          (e) => e.campaignId === creator.campaign.id && e.round === 1,
+        )?.amount;
         const invoice = await createInvoiceService(
           { ...creator, userId: creator.user?.id, campaignId: creator.campaign.id },
           superadminId,
@@ -2675,7 +2677,7 @@ export const adminManageVideos = async (req: Request, res: Response) => {
 
         if (approveSubmission.campaign.campaignType == 'ugc') {
           const invoiceAmount = approveSubmission.user.creatorAgreement.find(
-            (elem: any) => elem.campaignId === approveSubmission.campaign.id,
+            (elem: any) => elem.campaignId === approveSubmission.campaign.id && elem.round === 1,
           )?.amount;
 
           if (approveSubmission.campaign.campaignCredits !== null) {
@@ -5017,6 +5019,8 @@ export const uploadSubmissionCaption = async (req: Request, res: Response) => {
   const id = req.params.id;
   const userId = req.userId;
   const caption = req.body.caption;
+
+  console.log('CAPTION', caption);
 
   if (!id) return res.status(400).json({ message: 'Id is missing' });
 

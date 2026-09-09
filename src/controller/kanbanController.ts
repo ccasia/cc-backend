@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { Columns } from '@types';
+import { Columns } from '../types/columns';
 
 const prisma = new PrismaClient();
 

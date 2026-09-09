@@ -1,5 +1,7 @@
 import { Storage } from '@google-cloud/storage';
 
+import { MEDIA_BASE_URL } from '@configs/cloudStorage.config';
+
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -44,8 +46,9 @@ export async function uploadToGCS(localPath: string, objectPath: string): Promis
 }
 
 export function buildPublicUrl(objectPath: string): string {
-  // adjust based on how your bucket serves files — public bucket, CDN domain, or signed read URL
-  return `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${objectPath}`;
+  return MEDIA_BASE_URL
+    ? `${MEDIA_BASE_URL}/${objectPath}`
+    : `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${objectPath}`;
 }
 
 export async function deleteFile(objectPath: string): Promise<void> {

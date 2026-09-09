@@ -281,7 +281,7 @@ export const getFinanceInvoices = async (status: FinanceInvoiceStatus, startDate
         select: {
           name: true,
           creatorAgreement: {
-            select: { userId: true, currency: true },
+            select: { userId: true, currency: true, round: true },
           },
           campaignAdmin: {
             select: {
@@ -304,7 +304,9 @@ export const getFinanceInvoices = async (status: FinanceInvoiceStatus, startDate
       currency?: string;
       items?: { currency?: string }[];
     } | null;
-    const agreement = invoice.campaign.creatorAgreement.find((item) => item.userId === invoice.creatorId);
+    const agreement = invoice.campaign.creatorAgreement.find(
+      (item) => item.userId === invoice.creatorId && item.round === 1,
+    );
     const campaignAdmin =
       invoice.campaign.campaignAdmin.find((item) => item.role === 'manager') ||
       invoice.campaign.campaignAdmin.find((item) => item.role === 'owner') ||

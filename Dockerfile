@@ -62,6 +62,7 @@ RUN apk add --no-cache \
     libreoffice \
     ttf-dejavu \
     fontconfig \
+    ffmpeg \
     && rm -rf /var/cache/apk/*
 
 RUN yarn global add pm2

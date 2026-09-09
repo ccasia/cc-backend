@@ -45,7 +45,7 @@ async function main() {
     }
 
     report.push({
-      phoneNumber: dup.phoneNumber,
+      phoneNumber: dup.phoneNumber ?? '',
       affectedUserIds: users.map((u) => u.id),
       affectedCount: users.length,
     });

@@ -13,6 +13,8 @@ import { ClientInvitation } from '@configs/nodemailer.config';
 import jwt, { Secret } from 'jsonwebtoken';
 import dayjs from 'dayjs';
 
+import { getIo } from '../config/socket';
+
 const prisma = new PrismaClient();
 
 // for creating new company with brand
@@ -503,7 +505,8 @@ const PACKAGE_HIERARCHY: Record<string, number> = {
 export const handleLinkNewPackage = async (req: Request, res: Response) => {
   const { companyId } = req.params;
   const data = req.body;
-  const { invoiceDate, validityPeriod, currency, packageId, packageType, totalUGCCredits, packageValue } = data;
+  const { invoiceDate, validityPeriod, currency, packageId, packageType, totalUGCCredits, packageValue, campaignId } =
+    data;
   const adminId = req.userId;
 
   if (!companyId) return res.status(404).json({ message: 'Company ID not found.' });
@@ -652,6 +655,13 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
         },
       });
     });
+
+    // If this was attached from a specific campaign's modal, push the change to anyone with
+    // that campaign open right now (e.g. "Package Credits Remaining") so it updates without a
+    // manual refresh.
+    if (campaignId) {
+      getIo().to(campaignId).emit('campaign:credits:updated', { campaignId });
+    }
 
     return res.status(200).json({ message: 'Successfully created' });
   } catch (error) {

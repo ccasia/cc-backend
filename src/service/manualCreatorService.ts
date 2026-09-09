@@ -63,7 +63,8 @@ export const validateUsername = (username: string): { isValid: boolean; reason?:
   if (!/^@?[A-Za-z0-9_.]+$/.test(username.trim())) {
     return {
       isValid: false,
-      reason: 'Username can only contain letters, numbers, periods and underscores (paste a plain handle, not a share link)',
+      reason:
+        'Username can only contain letters, numbers, periods and underscores (paste a plain handle, not a share link)',
     };
   }
 

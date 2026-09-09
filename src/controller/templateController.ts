@@ -50,7 +50,7 @@ export const getTemplatebyId = async (req: Request, res: Response) => {
 export const createNewTemplate = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { signedAgreement, signatureImage } = req.files as any;
-  const { name, icNumber, campaignId } = JSON.parse(req.body.data);
+  const { name, icNumber, campaignId, campaignType } = JSON.parse(req.body.data);
   const uniqueId = randomUUID();
 
   try {
@@ -88,6 +88,9 @@ export const createNewTemplate = async (req: Request, res: Response) => {
         adminICNumber: icNumber,
         campaign: campaignId && { connect: { id: campaignId } },
         user: { connect: { id: user.id } },
+        ...(campaignType && {
+          agreementTemplateType: campaignType,
+        }),
       },
     });
 
@@ -96,11 +99,3 @@ export const createNewTemplate = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
-
-// export const getTemplateByUserId = async (req: Request, res: Response) => {
-//   const { userId } = req.params;
-//   try {
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// };

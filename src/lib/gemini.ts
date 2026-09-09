@@ -20,7 +20,7 @@ export async function createGemini(aiModel?: AiModel): Promise<ChatGoogleGenerat
   if (!aiModel?.apiKey) throw new Error('API key not found');
 
   return new ChatGoogleGenerativeAI({
-    model: aiModel?.model || 'gemini-2.5-flash',
+    model: aiModel?.model || 'gemini-3.5-flash-lite',
     apiKey: aiModel?.apiKey || process.env.GOOGLE_API_KEY,
     temperature: aiModel?.temperature || 0.7,
     maxOutputTokens: aiModel?.maxOutputTokens || 1024,

@@ -184,6 +184,7 @@ function aggregateCreatorResults(
       saved: cSaved,
       comments: cComments,
     });
+
     creatorPersonas.push({
       userId: creator.userId,
       totalViews: cViews,
@@ -258,6 +259,18 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
   const manualIgTotals = manualSum(manualIg);
   const manualTtTotals = manualSum(manualTt);
 
+  const igEngRate = ig.creatorPersonas.reduce((acc, cur) => acc + (cur?.engagementRate ?? 0), 0);
+  const tiktokEngRate = tt.creatorPersonas.reduce((acc, cur) => acc + (cur?.engagementRate ?? 0), 0);
+  const manualIgEngRate = manualIg.reduce((acc, cur) => acc + (cur.engagementRate ?? 0), 0);
+  const manualTtEngRate = manualTt.reduce((acc, cur) => acc + (cur.engagementRate ?? 0), 0);
+  const totalCreators = ig.creatorPersonas.length + tt.creatorPersonas.length + manualIg.length + manualTt.length;
+  const engagementRevised = Math.max(
+    totalCreators > 0
+      ? +((igEngRate + tiktokEngRate + manualIgEngRate + manualTtEngRate) / totalCreators).toFixed(2)
+      : 0,
+    0,
+  );
+
   // Latest snapshot totals per platform
   // const snapIgTotals = {
   //   views: snapshotIg?.totalViews ?? 0,
@@ -325,7 +338,7 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
     summary: {
       totalViews,
       totalEngagements,
-      engagementRate,
+      engagementRate: engagementRevised,
       reach: totalReach,
       impressions: totalImpressions,
       totalLikes,
