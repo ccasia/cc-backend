@@ -54,11 +54,29 @@ export const getCreatorCount = async (_req: Request, res: Response) => {
   }
 };
 
-export const getCreators = async (_req: Request, res: Response) => {
+export const getCreators = async (req: Request, res: Response) => {
   try {
+    const { cursor, limit = 10, search } = req.query;
+
     const creators = await prisma.user.findMany({
+      take: Number(limit) + 1,
+      ...(cursor && {
+        skip: 1,
+        cursor: {
+          id: cursor as string,
+        },
+      }),
+      orderBy: {
+        id: 'asc',
+      },
       where: {
         role: 'creator',
+        ...(search && {
+          name: {
+            contains: search as string,
+            mode: 'insensitive',
+          },
+        }),
       },
       select: {
         id: true,
@@ -90,7 +108,37 @@ export const getCreators = async (_req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json(creators);
+    if (creators?.length === 0) {
+      const data = {
+        data: {
+          creators: [],
+        },
+        metaData: {
+          lastCursor: null,
+          hasNextPage: false,
+        },
+      };
+
+      return res.status(200).json(data);
+    }
+
+    const hasNextPage = creators.length === Number(limit) + 1;
+
+    const pageCreators = hasNextPage ? creators.slice(0, Number(limit)) : creators;
+
+    const lastCursor = hasNextPage ? pageCreators[pageCreators.length - 1]?.id : null;
+
+    const data = {
+      data: {
+        creators: pageCreators,
+      },
+      metaData: {
+        lastCursor: lastCursor,
+        hasNextPage,
+      },
+    };
+
+    return res.status(200).json(data);
   } catch (error) {
     console.log(error);
     return res.status(400).json({ message: error });
