@@ -975,9 +975,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
   const isClientCampaign =
     rawData?.isClientCampaign === true ||
     (rawData?.isClientCampaign === undefined && rawData?.submissionVersion === 'v4');
-  const draftUploadPrefixes = buildOwnedUrlPrefixes(
-    `campaign-creation-drafts/${encodeURIComponent(req.userId!)}/`,
-  );
+  const draftUploadPrefixes = buildOwnedUrlPrefixes(`campaign-creation-drafts/${encodeURIComponent(req.userId!)}/`);
   const isOwnedDraftFileUrl = (value: unknown): value is string =>
     typeof value === 'string' && draftUploadPrefixes.some((prefix) => value.startsWith(prefix));
 

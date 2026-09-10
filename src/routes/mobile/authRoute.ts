@@ -15,6 +15,9 @@ import {
   linkGoogle,
   unlinkGoogle,
   completeOnboarding,
+  forgetPassword,
+  verifyResetCode,
+  resetPassword,
 } from '@controllers/mobile/authController';
 import { authenticate } from '@middlewares/authenticate';
 import { Router } from 'express';
@@ -27,9 +30,15 @@ authRoute.post('/register', register);
 
 authRoute.post('/refresh', tokenRefresh);
 
+authRoute.post('/forgot-password', forgetPassword);
+
 authRoute.post('/verify-email', verifyEmail);
 
 authRoute.post('/resend-verification', resendVerification);
+
+authRoute.post('/verify-reset-code', verifyResetCode);
+
+authRoute.post('/reset-password', resetPassword);
 
 authRoute.post('/apple', appleLogin);
 

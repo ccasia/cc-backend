@@ -168,12 +168,14 @@ model EmailVerification {
 }
 
 model ResetPasswordToken {
-  id        String   @id @unique @default(cuid())
+  id        String    @id @unique @default(cuid())
   token     String?
-  userId    String?  @unique
-  used      Boolean  @default(false)
-  createdAt DateTime @default(now())
-  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?   @unique
+  used      Boolean   @default(false)
+  attempts  Int       @default(0)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User?     @relation(fields: [userId], references: [id])
 }
 
 model Admin {
@@ -2543,7 +2545,7 @@ model CampaignPCR {
   campaignId String   @unique
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  content Json // Stores all editable PCR content as JSON
+  content  Json // Stores all editable PCR content as JSON
   revision Int  @default(1)
 
   createdAt DateTime @default(now())

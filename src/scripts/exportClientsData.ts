@@ -2,8 +2,9 @@
 /* eslint-disable promise/catch-or-return */
 import { PrismaClient } from '@prisma/client';
 import { JWT } from 'google-auth-library';
-import { getCountryShortCode, normalizePhone } from '../helper/normalizedPhoneNumber';
+// import { getCountryShortCode, normalizePhone } from '../helper/normalizedPhoneNumber';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
+import { getCountryShortCode, normalizePhone } from '../service/phone_number';
 
 const prisma = new PrismaClient();
 

@@ -18,7 +18,8 @@ import { saveCreatorToSpreadsheet } from '@/src/helper/registeredCreatorSpreadsh
 import { exchangeAppleAuthorizationCode, exchangeAppleRefreshToken, revokeAppleToken } from '@/src/utils/apple';
 import { verifyGoogleIdToken } from '@/src/utils/google';
 import WhatsappSetting from '@/src/service/whatsappSetting';
-import { generate, generateSecret } from 'otplib';
+import { generate, generateSecret, verify } from 'otplib';
+import { normalizePhone } from '@/src/service/phone_number';
 
 interface MobileCreatorData {
   phone?: string;
@@ -1502,6 +1503,207 @@ export const completeOnboarding = async (req: Request<{}, {}, { creatorData?: Mo
     return res.status(200).json({ success: true, user: userWithCreator });
   } catch (error) {
     console.error('completeOnboarding error:', error);
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Failed' });
+  }
+};
+
+export const forgetPassword = async (req: Request, res: Response) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone || typeof phone !== 'string' || phone.trim().length < 7) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid phone number' });
+    }
+
+    const normalizedInput = phone.replace(/\D/g, '');
+
+    const users = await prisma.user.findMany({
+      where: { phoneNumber: { not: null } },
+      select: { id: true, phoneNumber: true, status: true },
+    });
+
+    const user = users.find((u) => u.phoneNumber?.replace(/\D/g, '') === normalizedInput);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'No account registered with this phone number' });
+    }
+
+    switch (user.status) {
+      case 'banned':
+        return res.status(400).json({ success: false, message: 'Account banned.' });
+      case 'pending':
+        return res.status(400).json({ success: false, message: 'Account pending.' });
+      case 'blacklisted':
+        return res.status(400).json({ success: false, message: 'Account blacklisted.' });
+      case 'suspended':
+        return res.status(400).json({ success: false, message: 'Account suspended.' });
+      case 'spam':
+        return res.status(400).json({ success: false, message: 'Account spam.' });
+      case 'rejected':
+        return res.status(400).json({ success: false, message: 'Account rejected.' });
+      case 'deleted':
+        return res.status(400).json({ success: false, message: 'Account not found.' });
+    }
+
+    const whatsapp = new WhatsappSetting();
+    await whatsapp.initialize();
+
+    const secret = generateSecret();
+
+    // Generate current token
+    const token = await generate({ secret });
+
+    await prisma.resetPasswordToken.upsert({
+      where: { userId: user.id },
+      update: {
+        token: secret,
+        used: false,
+        attempts: 0,
+        expiresAt: dayjs().add(15, 'minute').toDate(),
+        createdAt: new Date(),
+      },
+      create: { userId: user.id, token: secret, used: false, expiresAt: dayjs().add(15, 'minute').toDate() },
+    });
+
+    await whatsapp.sendVerificationCode(user.phoneNumber!, token);
+
+    return res.status(200).json({ success: true, message: 'Verification code sent to your WhatsApp' });
+  } catch (error) {
+    console.error('forgetPassword error:', error);
+
+    if (error instanceof Error && error.message.includes('Whatsapp')) {
+      return res.status(400).json({ success: false, message: 'Please contact our admin.' });
+    }
+
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Failed' });
+  }
+};
+
+export const verifyResetCode = async (req: Request<{}, {}, { phone: string; code: string }>, res: Response) => {
+  try {
+    const { phone, code } = req.body;
+
+    if (!phone || typeof phone !== 'string' || !code || typeof code !== 'string') {
+      return res.status(400).json({ success: false, message: 'Phone number and code are required' });
+    }
+
+    const phoneResult = normalizePhone(phone);
+
+    if (phoneResult.status === 'invalid') {
+      return res.status(400).json({ success: false, message: 'Please enter a valid phone number' });
+    }
+
+    const normalizedInput = phoneResult.e164.replace(/\D/g, '');
+
+    const users = await prisma.user.findMany({
+      where: { phoneNumber: { not: null } },
+      select: { id: true, phoneNumber: true },
+    });
+
+    const user = users.find((u) => u.phoneNumber?.replace(/\D/g, '') === normalizedInput);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'No account registered with this phone number' });
+    }
+
+    const resetRecord = await prisma.resetPasswordToken.findUnique({ where: { userId: user.id } });
+
+    if (!resetRecord || !resetRecord.token || resetRecord.used) {
+      return res.status(400).json({ success: false, message: 'Please request a new code' });
+    }
+
+    if (resetRecord.expiresAt && dayjs().isAfter(resetRecord.expiresAt)) {
+      return res.status(400).json({ success: false, message: 'Code has expired, please request a new one' });
+    }
+
+    if (resetRecord.attempts >= 5) {
+      return res.status(429).json({ success: false, message: 'Too many attempts, please request a new code' });
+    }
+
+    const isValid = await verify({ token: code, secret: resetRecord.token, epochTolerance: 600 });
+
+    if (!isValid.valid) {
+      await prisma.resetPasswordToken.update({
+        where: { userId: user.id },
+        data: { attempts: { increment: 1 } },
+      });
+      return res.status(400).json({ success: false, message: 'Invalid code' });
+    }
+
+    // Consume the OTP so it can't be replayed; the reset token below carries the flow forward.
+    await prisma.resetPasswordToken.update({
+      where: { userId: user.id },
+      data: { used: true },
+    });
+
+    const resetToken = jwt.sign({ userId: user.id, purpose: 'reset-password' }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '10m',
+    });
+
+    return res.status(200).json({ success: true, message: 'Code verified', resetToken });
+  } catch (error) {
+    console.error('verifyResetCode error:', error);
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Failed' });
+  }
+};
+
+export const resetPassword = async (
+  req: Request<{}, {}, { resetToken: string; newPassword: string }>,
+  res: Response,
+) => {
+  try {
+    const { resetToken, newPassword } = req.body;
+
+    if (!resetToken || typeof resetToken !== 'string') {
+      return res.status(400).json({ success: false, message: 'Reset token is required' });
+    }
+
+    const schema = z.object({
+      newPassword: z
+        .string()
+        .min(8)
+        .regex(/[0-9]/)
+        .regex(/[@$!%*?&#]/)
+        .refine((p) => /[a-z]/.test(p) && /[A-Z]/.test(p)),
+    });
+
+    const parsed = schema.safeParse({ newPassword });
+
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, message: 'Invalid password format' });
+    }
+
+    let decoded: { userId: string; purpose: string };
+    try {
+      decoded = jwt.verify(resetToken, process.env.ACCESSKEY as Secret) as { userId: string; purpose: string };
+    } catch {
+      return res.status(401).json({ success: false, message: 'Invalid or expired reset token' });
+    }
+
+    if (decoded.purpose !== 'reset-password') {
+      return res.status(401).json({ success: false, message: 'Invalid reset token' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const resetRecord = await prisma.resetPasswordToken.findUnique({ where: { userId: user.id } });
+    if (!resetRecord || !resetRecord.used) {
+      return res.status(401).json({ success: false, message: 'Please verify your code again' });
+    }
+
+    const latestPassword = await bcrypt.hash(newPassword, 10);
+    console.log(latestPassword);
+
+    await handleChangePassword({ userId: user.id, latestPassword });
+
+    await prisma.resetPasswordToken.delete({ where: { userId: user.id } });
+
+    return res.status(200).json({ success: true, message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('resetPassword error:', error);
     return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Failed' });
   }
 };
