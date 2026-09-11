@@ -965,6 +965,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     submissionVersion,
     // Credit tier pricing
     isCreditTier,
+    isNdaRequired,
   } = rawData;
 
   const clientManagers = Array.isArray(rawData?.clientManagers) ? rawData.clientManagers : [];
@@ -1125,6 +1126,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             origin: 'ADMIN',
             submissionVersion: submissionVersion || 'v4',
             isCreditTier: isCreditTier === true,
+            isNdaRequired: isNdaRequired === true,
             rawFootage: rawFootage || false,
             ads: ads || false,
             photos: photos || false,
@@ -1569,6 +1571,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
     ads,
     campaignManager,
     agreementFrom,
+    isNdaRequired,
     timeline,
     campaignStage,
     // Client + credits (brief/handover activation: charge subs + link package)
@@ -1771,6 +1774,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
             status: nextStatus,
             publishedAt: setPublishedAt ? new Date() : existing.publishedAt,
             agreementTemplate: agreementFrom?.id ? { connect: { id: agreementFrom.id } } : undefined,
+            ...(typeof isNdaRequired === 'boolean' && { isNdaRequired }),
             ...creditFields,
             ...(subscriptionToConnect && { subscription: { connect: { id: subscriptionToConnect } } }),
           },
@@ -5510,19 +5514,9 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         ads,
         crossPosting,
         isCreditTier: isCreditTier === true,
+        ...(typeof isNdaRequired === 'boolean' && { isNdaRequired }),
       },
     });
-
-    if (campaign.agreementTemplateId) {
-      await prisma.agreementTemplate.update({
-        where: {
-          id: campaign.agreementTemplateId!,
-        },
-        data: {
-          isNdaRequired: isNdaRequired,
-        },
-      });
-    }
 
     // Handle timeline changes when campaignType changes
     const newCampaignType = campaignType || 'normal';
@@ -10376,10 +10370,6 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     // Ensure campaignManager is always an array
     const campaignManagerArray = Array.isArray(campaignManager) ? campaignManager : [campaignManager];
 
-    if (!agreementTemplateId) {
-      return res.status(400).json({ message: 'Agreement template is required' });
-    }
-
     // Check if campaign exists and is in PENDING_ADMIN_ACTIVATION or SCHEDULED status
     const campaign = await prisma.campaign.findFirst({
       where: {
@@ -10439,11 +10429,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
         photos,
         ads,
         crossPosting,
-        agreementTemplate: {
-          connect: {
-            id: agreementTemplateId,
-          },
-        },
+        agreementTemplate: agreementTemplateId ? { connect: { id: agreementTemplateId } } : undefined,
         ...(campaignImageUrls.length > 0 && {
           campaignBrief: {
             update: {
