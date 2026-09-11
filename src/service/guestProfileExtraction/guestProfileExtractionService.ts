@@ -97,6 +97,7 @@ export interface StartExtractionInput {
   campaignId: string;
   requesterUserId: string;
   profileLink: string;
+  expectedPlatform?: SupportedPlatform;
   idempotencyKey: string;
 }
 
@@ -108,6 +109,17 @@ export async function startExtraction(input: StartExtractionInput, deps: Extract
     return { status: 'rejected', code: normalized.code, message: normalized.message };
   }
   const profile: CanonicalProfile = normalized.profile;
+
+  // Registered-creator rows carry explicit admin intent. Reject a mismatch
+  // before identity checks, cache lookup, persistence, or queueing.
+  if (input.expectedPlatform && profile.platform !== input.expectedPlatform) {
+    const label = input.expectedPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
+    return {
+      status: 'rejected',
+      code: 'PLATFORM_MISMATCH',
+      message: `Use a ${label} profile link.`,
+    };
+  }
 
   const conflict = await store.guestProfileIdentityConflict.findUnique({
     where: { canonicalProfileKey: profile.canonicalKey },
