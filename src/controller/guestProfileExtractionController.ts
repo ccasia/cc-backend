@@ -26,6 +26,7 @@ import { enqueueExtraction } from '@utils/queue';
 const startSchema = z.object({
   clientRowId: z.string().min(1).max(64),
   profileLink: z.string().min(1).max(2048),
+  expectedPlatform: z.enum(['instagram', 'tiktok']).optional(),
 });
 
 const idempotencyKeySchema = z.string().min(8).max(120);
@@ -73,6 +74,13 @@ export const startGuestProfileExtraction = async (req: Request, res: Response) =
 
   const body = startSchema.safeParse(req.body);
   if (!body.success) {
+    if (body.error.issues.some((issue) => issue.path[0] === 'expectedPlatform')) {
+      return res.status(400).json({
+        code: 'UNSUPPORTED_PLATFORM',
+        message: 'expectedPlatform must be instagram or tiktok.',
+      });
+    }
+
     return res.status(400).json({ message: 'A clientRowId and a profileLink are required.' });
   }
 
@@ -81,8 +89,8 @@ export const startGuestProfileExtraction = async (req: Request, res: Response) =
       {
         campaignId,
         requesterUserId: allowed.userId,
-        // The platform is derived from the link. A supplied one is ignored.
         profileLink: body.data.profileLink,
+        expectedPlatform: body.data.expectedPlatform,
         idempotencyKey: key.data,
       },
       buildDeps(),
