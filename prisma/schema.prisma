@@ -803,6 +803,9 @@ model Campaign {
   // Credit Tiering: When true, creator costs based on follower tier instead of flat 1 credit/video
   isCreditTier Boolean @default(false)
 
+  // Adds the Confidentiality (NDA) section to generated creator agreements
+  isNdaRequired Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

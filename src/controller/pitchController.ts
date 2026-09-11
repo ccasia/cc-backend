@@ -1403,13 +1403,9 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Pitch is not in correct status for agreement setup' });
     }
 
-    const resolvedTemplateId = (agreementTemplateId as string | undefined) || pitch.campaign.agreementTemplateId;
-    if (!resolvedTemplateId) {
-      return res.status(400).json({
-        message:
-          'Agreement template is required. Set a default agreement template on the campaign or pass agreementTemplateId.',
-      });
-    }
+    // Agreements use a fixed company signatory, so a template is optional (kept for older campaigns).
+    const resolvedTemplateId =
+      (agreementTemplateId as string | undefined) || pitch.campaign.agreementTemplateId || null;
 
     // Update pitch status and set agreement details
     const updatedPitchAgreement = await prisma.pitch.update({
