@@ -1910,7 +1910,7 @@ model ProductSeeding {
   value Float
 
   createdAt DateTime @default(now())
-  updatedAr DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   creatorAgreement   CreatorAgreement? @relation(fields: [creatorAgreementId], references: [id])
   creatorAgreementId String?
