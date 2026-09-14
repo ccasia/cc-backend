@@ -2387,3 +2387,24 @@ export const checkEmailExistence = async (req: Request<{}, {}, {}, { email: stri
     return res.status(500).end();
   }
 };
+
+export const checkPhoneExistence = async (req: Request<{}, {}, {}, { phone: string }>, res: Response) => {
+  const phone = req.query.phone;
+
+  if (!phone) return res.status(400).json({ message: 'Phone number is required', success: false });
+
+  try {
+    const isExist = await prisma.user.findFirst({
+      where: {
+        phoneNumber: phone,
+      },
+    });
+
+    if (isExist)
+      return res.status(400).json({ message: 'Phone number already registered.', success: false, phoneExist: true });
+
+    return res.sendStatus(200);
+  } catch (error) {
+    return res.status(500).end();
+  }
+};
