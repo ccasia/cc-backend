@@ -2139,7 +2139,7 @@ export const verifyCode = async (req: Request<{}, {}, { code: string }>, res: Re
     req.session.otp = undefined;
 
     const [user] = await prisma.$transaction([
-      prisma.user.update({ where: { id: userId }, data: { status: 'active' } }),
+      prisma.user.update({ where: { id: userId }, data: { status: 'active', isPhoneVerified: true } }),
       prisma.emailVerification.deleteMany({
         where: {
           user: {
