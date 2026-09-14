@@ -7444,6 +7444,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
           amount: paymentAmount,
           currency: currency,
           ...roundSnapshotData,
+          isSeeding: isSeedingAgreement,
           ...(productSeeding && { productSeeding }),
         },
         include: {
