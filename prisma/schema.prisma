@@ -1871,29 +1871,31 @@ model TaskAssignee {
 }
 
 model CreatorAgreement {
-  id                String          @id @unique @default(cuid())
+  id                String    @id @unique @default(cuid())
   agreementUrl      String
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  isSent            Boolean         @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  isSent            Boolean   @default(false)
   amount            String?
   currency          String?
   userId            String
   campaignId        String
   completedAt       DateTime?
   approvedByAdminId String?
-  round             Int             @default(1)
-  selectedPlatform  SocialPlatform?
-  videoCount        Int?
-  followerCount     Int?
-  creditPerVideo    Int?
-  creditTierId      String?
-  creditsAssigned   Int?
-  campaign          Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  admin             Admin?          @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
-  creditTier        CreditTier?     @relation(fields: [creditTierId], references: [id])
-  version           Int?            @default(1)
+
+  round Int @default(1)
+
+  selectedPlatform SocialPlatform?
+  videoCount       Int?
+  followerCount    Int?
+  creditPerVideo   Int?
+  creditTierId     String?
+  creditsAssigned  Int?
+  campaign         Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin            Admin?          @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
+  creditTier       CreditTier?     @relation(fields: [creditTierId], references: [id])
+  version          Int?            @default(1)
 
   isSeeding      Boolean          @default(false)
   productSeeding ProductSeeding[]

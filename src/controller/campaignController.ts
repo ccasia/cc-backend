@@ -6975,179 +6975,6 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
   }
 };
 
-// export const createLogistics = async (req: Request, res: Response) => {
-//   const {
-//     data: { trackingNumber, itemName, courier, otherCourier },
-//     campaignId,
-//     creatorId: userId,
-//   } = req.body;
-
-//   const adminId = req.userId;
-
-//   try {
-//     const logistics = await prisma.logistics.create({
-//       data: {
-//         trackingNumber: trackingNumber,
-//         itemName: itemName,
-//         courier: courier === 'Other' ? otherCourier : courier,
-//         campaignId: campaignId as string,
-//         userId: userId as string,
-//       },
-//       include: {
-//         user: true,
-//         campaign: {
-//           include: {
-//             campaignBrief: true,
-//           },
-//         },
-//       },
-//     });
-
-//     const image: any = logistics?.campaign?.campaignBrief?.images;
-
-//     //Email for tracking logistics
-//     tracking(
-//       logistics.user.email,
-//       logistics.campaign.name,
-//       logistics.user.name ?? 'Creator',
-//       logistics.trackingNumber,
-//       logistics.campaignId,
-//       image[0],
-//     );
-
-//     const { title, message } = notificationLogisticTracking(logistics.campaign.name, logistics.trackingNumber);
-
-//     const notification = await saveNotification({
-//       userId: userId,
-//       title,
-//       message,
-//       // message: `Hi ${logistics.user.name}, your logistics details for the ${logistics.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
-//       entity: 'Logistic',
-//     });
-
-//     getIo().to(clients.get(userId)).emit('notification', notification);
-
-//     const adminLogMessage = `Created New Logistic for campaign - ${logistics.campaign.name} `;
-//     logAdminChange(adminLogMessage, adminId, req);
-
-//     return res.status(200).json({ message: 'Logistics created successfully.' });
-//   } catch (error) {
-//     //console.log(error);
-//     return res.status(400).json(error);
-//   }
-// };
-
-// export const getLogisticById = async (req: Request, res: Response) => {
-//   try {
-//     const logistics = await prisma.logistics.findMany();
-//     return res.status(200).json(logistics);
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// };
-
-// export const updateStatusLogistic = async (req: Request, res: Response) => {
-//   // eslint-disable-next-line prefer-const
-//   let { logisticId, status } = req.body;
-//   const adminId = req.userId;
-
-//   if (status === 'Pending Delivery Confirmation') {
-//     status = status.split(' ').join('_');
-//   }
-//   try {
-//     const updated = await prisma.logistics.update({
-//       where: {
-//         id: logisticId,
-//       },
-//       data: {
-//         status: status as LogisticStatus,
-//       },
-//       include: {
-//         user: {
-//           select: {
-//             name: true,
-//             email: true,
-//           },
-//         },
-//         campaign: {
-//           select: {
-//             name: true,
-//             campaignBrief: {
-//               select: {
-//                 images: true,
-//               },
-//             },
-//           },
-//         },
-//       },
-//     });
-
-//     const images: any = updated.campaign.campaignBrief?.images;
-
-//     if (status === 'Product_has_been_received') {
-//       // Call deliveryConfirmation function
-//       deliveryConfirmation(
-//         updated.user.email,
-//         updated.campaign.name,
-//         updated.user.name ?? 'Creator',
-//         updated.campaignId,
-//         images[0],
-//       );
-
-//       // Create and send the notification
-//       const { title, message } = notificationLogisticDelivery(updated.campaign.name);
-//       const notification = await saveNotification({
-//         userId: updated.userId,
-//         title,
-//         message,
-//         entity: 'Logistic',
-//       });
-
-//       getIo().to(clients.get(updated.userId)).emit('notification', notification);
-//     }
-
-//     // // deliveryConfirmation
-//     // deliveryConfirmation(updated.user.email, updated.campaign.name, updated.user.name ?? 'Creator', updated.campaignId);
-
-//     // const { title, message } = notificationLogisticDelivery(updated.campaign.name,);
-
-//     // const notification = await saveNotification({
-//     //   userId: updated.userId,
-//     //   title,
-//     //   message,
-//     //   entity: 'Logistic',
-//     // });
-
-//     // getIo().to(clients.get(updated.userId)).emit('notification', notification);
-
-//     const adminLogMessage = `Updated Logistic status for campaign - ${updated.campaign.name} `;
-//     logAdminChange(adminLogMessage, adminId, req);
-
-//     return res.status(200).json({ message: 'Logistic status updated successfully.' });
-//   } catch (error) {
-//     console.log(error);
-//     return res.status(400).json(error);
-//   }
-// };
-
-// export const receiveLogistic = async (req: Request, res: Response) => {
-//   const { logisticId } = req.body;
-//   try {
-//     await prisma.logistics.update({
-//       where: {
-//         id: logisticId,
-//       },
-//       data: {
-//         status: 'Product_has_been_received',
-//       },
-//     });
-
-//     return res.status(200).json({ message: 'Item has been successfully delivered.' });
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// };
-
 export const creatorAgreements = async (req: Request, res: Response) => {
   const { campaignId } = req.params;
 
@@ -7258,6 +7085,12 @@ export const creatorAgreements = async (req: Request, res: Response) => {
             password: true,
           },
         },
+
+        productSeeding: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
       },
     });
 
@@ -7315,6 +7148,9 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       }),
       prisma.creatorAgreement.findUnique({
         where: { id: agreementId },
+        include: {
+          productSeeding: true,
+        },
       }),
     ]);
 
@@ -7501,9 +7337,32 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       }),
     };
 
+    let productSeeding: Prisma.ProductSeedingCreateNestedManyWithoutCreatorAgreementInput | undefined;
+    const existingProductSeeding = existingAgreement.productSeeding.length ? existingAgreement.productSeeding[0] : null;
+
+    if (isSeedingAgreement && !existingProductSeeding) {
+      productSeeding = {
+        create: {
+          name: product.name,
+          value: parseFloat(product.value),
+        },
+      };
+    } else {
+      await prisma.productSeeding.update({
+        where: {
+          id: existingProductSeeding?.id,
+        },
+        data: {
+          name: product?.name,
+          value: parseFloat(product?.value),
+        },
+      });
+    }
+
     if (isNew) {
       // For V3: Get the campaign's agreement template URL if no new file was uploaded
       let finalAgreementUrl = url;
+
       if (!url) {
         // Get the campaign with its agreement template
         const campaignWithTemplate = await prisma.campaign.findUnique({
@@ -7522,12 +7381,15 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
             round,
           },
         },
+
         update: {
           agreementUrl: finalAgreementUrl, // Use template URL if no new file
           amount: paymentAmount,
           currency: currency,
           isSent: false, // Not sent yet
           ...roundSnapshotData,
+          isSeeding: isSeedingAgreement,
+          ...(productSeeding && { productSeeding }),
         },
         create: {
           userId: creator.id,
@@ -7537,8 +7399,11 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
           amount: paymentAmount,
           currency: currency,
           isSent: false, // Not sent yet
+          isSeeding: isSeedingAgreement,
           ...roundSnapshotData,
+          ...(productSeeding && { productSeeding }),
         },
+
         include: {
           user: {
             include: {
@@ -7579,6 +7444,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
           amount: paymentAmount,
           currency: currency,
           ...roundSnapshotData,
+          ...(productSeeding && { productSeeding }),
         },
         include: {
           user: {
@@ -7734,7 +7600,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       message: 'Agreement updated successfully',
-      agreement: updatedAgreement,
+      // agreement: updatedAgreement,
     });
   } catch (error) {
     console.error('Error in updateAmountAgreement:', error);

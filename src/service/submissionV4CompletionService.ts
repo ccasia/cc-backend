@@ -117,7 +117,6 @@ export const checkV4SubmissionCompletion = async (
       };
     }
 
-
     // Get all V4 content submissions (excluding agreement forms)
     const submissions = await prisma.submission.findMany({
       where: {
@@ -328,6 +327,7 @@ export const handleV4CompletedCampaign = async (
       where: { campaignId, creatorId: userId, round: targetRound },
       select: { id: true },
     });
+
     if (existingInvoice) {
       return true;
     }
@@ -340,6 +340,7 @@ export const handleV4CompletedCampaign = async (
     }
 
     let invoice: any;
+
     if (!isSeedingCampaign) {
       // Create invoice using existing service
       invoice = await createInvoiceService(
