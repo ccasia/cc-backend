@@ -117,7 +117,6 @@ export const checkV4SubmissionCompletion = async (
       };
     }
 
-
     // Get all V4 content submissions (excluding agreement forms)
     const submissions = await prisma.submission.findMany({
       where: {
@@ -321,13 +320,12 @@ export const handleV4CompletedCampaign = async (
 
     const campaign = await prisma.campaign.findUnique({ where: { id: campaignId }, select: { campaignType: true } });
 
-    const isSeedingCampaign = campaign?.campaignType === 'seedingCampaign';
-
     // Check if this round was already invoiced, to prevent duplicates (not the blanket
     const existingInvoice = await prisma.invoice.findFirst({
       where: { campaignId, creatorId: userId, round: targetRound },
       select: { id: true },
     });
+
     if (existingInvoice) {
       return true;
     }
@@ -340,7 +338,8 @@ export const handleV4CompletedCampaign = async (
     }
 
     let invoice: any;
-    if (!isSeedingCampaign) {
+
+    if (!creatorAgreement?.isSeeding) {
       // Create invoice using existing service
       invoice = await createInvoiceService(
         {
@@ -389,7 +388,7 @@ export const handleV4CompletedCampaign = async (
     getIo().to(campaignId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
 
     // Notify the creator their posting is approved and the invoice is ready (in-app + push)
-    if (invoice?.id && !isSeedingCampaign) {
+    if (invoice?.id && !creatorAgreement?.isSeeding) {
       const creatorNotification = await saveNotification({
         userId,
         title: '✅ Posting Approved',
@@ -402,7 +401,7 @@ export const handleV4CompletedCampaign = async (
       if (creatorSocketId) {
         getIo().to(creatorSocketId).emit('notification', creatorNotification);
       }
-    } else if (isSeedingCampaign) {
+    } else if (creatorAgreement?.isSeeding) {
       const creatorNotification = await saveNotification({
         userId,
         title: '✅ Posting Approved',

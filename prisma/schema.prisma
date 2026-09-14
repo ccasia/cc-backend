@@ -124,7 +124,7 @@ model User {
   creatorAchievements  CreatorAchievement[]
   leaderboardSnapshots LeaderboardSnapshot[]
 
-  campaignCreationDrafts CampaignCreationDraft[]
+  campaignCreationDrafts            CampaignCreationDraft[]
   campaignCreationDraftUploadLeases CampaignCreationDraftUploadLease[]
 }
 
@@ -141,24 +141,24 @@ model CampaignCreationDraft {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner        User                               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   uploadLeases CampaignCreationDraftUploadLease[]
 
   @@index([ownerId, updatedAt])
 }
 
 model CampaignCreationDraftUploadLease {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   draftId        String
   ownerId        String
   expiresAt      DateTime
   objectUrl      String?
-  cleanupPending Boolean  @default(false)
+  cleanupPending Boolean   @default(false)
   releasedAt     DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   draft CampaignCreationDraft @relation(fields: [draftId], references: [id], onDelete: Restrict)
-  owner User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([draftId, expiresAt])
   @@index([ownerId, draftId])
@@ -1225,7 +1225,7 @@ model Pitch {
   guestCreatorMetricAudits GuestCreatorMetricAudit[]
 
   /// Set while an Apify run still owns Followers and ER for this pitch.
-  pendingExtractionId String?                  @unique
+  pendingExtractionId String?                 @unique
   pendingExtraction   GuestProfileExtraction? @relation("PendingPitchExtraction", fields: [pendingExtractionId], references: [id], onDelete: SetNull)
 
   @@unique([userId, campaignId])
@@ -1359,7 +1359,7 @@ model Submission {
   startDate            DateTime?
   endDate              DateTime?
   approvedAt           DateTime?
-  viewedAt             DateTime? 
+  viewedAt             DateTime?
   submittedByAdminId   String? // Track if admin submitted for creator
   feedback             Feedback[]
   Notification         Notification[]
@@ -1784,7 +1784,7 @@ model Invoice {
   creatorId  String
   campaignId String
   adminId    String?
-  round      Int      @default(1) 
+  round      Int      @default(1)
 
   xeroInvoiceId String?
 
@@ -1871,30 +1871,49 @@ model TaskAssignee {
 }
 
 model CreatorAgreement {
-  id                String          @id @unique @default(cuid())
+  id                String    @id @unique @default(cuid())
   agreementUrl      String
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  isSent            Boolean         @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  isSent            Boolean   @default(false)
   amount            String?
   currency          String?
   userId            String
   campaignId        String
   completedAt       DateTime?
   approvedByAdminId String?
-  round             Int             @default(1) 
-  selectedPlatform  SocialPlatform?
-  videoCount        Int? 
-  followerCount     Int?
-  creditPerVideo    Int?
-  creditTierId      String?
-  creditsAssigned   Int? 
-  campaign          Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  admin             Admin?          @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
-  creditTier        CreditTier?     @relation(fields: [creditTierId], references: [id])
+
+  round Int @default(1)
+
+  selectedPlatform SocialPlatform?
+  videoCount       Int?
+  followerCount    Int?
+  creditPerVideo   Int?
+  creditTierId     String?
+  creditsAssigned  Int?
+  campaign         Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin            Admin?          @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
+  creditTier       CreditTier?     @relation(fields: [creditTierId], references: [id])
+  version          Int?            @default(1)
+
+  isSeeding      Boolean          @default(false)
+  productSeeding ProductSeeding[]
 
   @@unique([userId, campaignId, round])
+}
+
+model ProductSeeding {
+  id String @id @unique @default(cuid())
+
+  name  String
+  value Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creatorAgreement   CreatorAgreement? @relation(fields: [creatorAgreementId], references: [id])
+  creatorAgreementId String?
 }
 
 model Crawler {
@@ -2403,7 +2422,6 @@ enum SlotStatus {
 }
 
 // logistics models
-
 model Product {
   id          String   @id @unique @default(cuid())
   productName String
@@ -3222,7 +3240,7 @@ model GuestProfileExtraction {
   /// Cleanup boundary. Removing a row here must never remove an audit.
   expiresAt   DateTime?
 
-  metricAudits    GuestCreatorMetricAudit[]
+  metricAudits   GuestCreatorMetricAudit[]
   pendingPitches Pitch[]                   @relation("PendingPitchExtraction")
 
   @@unique([requestedByUserId, idempotencyKey])
