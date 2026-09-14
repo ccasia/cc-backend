@@ -7340,23 +7340,25 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
     let productSeeding: Prisma.ProductSeedingCreateNestedManyWithoutCreatorAgreementInput | undefined;
     const existingProductSeeding = existingAgreement.productSeeding.length ? existingAgreement.productSeeding[0] : null;
 
-    if (isSeedingAgreement && !existingProductSeeding) {
-      productSeeding = {
-        create: {
-          name: product.name,
-          value: parseFloat(product.value),
-        },
-      };
-    } else {
-      await prisma.productSeeding.update({
-        where: {
-          id: existingProductSeeding?.id,
-        },
-        data: {
-          name: product?.name,
-          value: parseFloat(product?.value),
-        },
-      });
+    if (isSeedingAgreement) {
+      if (!existingProductSeeding) {
+        productSeeding = {
+          create: {
+            name: product.name,
+            value: parseFloat(product.value),
+          },
+        };
+      } else {
+        await prisma.productSeeding.update({
+          where: {
+            id: existingProductSeeding?.id,
+          },
+          data: {
+            name: product?.name,
+            value: parseFloat(product?.value),
+          },
+        });
+      }
     }
 
     if (isNew) {
