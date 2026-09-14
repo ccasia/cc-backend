@@ -83,6 +83,8 @@ import {
   claimReceiptNonce,
   hashCreateRequest,
   isAutomaticGuestBatch,
+  parseEngagementRate,
+  parseFollowerCount,
   provenanceFor,
   resolveCreateIdempotency,
   validateManualGuests,
@@ -90,6 +92,7 @@ import {
 } from '@services/guestProfileExtraction/guestCreateService';
 import { applyExtractionToPendingPitches } from '@services/guestProfileExtraction/pendingPitchMetrics';
 import { ensureScrapedProfileLink } from '@services/guestProfileExtraction/scrapedProfileLink';
+import { normalizeProfileUrl } from '@services/guestProfileExtraction/profileUrlNormalizer';
 import { saveCampaignBookmark, unsaveCampaignBookmark } from '@services/campaignBookmarkService';
 import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
@@ -11672,13 +11675,77 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     if (action && !['approve', 'send_to_client'].includes(action)) {
       return res.status(400).json({ message: 'action must be approve or send_to_client' });
     }
+
+    if (!Array.isArray(creators)) {
+      return res.status(400).json({ message: 'creators must be an array' });
+    }
+
     // Validate follower counts - max 10 billion (prevents 64-bit integer overflow)
     const MAX_FOLLOWER_COUNT = 10_000_000_000;
+    const manualFollowerCountByCreator = new Map<object, number>();
+    const manualEngagementRateByCreator = new Map<object, string>();
+    const manualProfileLinkByCreator = new Map<object, string>();
+
     for (const creator of creators) {
+      if (creator === null || typeof creator !== 'object') {
+        return res.status(400).json({ message: 'Each creator must be an object.' });
+      }
+
+      const hasProfileLink = typeof creator.profileLink === 'string' && creator.profileLink.trim().length > 0;
+
       if (creator.followerCount && creator.followerCount > MAX_FOLLOWER_COUNT) {
         return res.status(400).json({
           message: `Follower count for creator exceeds maximum allowed value (${MAX_FOLLOWER_COUNT.toLocaleString()}). Please enter a valid follower count.`,
         });
+      }
+
+      // Receipt-free platform rows are manual entries. Normalize their values
+      // once at the request boundary before any database work starts.
+      if (!hasProfileLink) {
+        const hasSubmittedFollowerCount =
+          creator.followerCount !== null &&
+          creator.followerCount !== undefined &&
+          !(typeof creator.followerCount === 'string' && creator.followerCount.trim() === '');
+        if (hasSubmittedFollowerCount) {
+          const parsedFollowerCount = parseFollowerCount(creator.followerCount);
+          if (parsedFollowerCount === null || parsedFollowerCount === 'invalid') {
+            return res.status(400).json({
+              message: 'Follower count for a manual platform creator must be a positive whole number.',
+            });
+          }
+
+          manualFollowerCountByCreator.set(creator, parsedFollowerCount);
+        }
+
+        const hasSubmittedEngagementRate =
+          creator.engagementRate !== null &&
+          creator.engagementRate !== undefined &&
+          !(typeof creator.engagementRate === 'string' && creator.engagementRate.trim() === '');
+        if (hasSubmittedEngagementRate) {
+          const parsedEngagementRate = parseEngagementRate(creator.engagementRate);
+          if (parsedEngagementRate === 'invalid') {
+            return res.status(400).json({
+              message: 'Engagement rate for a manual platform creator must be between 0 and 1000.',
+            });
+          }
+
+          if (parsedEngagementRate !== null) {
+            manualEngagementRateByCreator.set(creator, parsedEngagementRate);
+          }
+        }
+
+        // A typed link is saved to the creator's account only. It is not a
+        // scrape claim, so it never enters receipt verification below.
+        if (typeof creator.manualProfileLink === 'string' && creator.manualProfileLink.trim()) {
+          const normalized = normalizeProfileUrl(creator.manualProfileLink);
+          if (!normalized.ok || normalized.profile.platform !== creator.selectedPlatform) {
+            return res.status(400).json({
+              message: 'Profile link for a manual platform creator must be a valid link for the selected platform.',
+            });
+          }
+
+          manualProfileLinkByCreator.set(creator, normalized.profile.canonicalUrl);
+        }
       }
     }
 
@@ -11689,7 +11756,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
      * must be provable rather than merely typed. They run through the same
      * single-use receipt check the guest flow uses, so one standard covers
      * both. A row with no link never enters this block, which keeps the
-     * existing manual path byte-for-byte unchanged.
+     * manual platform path separate from scrape verification.
      */
     const linkedCreators = (creators as any[]).filter(
       (c) => typeof c?.profileLink === 'string' && c.profileLink.trim().length > 0,
@@ -11846,13 +11913,17 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         // dropdown: the link is what was actually measured. Without a link the
         // form still requires a choice, so this never falls back.
         const selectedPlatform = resolvePlatform(verified?.platform, creator.selectedPlatform);
+        const submittedFollowerCount = manualFollowerCountByCreator.get(creator) ?? creator.followerCount;
+        const manualEngagementRate = manualEngagementRateByCreator.get(creator);
+        const hasPlatformMediaKit =
+          selectedPlatform === 'instagram' ? !!user.creator?.instagramUser : !!user.creator?.tiktokUser;
         let resolvedFollowerCount = 0;
 
         await ensureScrapedProfileLink(
           tx,
           user.id,
           selectedPlatform,
-          verified?.canonicalProfileUrl ?? creator.profileLink,
+          (verified?.canonicalProfileUrl ?? creator.profileLink) || manualProfileLinkByCreator.get(creator),
         );
 
         console.log(`Processing creator: ${user.name} (${user.id})`);
@@ -11870,48 +11941,46 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
         // If manual follower count provided, ALWAYS update the creator's manualFollowerCount and tier
         // This allows admins to correct follower count mistakes when re-adding creators
-        if (creator.followerCount && creator.followerCount > 0) {
+        if (submittedFollowerCount && submittedFollowerCount > 0) {
           const creatorRecord = await tx.creator.findUnique({
             where: { userId: user.id },
             include: { instagramUser: true, tiktokUser: true },
           });
 
-          const hasPlatformMediaKit =
-            selectedPlatform === 'instagram' ? !!creatorRecord?.instagramUser : !!creatorRecord?.tiktokUser;
           if (creatorRecord && hasPlatformMediaKit) {
             resolvedFollowerCount = getFollowerForPlatform(creatorRecord, selectedPlatform);
           } else if (creatorRecord && !hasPlatformMediaKit) {
             console.log(
-              `Updating ${selectedPlatform} manual follower count for creator ${user.id} to ${creator.followerCount}`,
+              `Updating ${selectedPlatform} manual follower count for creator ${user.id} to ${submittedFollowerCount}`,
             );
 
             const tier = await tx.creditTier.findFirst({
               where: {
                 isActive: true,
-                minFollowers: { lte: creator.followerCount },
-                OR: [{ maxFollowers: { gte: creator.followerCount } }, { maxFollowers: null }],
+                minFollowers: { lte: submittedFollowerCount },
+                OR: [{ maxFollowers: { gte: submittedFollowerCount } }, { maxFollowers: null }],
               },
               orderBy: [{ minFollowers: 'desc' }],
             });
 
-            // A verified rate rides along on the same platform-specific
-            // column. `verified.engagementRate` is a string percentage
-            // ("4.27"); the column is Float, matching the connected-account
-            // models. Absent stays absent — it is never written as zero.
-            const verifiedRate = verified?.engagementRate != null ? Number(verified.engagementRate) : null;
+            // Verified scrape data remains authoritative for linked rows.
+            // Receipt-free rows use the engagement rate parsed above. The
+            // platform-specific column is only used without a connected kit.
+            const engagementRate = verified?.engagementRate ?? manualEngagementRate;
+            const numericEngagementRate = engagementRate != null ? Number(engagementRate) : null;
             const rateData =
-              verifiedRate != null && Number.isFinite(verifiedRate)
+              numericEngagementRate != null && Number.isFinite(numericEngagementRate)
                 ? selectedPlatform === 'instagram'
-                  ? { manualInstagramEngagementRate: verifiedRate }
-                  : { manualTiktokEngagementRate: verifiedRate }
+                  ? { manualInstagramEngagementRate: numericEngagementRate }
+                  : { manualTiktokEngagementRate: numericEngagementRate }
                 : {};
 
             await tx.creator.update({
               where: { userId: user.id },
               data: {
                 ...(selectedPlatform === 'instagram'
-                  ? { manualInstagramFollowerCount: creator.followerCount }
-                  : { manualTiktokFollowerCount: creator.followerCount }),
+                  ? { manualInstagramFollowerCount: submittedFollowerCount }
+                  : { manualTiktokFollowerCount: submittedFollowerCount }),
                 ...rateData,
                 ...(tier && {
                   creditTierId: tier.id,
@@ -11919,7 +11988,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
                 }),
               },
             });
-            resolvedFollowerCount = creator.followerCount;
+            resolvedFollowerCount = submittedFollowerCount;
           }
         } else {
           resolvedFollowerCount = getFollowerForPlatform(user.creator, selectedPlatform);
@@ -11928,6 +11997,18 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         if (!resolvedFollowerCount) {
           resolvedFollowerCount = getFollowerForPlatform(user.creator, selectedPlatform);
         }
+
+        const connectedEngagementRate =
+          selectedPlatform === 'instagram'
+            ? user.creator?.instagramUser?.engagement_rate
+            : user.creator?.tiktokUser?.engagement_rate;
+        const pitchEngagementRate =
+          verified?.engagementRate ??
+          (hasPlatformMediaKit
+            ? connectedEngagementRate != null && Number.isFinite(connectedEngagementRate)
+              ? connectedEngagementRate.toFixed(2)
+              : undefined
+            : (manualEngagementRate ?? undefined));
 
         const tierForSelectedPlatform =
           campaign.isCreditTier && resolvedFollowerCount > 0
@@ -11966,10 +12047,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             data: {
               selectedPlatform,
               ...(resolvedFollowerCount > 0 ? { followerCount: String(resolvedFollowerCount) } : {}),
-              // The pitch row is what the admin and client tables read. Only a
-              // verified rate is written; a row with no scrape keeps whatever
-              // it had.
-              ...(verified?.engagementRate != null ? { engagementRate: verified.engagementRate } : {}),
+              // Scraped rates keep their verified value. For receipt-free
+              // rows, connected data wins; otherwise use the parsed manual rate.
+              ...(pitchEngagementRate !== undefined ? { engagementRate: pitchEngagementRate } : {}),
               ...(verified?.extraction?.kind === 'pending' ? { pendingExtractionId: verified.extraction.id } : {}),
             },
           });
@@ -12001,10 +12081,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               approvedByAdminId: userId,
               selectedPlatform,
               ...(resolvedFollowerCount > 0 ? { followerCount: String(resolvedFollowerCount) } : {}),
-              // The pitch row is what the admin and client tables read. Only a
-              // verified rate is written; a row with no scrape keeps whatever
-              // it had.
-              ...(verified?.engagementRate != null ? { engagementRate: verified.engagementRate } : {}),
+              // Scraped rates keep their verified value. For receipt-free
+              // rows, connected data wins; otherwise use the parsed manual rate.
+              ...(pitchEngagementRate !== undefined ? { engagementRate: pitchEngagementRate } : {}),
               ...(verified?.extraction?.kind === 'pending' ? { pendingExtractionId: verified.extraction.id } : {}),
               ...(hasComments ? { adminComments: creatorAdminComments, adminCommentedBy: userId } : {}),
             },
