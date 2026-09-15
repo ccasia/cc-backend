@@ -50,6 +50,7 @@ import {
   revertStrandedClientReviewItems,
 } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
+import { ensureApprovedCreatorCampaignSetup } from '@controllers/approvalController';
 // import { clients, getIo() } from '../server';
 import fs from 'fs';
 import Ffmpeg from 'fluent-ffmpeg';
@@ -13117,12 +13118,25 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
       where: { id: campaignId },
       include: {
         campaignTimeline: true,
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                user: { select: { role: true } },
+                role: true,
+              },
+            },
+          },
+        },
       },
     });
 
     if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
 
     const isV4Campaign = campaign.submissionVersion === 'v4';
+    // Guest/NPC creators only need client review when the campaign actually has a client
+    // attached — a v4 campaign with no client has admin approval as final, same as shortlistCreatorV3.
+    const hasClient = campaignHasClient(campaign);
 
     const createdCreators: { id: string }[] = [];
     await prisma.$transaction(async (tx) => {
@@ -13207,9 +13221,9 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
         };
 
         if (!existingPitch) {
-          // For V4 campaigns: SENT_TO_CLIENT (awaiting client approval)
-          // For non-v4 campaigns: APPROVED (admin approval is final)
-          const pitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
+          // Only route to client review when the campaign actually has a client attached.
+          // Without one, admin shortlisting is always a direct final approval.
+          const pitchStatus = isV4Campaign && hasClient ? 'SENT_TO_CLIENT' : 'APPROVED';
 
           const pitch = await tx.pitch.create({
             data: {
@@ -13252,6 +13266,10 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
                 reviewerUserId: adminId as string,
               },
             });
+          }
+
+          if (isV4Campaign && !hasClient) {
+            await ensureApprovedCreatorCampaignSetup(tx, pitch.id);
           }
         } else {
           await tx.pitch.update({
