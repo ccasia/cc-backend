@@ -1,28 +1,16 @@
 import { Request, Response } from 'express';
 import {
-  Admin,
-  CampaignAdmin,
-  CampaignBrief,
   CampaignRequirement,
   CampaignStatus,
-  CampaignTimeline,
   Company,
   Creator,
-  Entity,
   Interest,
-  LogisticStatus,
-  PaymentForm,
-  Pitch,
   PitchStatus,
   Prisma,
   PrismaClient,
-  ShortListedCreator,
   Submission,
   SubmissionType,
-  User,
   TimelineStatus,
-  TiktokUser,
-  InstagramUser,
   LogisticType,
   ReservationMode,
   SocialPlatform,
@@ -37,7 +25,6 @@ import {
   uploadAttachments,
   uploadCompanyLogo,
   uploadImage,
-  uploadPitchVideo,
 } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import {
@@ -51,14 +38,9 @@ import {
 } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
 // import { clients, getIo() } from '../server';
-import fs from 'fs';
 import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
-import path from 'path';
-import { compress } from '@helper/compression';
-import { agreementInput } from '@helper/agreementInput';
-import { pdfConverter } from '@helper/pdfConverter';
 import {
   notificationPendingAgreement,
   notificationPitch,
@@ -67,11 +49,9 @@ import {
   notificationCampaignLive,
   notificationAdminAssign,
   notificationMaintenance,
-  notificationLogisticTracking,
-  notificationLogisticDelivery,
   notificationPitchForClientReview,
 } from '@helper/notification';
-import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
+import { shortlisted } from '@configs/nodemailer.config';
 import { createNewSpreadSheet, upsertSheetAndWriteRows } from '@services/google_sheets/sheets';
 import { getRemainingCredits } from '@services/companyService';
 import { handleGuestForShortListing } from '@services/shortlistService';
@@ -14390,5 +14370,84 @@ export const unlinkCampaignCompany = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('unlinkCampaignCompany error:', error);
     return res.status(500).json({ message: 'Failed to unlink company' });
+  }
+};
+
+export const getCreatorAgreement = async (req: Request, res: Response) => {
+  try {
+    // Retrieve campaign id and user id from request params
+    const { id, userId } = req.params;
+
+    const [user, campaign] = await Promise.all([
+      prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+      }),
+      prisma.campaign.findUnique({
+        where: {
+          id,
+        },
+      }),
+    ]);
+
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found.' });
+
+    const agreements = await prisma.creatorAgreement.findMany({
+      where: {
+        userId: user.id,
+        campaignId: campaign.id,
+      },
+      include: {
+        user: {
+          include: {
+            creator: {
+              include: {
+                instagramUser: true,
+                tiktokUser: true,
+                creditTier: {
+                  select: {
+                    id: true,
+                    name: true,
+                    creditsPerVideo: true,
+                  },
+                },
+              },
+            },
+            paymentForm: true,
+            shortlisted: {
+              where: {
+                campaignId: campaign.id,
+              },
+              include: {
+                creditTier: {
+                  select: {
+                    id: true,
+                    name: true,
+                    creditsPerVideo: true,
+                  },
+                },
+              },
+            },
+          },
+          omit: {
+            password: true,
+          },
+        },
+
+        productSeeding: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    });
+
+    if (!agreements.length) return res.status(404).json({ error: 'Agreements are found.' });
+
+    return res.status(200).json(agreements);
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to get creator agreement' });
   }
 };

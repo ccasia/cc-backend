@@ -6,13 +6,12 @@
  * InstagramUser / TiktokUser row.
  */
 
-const isBlank = (value: unknown): boolean =>
-  value == null || (typeof value === 'string' && value.trim() === '');
+const isBlank = (value: unknown): boolean => value == null || (typeof value === 'string' && value.trim() === '');
 
-export type ProfileLinkPatch = {
+export interface ProfileLinkPatch {
   instagramProfileLink?: string;
   tiktokProfileLink?: string;
-};
+}
 
 export function scrapedProfileLinkPatch(
   current: {
@@ -34,15 +33,15 @@ export function scrapedProfileLinkPatch(
   return {};
 }
 
-type CreatorLinkClient = {
+interface CreatorLinkClient {
   creator: {
-    findUnique(args: { where: { userId: string }; select?: unknown }): Promise<{
+    findUnique(args: { where: { userId: string }; select?: any }): Promise<{
       instagramProfileLink?: string | null;
       tiktokProfileLink?: string | null;
     } | null>;
     update(args: { where: { userId: string }; data: ProfileLinkPatch }): Promise<unknown>;
   };
-};
+}
 
 export async function ensureScrapedProfileLink(
   tx: CreatorLinkClient,
