@@ -34,6 +34,8 @@ import {
   sendVerificationCode,
   resendVerificationCode,
   verifyCode,
+  sendPhoneClaimCode,
+  verifyPhoneClaim,
   getOtpStatus,
 } from '@controllers/authController';
 
@@ -106,6 +108,9 @@ router.post('/setupTwoFactor', authenticate, setupTwoFactor);
 router.post('/send-code', sendVerificationCode);
 router.post('/resend-code', resendVerificationCode);
 router.patch('/verify-code', verifyCode);
+
+router.post('/claim-phone', authenticate, sendPhoneClaimCode);
+router.patch('/claim-phone/verify', authenticate, verifyPhoneClaim);
 
 // Client authentication routes
 router.post('/invite-client', inviteClient);
