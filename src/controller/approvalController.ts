@@ -95,7 +95,7 @@ function buildApprovalEmailCreatorRow(pitch: {
   };
 }
 
-async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, pitchId: string) {
+export async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, pitchId: string) {
   const pitch = await tx.pitch.findUnique({
     where: { id: pitchId },
     include: {
