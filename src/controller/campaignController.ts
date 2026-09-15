@@ -7342,6 +7342,12 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
           },
         });
       }
+    } else if (!isSeedingAgreement && existingAgreement?.isSeeding) {
+      await prisma.productSeeding.delete({
+        where: {
+          id: existingProductSeeding?.id,
+        },
+      });
     }
 
     if (isNew) {
