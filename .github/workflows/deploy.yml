@@ -75,7 +75,7 @@ jobs:
 
                       # Recreate just the cc-backend service with the new image.
                       # Other containers on the same network are untouched.
-                      docker compose up -d cc-backend && docker cp ../test-cs.json cc-backend:/app/dist/config
+                      docker compose up -d cc-backend
 
             - name: Send message to Lark
               uses: Nghi-NV/lark-message-action@v1
@@ -87,5 +87,3 @@ jobs:
                   lark-bot-notify-webhook: ${{ secrets.LARK_WEBHOOK }}
                   lark-signature-verification: ${{ secrets.LARK_SECRET }} # Omit if signature verification is disabled
 
-
-                  #   Again
