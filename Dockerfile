@@ -79,7 +79,7 @@ COPY --from=builder /app/dist ./dist
 COPY ecosystem.config.js ./dist/ecosystem.config.js
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/.env ./.env
+# COPY --from=builder /app/.env ./.env
 
 # Update DATABASE_URL in .env file
 # RUN if [ -n "$DATABASE_URL" ]; then \
