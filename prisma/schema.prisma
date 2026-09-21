@@ -13,6 +13,7 @@ model User {
   googleId          String?   @unique
   appleId           String?   @unique
   appleRefreshToken String?
+  appleAudience     String?
   googleEmail       String?   @db.VarChar(255)
   appleEmail        String?   @db.VarChar(255)
   googleUnlinkedAt  DateTime?
@@ -42,6 +43,8 @@ model User {
   agreementTemplate       AgreementTemplate[]
   Board                   Board?
   BookMarkCampaign        BookMarkCampaign[]
+  blockedBrand            BlockedBrand[]
+  campaignFlag            CampaignFlag[]
   bookMarkCreator         BookMarkCreator[]     @relation("BookMarkCreatorOwner")
   bookMarkedBy            BookMarkCreator[]     @relation("BookMarkCreatorTarget")
   bookMarkCreatorLists    BookMarkCreatorList[]
@@ -65,25 +68,26 @@ model User {
   maybePitches            Pitch[]               @relation("MaybeByClient")
   acceptedInviteByCreator Pitch[]               @relation("AcceptedInviteByCreator")
 
-  resetPasswordToken ResetPasswordToken?
-  seenMessages       SeenMessage[]
-  shortlisted        ShortListedCreator[]
-  submission         Submission[]
-  taskAssignee       TaskAssignee[]
-  unreadMessages     UnreadMessage[]
-  event              Event?               @relation(fields: [eventId], references: [id])
-  userNotification   UserNotification[]
-  pushTokens         PushToken[]
-  UserThread         UserThread[]
-  threads            Thread[]             @relation("UserThreads")
-  bugs               Bugs[]
-  video              Video[]
-  rawFootage         RawFootage[]
-  photo              Photo[]
-  isActive           Boolean              @default(true)
-  isVerified         Boolean              @default(false)
-  isKWSPCampaign     Boolean?             @default(false)
-  hasSubmittedKWSP   Boolean              @default(false)
+  resetPasswordToken         ResetPasswordToken?
+  seenMessages               SeenMessage[]
+  shortlisted                ShortListedCreator[]
+  submission                 Submission[]
+  taskAssignee               TaskAssignee[]
+  unreadMessages             UnreadMessage[]
+  event                      Event?               @relation(fields: [eventId], references: [id])
+  userNotification           UserNotification[]
+  pushTokens                 PushToken[]
+  UserThread                 UserThread[]
+  threads                    Thread[]             @relation("UserThreads")
+  bugs                       Bugs[]
+  video                      Video[]
+  rawFootage                 RawFootage[]
+  photo                      Photo[]
+  isActive                   Boolean              @default(true)
+  isVerified                 Boolean              @default(false)
+  isKWSPCampaign             Boolean?             @default(false)
+  hasSubmittedKWSP           Boolean              @default(false)
+  hasAcceptedTermsAndPrivacy Boolean              @default(false)
 
   referralCode String? @db.VarChar(50)
 
@@ -162,6 +166,23 @@ model CampaignCreationDraftUploadLease {
 
   @@index([draftId, expiresAt])
   @@index([ownerId, draftId])
+}
+
+model PendingSocialSignup {
+  id              String   @id @default(cuid())
+  provider        String   @db.VarChar(16)
+  providerSubject String   @db.VarChar(255)
+  email           String   @db.VarChar(255)
+  name            String?  @db.VarChar(255)
+  appleAudience   String?  @db.VarChar(255)
+  tokenHash       String   @unique @db.VarChar(64)
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([provider, providerSubject])
+  @@index([expiresAt])
+  @@map("pending_social_signups")
 }
 
 model RefreshToken {
@@ -686,6 +707,7 @@ model Company {
   subscriptions       Subscription[]
   clients             Client[]
   SubscriptionHistory SubscriptionHistory[]
+  blockedBy           BlockedBrand[]
 
   @@index([clientId])
 }
@@ -802,6 +824,7 @@ model Campaign {
   campaignType        String?            @default("normal")
   origin              CampaignOrigin     @default(ADMIN)
   bookMarkCampaign    BookMarkCampaign[]
+  campaignFlag        CampaignFlag[]
   agreementTemplate   AgreementTemplate? @relation(fields: [agreementTemplateId], references: [id])
   brand               Brand?             @relation(fields: [brandId], references: [id])
   company             Company?           @relation(fields: [companyId], references: [id])
@@ -843,6 +866,9 @@ model Campaign {
 
   // Credit Tiering: When true, creator costs based on follower tier instead of flat 1 credit/video
   isCreditTier Boolean @default(false)
+
+  // Adds the Confidentiality (NDA) section to generated creator agreements
+  isNdaRequired Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -914,6 +940,42 @@ model BookMarkCampaign {
   user       User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, campaignId])
+}
+
+// Named for the "block this brand" product feature, but keys off Company, not
+// Brand: campaigns are populated with `companyId`, and `Brand`/`campaign.brandId`
+// are effectively unused in practice (0 Brand rows / 0 campaigns with brandId
+// set as of this writing). Company is what's actually shown to creators as the
+// campaign's "brand" (see mobile `cardPropsFromCampaign`: brand ?? company).
+model BlockedBrand {
+  id        String  @id @unique @default(cuid())
+  userId    String
+  companyId String
+  user      User    @relation(fields: [userId], references: [id])
+  company   Company @relation(fields: [companyId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, companyId])
+  @@index([userId])
+}
+
+// Content-moderation "report this campaign" flagging — unrelated to the
+// AI-generated Post Campaign Report (PCR) feature (`ReportService`,
+// `CampaignReportResult` in src/types/index.ts), hence the distinct name.
+model CampaignFlag {
+  id         String   @id @unique @default(cuid())
+  userId     String
+  campaignId String
+  reason     String
+  details    String?
+  user       User     @relation(fields: [userId], references: [id])
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([userId])
 }
 
 model BookMarkCreatorList {
@@ -1939,6 +2001,8 @@ model AgreementTemplate {
   isDefault             Boolean?               @default(false)
   agreementTemplateType AgreementTemplateType?
   campaign              Campaign[]
+
+  isNdaRequired Boolean @default(false)
 }
 
 enum AgreementTemplateType {
@@ -2587,7 +2651,8 @@ model CampaignPCR {
   campaignId String   @unique
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  content Json // Stores all editable PCR content as JSON
+  content  Json // Stores all editable PCR content as JSON
+  revision Int  @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

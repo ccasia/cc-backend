@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { LogisticStatus } from '@prisma/client';
+import { PrismaClient, LogisticStatus } from '@prisma/client';
 import amqplib, { ChannelModel } from 'amqplib';
 import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';

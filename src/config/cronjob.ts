@@ -273,6 +273,20 @@ new CronJob(
   'Asia/Kuala_Lumpur',
 );
 
+// new CronJob(
+//   '0 2 * * *', // 02:00 AM daily
+//   async function () {
+//     try {
+//       await runCreditDriftCheck();
+//     } catch (error) {
+//       console.error('[Cronjob] Credit drift check failed:', error);
+//     }
+//   },
+//   null, // onComplete
+//   true, // start
+//   'Asia/Kuala_Lumpur',
+// );
+
 new CronJob(
   '30 0 1 * *',
   async function () {

@@ -48,7 +48,7 @@ export const getTemplatebyId = async (req: Request, res: Response) => {
 export const createNewTemplate = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { signedAgreement, signatureImage } = req.files as any;
-  const { name, icNumber, campaignId, campaignType } = JSON.parse(req.body.data);
+  const { name, icNumber, campaignId, campaignType, isNdaRequired } = JSON.parse(req.body.data);
   const uniqueId = randomUUID();
 
   try {
@@ -89,6 +89,7 @@ export const createNewTemplate = async (req: Request, res: Response) => {
         ...(campaignType && {
           agreementTemplateType: campaignType,
         }),
+        isNdaRequired,
       },
     });
 

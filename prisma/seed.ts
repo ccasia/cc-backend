@@ -130,6 +130,7 @@ const csLeadRole = {
     'create:client',
     'update:client',
     'delete:client',
+    'list:creator',
   ],
 };
 

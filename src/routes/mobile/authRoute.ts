@@ -11,10 +11,11 @@ import {
   linkApple,
   unlinkApple,
   googleLogin,
+  completeSocialRegistration,
   linkGoogle,
   unlinkGoogle,
   completeOnboarding,
-  forgotPassword,
+  forgetPassword,
   verifyResetCode,
   resetPassword,
 } from '@controllers/mobile/authController';
@@ -29,11 +30,11 @@ authRoute.post('/register', register);
 
 authRoute.post('/refresh', tokenRefresh);
 
+authRoute.post('/forgot-password', forgetPassword);
+
 authRoute.post('/verify-email', verifyEmail);
 
 authRoute.post('/resend-verification', resendVerification);
-
-authRoute.post('/forgot-password', forgotPassword);
 
 authRoute.post('/verify-reset-code', verifyResetCode);
 
@@ -46,6 +47,8 @@ authRoute.post('/apple/link', authenticate, linkApple);
 authRoute.post('/apple/unlink', authenticate, unlinkApple);
 
 authRoute.post('/google', googleLogin);
+
+authRoute.post('/social/complete-registration', completeSocialRegistration);
 
 authRoute.post('/google/link', authenticate, linkGoogle);
 

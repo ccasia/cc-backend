@@ -141,6 +141,11 @@ export const getCompanyById = async (req: Request, res: Response) => {
         },
         campaign: {
           include: {
+            subscription: {
+              select: {
+                currency: true,
+              },
+            },
             campaignBrief: {
               select: {
                 industries: true,

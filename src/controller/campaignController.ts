@@ -75,6 +75,13 @@ import { applyExtractionToPendingPitches } from '@services/guestProfileExtractio
 import { ensureScrapedProfileLink } from '@services/guestProfileExtraction/scrapedProfileLink';
 import { normalizeProfileUrl } from '@services/guestProfileExtraction/profileUrlNormalizer';
 import { saveCampaignBookmark, unsaveCampaignBookmark } from '@services/campaignBookmarkService';
+import {
+  blockBrand as blockBrandService,
+  unblockBrand as unblockBrandService,
+  getBlockedBrandsForUser,
+  getBlockedBrandIds,
+} from '@services/blockedBrandService';
+import { flagCampaign } from '@services/campaignFlagService';
 import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
 import { sendShortlistEmailToClients, ShortlistedCreatorInput } from '@services/notificationService';
@@ -964,6 +971,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     isCreditTier,
     creationDraftId,
     creationDraftRevision,
+    isNdaRequired,
   } = rawData;
 
   const clientManagers = Array.isArray(rawData?.clientManagers) ? rawData.clientManagers : [];
@@ -1146,6 +1154,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             origin: 'ADMIN',
             submissionVersion: submissionVersion || 'v4',
             isCreditTier: isCreditTier === true,
+            isNdaRequired: isNdaRequired === true,
             rawFootage: rawFootage || false,
             ads: ads || false,
             photos: photos || false,
@@ -1623,6 +1632,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
     ads,
     campaignManager,
     agreementFrom,
+    isNdaRequired,
     timeline,
     campaignStage,
     // Client + credits (brief/handover activation: charge subs + link package)
@@ -1825,6 +1835,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
             status: nextStatus,
             publishedAt: setPublishedAt ? new Date() : existing.publishedAt,
             agreementTemplate: agreementFrom?.id ? { connect: { id: agreementFrom.id } } : undefined,
+            ...(typeof isNdaRequired === 'boolean' && { isNdaRequired }),
             ...creditFields,
             ...(subscriptionToConnect && { subscription: { connect: { id: subscriptionToConnect } } }),
           },
@@ -2607,6 +2618,14 @@ export const getCampaignById = async (req: Request, res: Response) => {
         products: true,
         reservationConfig: true,
         creatorAgreement: true,
+        subscription: {
+          where: {
+            status: 'ACTIVE',
+          },
+          select: {
+            currency: true,
+          },
+        },
       },
     });
 
@@ -2825,6 +2844,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     }
 
     const country = await getCountry(req.ip as string);
+    const blockedBrandIds = await getBlockedBrandIds(prisma, { userId: userid as string });
 
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
@@ -2858,6 +2878,12 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
                   hasSome: [country],
                 },
               },
+            }),
+          },
+          {
+            ...(blockedBrandIds.length > 0 && {
+              // "Blocked brand" is keyed off Company, not Brand — see blockedBrandService.ts.
+              companyId: { notIn: blockedBrandIds },
             }),
           },
         ],
@@ -5496,7 +5522,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
 };
 
 export const editCampaignFinalise = async (req: Request, res: Response) => {
-  const { campaignId, campaignManagers, campaignType, deliverables, isCreditTier } = req.body;
+  const { campaignId, campaignManagers, campaignType, deliverables, isCreditTier, isNdaRequired } = req.body;
 
   const adminId = req.userId;
 
@@ -5559,6 +5585,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         ads,
         crossPosting,
         isCreditTier: isCreditTier === true,
+        ...(typeof isNdaRequired === 'boolean' && { isNdaRequired }),
       },
     });
 
@@ -6954,6 +6981,245 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const blockBrand = async (req: Request, res: Response) => {
+  const { brandId } = req.body;
+  const userId = req.userId;
+
+  try {
+    const blockedBrand = await blockBrandService(prisma, {
+      userId: userId as string,
+      brandId: brandId as string,
+    });
+
+    return res.status(200).json({ message: 'All campaigns from this brand are now blocked.', blockedBrand });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const unblockBrand = async (req: Request, res: Response) => {
+  const { brandId } = req.params;
+  const userId = req.userId;
+
+  try {
+    const blockedBrand = await unblockBrandService(prisma, {
+      userId: userId as string,
+      brandId: brandId as string,
+    });
+
+    if (!blockedBrand) {
+      return res.status(404).json({ message: 'Blocked brand not found.' });
+    }
+
+    return res.status(200).json({ message: 'Brand has been unblocked.', blockedBrand });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getBlockedBrands = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  try {
+    const blockedBrands = await getBlockedBrandsForUser(prisma, { userId: userId as string });
+
+    return res.status(200).json({ blockedBrands });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const reportCampaign = async (req: Request, res: Response) => {
+  const { campaignId, reason, details } = req.body;
+  const userId = req.userId;
+
+  try {
+    const flag = await flagCampaign(prisma, {
+      userId: userId as string,
+      campaignId: campaignId as string,
+      reason: reason as string,
+      details: details as string | undefined,
+    });
+
+    return res.status(200).json({ message: 'Campaign has been reported. Thanks for flagging this.', flag });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+// export const createLogistics = async (req: Request, res: Response) => {
+//   const {
+//     data: { trackingNumber, itemName, courier, otherCourier },
+//     campaignId,
+//     creatorId: userId,
+//   } = req.body;
+
+//   const adminId = req.userId;
+
+//   try {
+//     const logistics = await prisma.logistics.create({
+//       data: {
+//         trackingNumber: trackingNumber,
+//         itemName: itemName,
+//         courier: courier === 'Other' ? otherCourier : courier,
+//         campaignId: campaignId as string,
+//         userId: userId as string,
+//       },
+//       include: {
+//         user: true,
+//         campaign: {
+//           include: {
+//             campaignBrief: true,
+//           },
+//         },
+//       },
+//     });
+
+//     const image: any = logistics?.campaign?.campaignBrief?.images;
+
+//     //Email for tracking logistics
+//     tracking(
+//       logistics.user.email,
+//       logistics.campaign.name,
+//       logistics.user.name ?? 'Creator',
+//       logistics.trackingNumber,
+//       logistics.campaignId,
+//       image[0],
+//     );
+
+//     const { title, message } = notificationLogisticTracking(logistics.campaign.name, logistics.trackingNumber);
+
+//     const notification = await saveNotification({
+//       userId: userId,
+//       title,
+//       message,
+//       // message: `Hi ${logistics.user.name}, your logistics details for the ${logistics.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
+//       entity: 'Logistic',
+//     });
+
+//     getIo().to(clients.get(userId)).emit('notification', notification);
+
+//     const adminLogMessage = `Created New Logistic for campaign - ${logistics.campaign.name} `;
+//     logAdminChange(adminLogMessage, adminId, req);
+
+//     return res.status(200).json({ message: 'Logistics created successfully.' });
+//   } catch (error) {
+//     //console.log(error);
+//     return res.status(400).json(error);
+//   }
+// };
+
+// export const getLogisticById = async (req: Request, res: Response) => {
+//   try {
+//     const logistics = await prisma.logistics.findMany();
+//     return res.status(200).json(logistics);
+//   } catch (error) {
+//     return res.status(400).json(error);
+//   }
+// };
+
+// export const updateStatusLogistic = async (req: Request, res: Response) => {
+//   // eslint-disable-next-line prefer-const
+//   let { logisticId, status } = req.body;
+//   const adminId = req.userId;
+
+//   if (status === 'Pending Delivery Confirmation') {
+//     status = status.split(' ').join('_');
+//   }
+//   try {
+//     const updated = await prisma.logistics.update({
+//       where: {
+//         id: logisticId,
+//       },
+//       data: {
+//         status: status as LogisticStatus,
+//       },
+//       include: {
+//         user: {
+//           select: {
+//             name: true,
+//             email: true,
+//           },
+//         },
+//         campaign: {
+//           select: {
+//             name: true,
+//             campaignBrief: {
+//               select: {
+//                 images: true,
+//               },
+//             },
+//           },
+//         },
+//       },
+//     });
+
+//     const images: any = updated.campaign.campaignBrief?.images;
+
+//     if (status === 'Product_has_been_received') {
+//       // Call deliveryConfirmation function
+//       deliveryConfirmation(
+//         updated.user.email,
+//         updated.campaign.name,
+//         updated.user.name ?? 'Creator',
+//         updated.campaignId,
+//         images[0],
+//       );
+
+//       // Create and send the notification
+//       const { title, message } = notificationLogisticDelivery(updated.campaign.name);
+//       const notification = await saveNotification({
+//         userId: updated.userId,
+//         title,
+//         message,
+//         entity: 'Logistic',
+//       });
+
+//       getIo().to(clients.get(updated.userId)).emit('notification', notification);
+//     }
+
+//     // // deliveryConfirmation
+//     // deliveryConfirmation(updated.user.email, updated.campaign.name, updated.user.name ?? 'Creator', updated.campaignId);
+
+//     // const { title, message } = notificationLogisticDelivery(updated.campaign.name,);
+
+//     // const notification = await saveNotification({
+//     //   userId: updated.userId,
+//     //   title,
+//     //   message,
+//     //   entity: 'Logistic',
+//     // });
+
+//     // getIo().to(clients.get(updated.userId)).emit('notification', notification);
+
+//     const adminLogMessage = `Updated Logistic status for campaign - ${updated.campaign.name} `;
+//     logAdminChange(adminLogMessage, adminId, req);
+
+//     return res.status(200).json({ message: 'Logistic status updated successfully.' });
+//   } catch (error) {
+//     console.log(error);
+//     return res.status(400).json(error);
+//   }
+// };
+
+// export const receiveLogistic = async (req: Request, res: Response) => {
+//   const { logisticId } = req.body;
+//   try {
+//     await prisma.logistics.update({
+//       where: {
+//         id: logisticId,
+//       },
+//       data: {
+//         status: 'Product_has_been_received',
+//       },
+//     });
+
+//     return res.status(200).json({ message: 'Item has been successfully delivered.' });
+//   } catch (error) {
+//     return res.status(400).json(error);
+//   }
+// };
 
 export const creatorAgreements = async (req: Request, res: Response) => {
   const { campaignId } = req.params;
@@ -9342,10 +9608,6 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     // Ensure campaignManager is always an array
     const campaignManagerArray = Array.isArray(campaignManager) ? campaignManager : [campaignManager];
 
-    if (!agreementTemplateId) {
-      return res.status(400).json({ message: 'Agreement template is required' });
-    }
-
     // Check if campaign exists and is in PENDING_ADMIN_ACTIVATION or SCHEDULED status
     const campaign = await prisma.campaign.findFirst({
       where: {
@@ -9405,11 +9667,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
         photos,
         ads,
         crossPosting,
-        agreementTemplate: {
-          connect: {
-            id: agreementTemplateId,
-          },
-        },
+        agreementTemplate: agreementTemplateId ? { connect: { id: agreementTemplateId } } : undefined,
         ...(campaignImageUrls.length > 0 && {
           campaignBrief: {
             update: {

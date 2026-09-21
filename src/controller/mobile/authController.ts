@@ -15,11 +15,12 @@ import appleSignin from 'apple-signin-auth';
 import crypto from 'crypto';
 import { createKanbanBoard } from '../kanbanController';
 import { saveCreatorToSpreadsheet } from '@/src/helper/registeredCreatorSpreadsheet';
-import { exchangeAppleRefreshToken, revokeAppleToken } from '@/src/utils/apple';
+import { exchangeAppleAuthorizationCode, exchangeAppleRefreshToken, revokeAppleToken } from '@/src/utils/apple';
 import { verifyGoogleIdToken } from '@/src/utils/google';
 import WhatsappSetting from '@/src/service/whatsappSetting';
 import { progressAchievement } from '@/src/modules/gamification';
-import { generate, generateSecret } from 'otplib';
+import { generate, generateSecret, verify } from 'otplib';
+import { normalizePhone } from '@/src/service/phone_number';
 
 interface MobileCreatorData {
   phone?: string;
@@ -121,13 +122,27 @@ export const login = async (
 };
 
 export const register = async (
-  req: Request<{}, {}, { name: string; email: string; password: string; creatorData?: MobileCreatorData }>,
+  req: Request<
+    {},
+    {},
+    {
+      name: string;
+      email: string;
+      password: string;
+      hasAcceptedTermsAndPrivacy: boolean;
+      creatorData?: MobileCreatorData;
+    }
+  >,
   res: Response,
 ) => {
-  const { name, email, password, creatorData } = req.body;
+  const { name, email, password, hasAcceptedTermsAndPrivacy, creatorData } = req.body;
 
   if (!name || !email || !password) {
     return res.status(400).json({ success: false, message: 'Name, email, and password are required' });
+  }
+
+  if (hasAcceptedTermsAndPrivacy !== true) {
+    return res.status(400).json({ success: false, message: 'Please check the consent box to continue.' });
   }
 
   if (!email.match(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/)) {
@@ -185,6 +200,7 @@ export const register = async (
           country: creatorData?.Nationality || '',
           city: creatorData?.city || creatorData?.state || '',
           referralCode: creatorData?.referralCode || null,
+          hasAcceptedTermsAndPrivacy,
         },
       });
 
@@ -820,13 +836,102 @@ export const resendVerification = async (req: Request<{}, {}, { email: string }>
 
 type SocialProvider = 'apple' | 'google';
 
+const SOCIAL_PENDING_EXPIRY_MINUTES = 10;
+
+const getAcceptedAppleAudiences = (): string[] =>
+  (process.env.APPLE_BUNDLE_ID || '')
+    .split(',')
+    .map((audience) => audience.trim())
+    .filter(Boolean);
+
+class InvalidPendingSocialSignupError extends Error {}
+
+class SocialRegistrationConflictError extends Error {}
+
+const createPendingSocialSignup = async ({
+  provider,
+  providerSubject,
+  email,
+  name,
+  appleAudience,
+}: {
+  provider: SocialProvider;
+  providerSubject: string;
+  email: string;
+  name?: string | null;
+  appleAudience?: string;
+}) => {
+  const pendingToken = crypto.randomBytes(32).toString('hex');
+  const expiresAt = dayjs().add(SOCIAL_PENDING_EXPIRY_MINUTES, 'minute').toDate();
+
+  await prisma.pendingSocialSignup.deleteMany({ where: { expiresAt: { lte: new Date() } } });
+
+  await prisma.pendingSocialSignup.upsert({
+    where: {
+      provider_providerSubject: { provider, providerSubject },
+    },
+    update: {
+      email,
+      name: name || null,
+      ...(provider === 'apple' ? { appleAudience } : {}),
+      tokenHash: hashToken(pendingToken),
+      expiresAt,
+    },
+    create: {
+      provider,
+      providerSubject,
+      email,
+      name: name || null,
+      ...(provider === 'apple' ? { appleAudience } : {}),
+      tokenHash: hashToken(pendingToken),
+      expiresAt,
+    },
+  });
+
+  return { pendingToken, expiresAt };
+};
+
+const respondWithSocialConsentRequired = async ({
+  res,
+  provider,
+  email,
+  name,
+  providerSubject,
+  appleAudience,
+}: {
+  res: Response;
+  provider: SocialProvider;
+  providerSubject: string;
+  email: string;
+  name?: string | null;
+  appleAudience?: string;
+}) => {
+  const { pendingToken, expiresAt } = await createPendingSocialSignup({
+    provider,
+    providerSubject,
+    email,
+    name,
+    appleAudience,
+  });
+
+  res.set('Cache-Control', 'no-store');
+  return res.status(428).json({
+    success: false,
+    code: 'SOCIAL_CONSENT_REQUIRED',
+    pendingToken,
+    expiresAt,
+    profile: { provider, email, name: name || null },
+  });
+};
+
 const handleSocialSignIn = async ({
   provider,
   providerId,
   email,
   emailVerified,
   name,
-  appleRefreshToken,
+  appleAudience,
+  appleAuthorizationCode,
   ipAddress,
   userAgent,
   res,
@@ -836,7 +941,8 @@ const handleSocialSignIn = async ({
   email?: string;
   emailVerified?: boolean;
   name?: string | null;
-  appleRefreshToken?: string | null;
+  appleAudience?: string;
+  appleAuthorizationCode?: string;
   ipAddress?: string;
   userAgent?: string;
   res: Response;
@@ -846,9 +952,6 @@ const handleSocialSignIn = async ({
   const unlinkedField = provider === 'apple' ? 'appleUnlinkedAt' : 'googleUnlinkedAt';
   const normalizedEmail = email?.toLowerCase();
 
-  // Only persist the refresh token when we actually got one, so a later sign-in
-  // that skipped the exchange doesn't wipe a previously stored token.
-  const appleTokenData = appleRefreshToken ? { appleRefreshToken } : {};
   const providerEmailData = normalizedEmail ? { [emailField]: normalizedEmail } : {};
 
   let user = await prisma.user.findFirst({ where: { [idField]: providerId } });
@@ -866,22 +969,54 @@ const handleSocialSignIn = async ({
       const matchesLinkedEmail = !existingProviderEmail || existingProviderEmail === normalizedEmail;
 
       if (emailVerified && !deliberatelyUnlinked && !alreadyHasDifferentIdentity && matchesLinkedEmail) {
+        const appleRefreshToken =
+          provider === 'apple' && appleAuthorizationCode
+            ? await exchangeAppleRefreshToken(appleAuthorizationCode, appleAudience)
+            : null;
+        const appleRefreshData = appleRefreshToken
+          ? {
+              appleRefreshToken,
+              ...(provider === 'apple' && appleAudience ? { appleAudience } : {}),
+            }
+          : {};
         user = await prisma.user.update({
           where: { id: byEmail.id },
-          data: { [idField]: providerId, ...appleTokenData, ...providerEmailData },
+          data: {
+            [idField]: providerId,
+            ...appleRefreshData,
+            ...providerEmailData,
+          },
         });
       }
     }
   } else if (user) {
+    const appleRefreshToken =
+      provider === 'apple' && appleAuthorizationCode
+        ? await exchangeAppleRefreshToken(appleAuthorizationCode, appleAudience)
+        : null;
+    const appleRefreshData = appleRefreshToken
+      ? {
+          appleRefreshToken,
+          ...(provider === 'apple' && appleAudience ? { appleAudience } : {}),
+        }
+      : {};
     user = await prisma.user.update({
       where: { id: user.id },
-      data: { ...appleTokenData, ...providerEmailData },
+      data: {
+        ...appleRefreshData,
+        ...providerEmailData,
+      },
     });
   }
 
   if (!user) {
-    if (!normalizedEmail) {
-      return res.status(400).json({ success: false, message: 'No email provided by identity provider' });
+    if (!normalizedEmail || emailVerified !== true) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'A verified email is required from the identity provider' });
+    }
+    if (provider === 'apple' && (!appleAudience || !getAcceptedAppleAudiences().includes(appleAudience))) {
+      return res.status(400).json({ success: false, message: 'Invalid Apple identity audience' });
     }
     const emailTaken = await prisma.user.findFirst({
       where: { status: { not: 'deleted' }, email: { mode: 'insensitive', equals: normalizedEmail } },
@@ -892,27 +1027,14 @@ const handleSocialSignIn = async ({
         message: 'An account with this email already exists. Sign in via email and link this account from settings.',
       });
     }
-    user = await prisma.user.create({
-      data: {
-        [idField]: providerId,
-        email: normalizedEmail,
-        name: name || null,
-        role: 'creator',
-        status: 'active',
-        ...appleTokenData,
-        ...providerEmailData,
-        creator: { create: { isOnBoardingFormCompleted: false } },
-      },
+    return respondWithSocialConsentRequired({
+      res,
+      provider,
+      providerSubject: providerId,
+      email: normalizedEmail,
+      name,
+      appleAudience,
     });
-
-    await createKanbanBoard(user.id, 'creator');
-    saveCreatorToSpreadsheet({
-      name: user.name || '',
-      email: user.email,
-      phoneNumber: user.phoneNumber || '',
-      country: user.country || '',
-      createdAt: user.createdAt || new Date(),
-    }).catch((e) => console.error('Error saving creator to spreadsheet:', e));
   }
 
   // Block unusable states for existing/linked accounts (mirrors `login`).
@@ -971,7 +1093,6 @@ export const appleLogin = async (
     {
       identityToken?: string;
       authorizationCode?: string;
-      email?: string;
       fullName?: string;
       ipAddress?: string;
       userAgent?: string;
@@ -979,7 +1100,7 @@ export const appleLogin = async (
   >,
   res: Response,
 ) => {
-  const { identityToken, authorizationCode, email, fullName, ipAddress, userAgent } = req.body;
+  const { identityToken, authorizationCode, fullName, ipAddress, userAgent } = req.body;
 
   if (!identityToken) {
     return res.status(400).json({ success: false, message: 'Missing Apple identity token' });
@@ -991,21 +1112,17 @@ export const appleLogin = async (
       ignoreExpiration: false,
     });
 
-    // Exchange the one-time authorizationCode for Apple's refresh token so we can
-    // revoke it on account deletion. Best-effort (returns null if unconfigured);
-    // must not block sign-in.
-    const appleRefreshToken = authorizationCode ? await exchangeAppleRefreshToken(authorizationCode) : null;
-
     // Apple encodes email_verified as a boolean or the string "true".
     const appleEmailVerified = claims.email_verified === true || claims.email_verified === 'true';
 
     return await handleSocialSignIn({
       provider: 'apple',
       providerId: claims.sub,
-      email: claims.email || email,
+      email: claims.email,
       emailVerified: appleEmailVerified,
       name: fullName,
-      appleRefreshToken,
+      appleAudience: claims.aud,
+      appleAuthorizationCode: authorizationCode,
       ipAddress,
       userAgent,
       res,
@@ -1050,7 +1167,10 @@ export const linkApple = async (
       return res.status(409).json({ success: false, message: 'This Apple account is already linked to another user.' });
     }
 
-    const appleRefreshToken = authorizationCode ? await exchangeAppleRefreshToken(authorizationCode) : null;
+    const appleRefreshToken = authorizationCode ? await exchangeAppleRefreshToken(authorizationCode, claims.aud) : null;
+    const appleRefreshData = appleRefreshToken
+      ? { appleRefreshToken, appleAudience: claims.aud }
+      : { appleRefreshToken: null, appleAudience: null };
 
     await prisma.user.update({
       where: { id: userId },
@@ -1059,8 +1179,7 @@ export const linkApple = async (
         // Store the real linked email; clear the unlink flag (deliberate relink).
         appleEmail: claims.email?.toLowerCase() ?? null,
         appleUnlinkedAt: null,
-        // Only overwrite the stored token when we actually got a fresh one.
-        ...(appleRefreshToken ? { appleRefreshToken } : {}),
+        ...appleRefreshData,
       },
     });
 
@@ -1117,7 +1236,7 @@ export const unlinkApple = async (req: Request, res: Response) => {
 
     // Best-effort revoke (never blocks) — removes the app from Apple ID settings.
     if (tokenToRevoke) {
-      await revokeAppleToken(tokenToRevoke);
+      await revokeAppleToken(tokenToRevoke, user.appleAudience ?? undefined);
     }
 
     return res.status(200).json({ success: true, message: 'Apple account unlinked' });
@@ -1159,6 +1278,200 @@ export const googleLogin = async (
   } catch (error) {
     console.log(error);
     return res.status(401).json({ success: false, message: 'Invalid Google token' });
+  }
+};
+
+interface CompleteSocialRegistrationBody {
+  pendingToken?: string;
+  hasAcceptedTermsAndPrivacy?: boolean;
+  appleAuthorizationCode?: string;
+  ipAddress?: string;
+  userAgent?: string;
+}
+
+const respondWithInvalidPendingSocialSignup = (res: Response) =>
+  res.status(400).json({
+    success: false,
+    code: 'SOCIAL_REGISTRATION_INVALID',
+    message: 'The pending social registration is invalid or expired.',
+  });
+
+export const completeSocialRegistration = async (
+  req: Request<{}, {}, CompleteSocialRegistrationBody>,
+  res: Response,
+) => {
+  res.set('Cache-Control', 'no-store');
+
+  const { pendingToken, hasAcceptedTermsAndPrivacy, appleAuthorizationCode, ipAddress, userAgent } = req.body;
+
+  if (hasAcceptedTermsAndPrivacy !== true) {
+    return res.status(400).json({ success: false, message: 'Please check the consent box to continue.' });
+  }
+
+  if (!pendingToken) {
+    return respondWithInvalidPendingSocialSignup(res);
+  }
+
+  const pendingTokenHash = hashToken(pendingToken);
+
+  try {
+    await prisma.pendingSocialSignup.deleteMany({ where: { expiresAt: { lte: new Date() } } });
+
+    const pending = await prisma.pendingSocialSignup.findUnique({ where: { tokenHash: pendingTokenHash } });
+    if (!pending || pending.expiresAt <= new Date()) {
+      return respondWithInvalidPendingSocialSignup(res);
+    }
+
+    if (pending.provider !== 'apple' && pending.provider !== 'google') {
+      return respondWithInvalidPendingSocialSignup(res);
+    }
+
+    let appleRefreshToken: string | null = null;
+    if (pending.provider === 'apple') {
+      if (!pending.appleAudience || !getAcceptedAppleAudiences().includes(pending.appleAudience)) {
+        return respondWithInvalidPendingSocialSignup(res);
+      }
+      if (!appleAuthorizationCode) {
+        return res.status(400).json({ success: false, message: 'Missing Apple authorization code' });
+      }
+
+      const exchange = await exchangeAppleAuthorizationCode(appleAuthorizationCode, pending.appleAudience);
+      if (!exchange?.identityToken) {
+        return respondWithInvalidPendingSocialSignup(res);
+      }
+
+      let exchangedClaims: { sub: string };
+      try {
+        exchangedClaims = await appleSignin.verifyIdToken(exchange.identityToken, {
+          audience: process.env.APPLE_BUNDLE_ID!.split(',').map((s) => s.trim()),
+          ignoreExpiration: false,
+        });
+      } catch {
+        return respondWithInvalidPendingSocialSignup(res);
+      }
+
+      if (exchangedClaims.sub !== pending.providerSubject) {
+        return respondWithInvalidPendingSocialSignup(res);
+      }
+
+      appleRefreshToken = exchange.refreshToken;
+    }
+
+    const registration = await prisma.$transaction(async (tx) => {
+      const currentPending = await tx.pendingSocialSignup.findUnique({ where: { tokenHash: pendingTokenHash } });
+      const now = new Date();
+      if (!currentPending || currentPending.expiresAt <= now) {
+        throw new InvalidPendingSocialSignupError();
+      }
+
+      const existingProviderUser =
+        currentPending.provider === 'apple'
+          ? await tx.user.findUnique({ where: { appleId: currentPending.providerSubject } })
+          : await tx.user.findUnique({ where: { googleId: currentPending.providerSubject } });
+      const existingEmailUser = await tx.user.findFirst({
+        where: { email: { mode: 'insensitive', equals: currentPending.email } },
+      });
+
+      if (existingProviderUser || existingEmailUser) {
+        throw new SocialRegistrationConflictError();
+      }
+
+      const consumed = await tx.pendingSocialSignup.deleteMany({
+        where: {
+          id: currentPending.id,
+          tokenHash: pendingTokenHash,
+          expiresAt: { gt: now },
+        },
+      });
+      if (consumed.count !== 1) {
+        throw new InvalidPendingSocialSignupError();
+      }
+
+      const providerIdentityData =
+        currentPending.provider === 'apple'
+          ? {
+              appleId: currentPending.providerSubject,
+              appleEmail: currentPending.email,
+              appleAudience: currentPending.appleAudience,
+              ...(appleRefreshToken ? { appleRefreshToken } : {}),
+            }
+          : {
+              googleId: currentPending.providerSubject,
+              googleEmail: currentPending.email,
+            };
+
+      const user = await tx.user.create({
+        data: {
+          ...providerIdentityData,
+          email: currentPending.email,
+          name: currentPending.name,
+          role: 'creator',
+          status: 'active',
+          hasAcceptedTermsAndPrivacy: true,
+          creator: { create: { isOnBoardingFormCompleted: false } },
+          Board: {
+            create: {
+              name: 'My Tasks',
+              columns: {
+                create: [
+                  { name: 'To Do', position: 0 },
+                  { name: 'In Progress', position: 1 },
+                  { name: 'In Review', position: 2 },
+                  { name: 'Done', position: 3 },
+                ],
+              },
+            },
+          },
+        },
+        include: { creator: true },
+      });
+
+      const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, {
+        expiresIn: '15m',
+      });
+      const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
+        expiresIn: '30d',
+      });
+
+      await tx.refreshToken.create({
+        data: {
+          tokenHash: hashToken(refreshToken),
+          userId: user.id,
+          expiresAt: dayjs().add(30, 'days').toDate(),
+          ipAddress,
+          userAgent,
+        },
+      });
+
+      return { user, accessToken, refreshToken };
+    });
+
+    saveCreatorToSpreadsheet({
+      name: registration.user.name || '',
+      email: registration.user.email,
+      phoneNumber: registration.user.phoneNumber || '',
+      country: registration.user.country || '',
+      createdAt: registration.user.createdAt || new Date(),
+    }).catch(() => console.error('Error saving creator to spreadsheet'));
+
+    return res.status(200).json({
+      user: registration.user,
+      token: { accessToken: registration.accessToken, refreshToken: registration.refreshToken },
+    });
+  } catch (error) {
+    if (error instanceof InvalidPendingSocialSignupError) {
+      return respondWithInvalidPendingSocialSignup(res);
+    }
+    if (error instanceof SocialRegistrationConflictError) {
+      return res.status(409).json({
+        success: false,
+        code: 'SOCIAL_REGISTRATION_CONFLICT',
+        message: 'An account already exists for this social identity or email.',
+      });
+    }
+
+    console.error('Social registration completion failed');
+    return res.status(500).json({ success: false, message: 'Unable to complete social registration' });
   }
 };
 
@@ -1328,6 +1641,207 @@ export const completeOnboarding = async (req: Request<{}, {}, { creatorData?: Mo
     return res.status(200).json({ success: true, user: userWithCreator });
   } catch (error) {
     console.error('completeOnboarding error:', error);
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Failed' });
+  }
+};
+
+export const forgetPassword = async (req: Request, res: Response) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone || typeof phone !== 'string' || phone.trim().length < 7) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid phone number' });
+    }
+
+    const normalizedInput = phone.replace(/\D/g, '');
+
+    const users = await prisma.user.findMany({
+      where: { phoneNumber: { not: null } },
+      select: { id: true, phoneNumber: true, status: true },
+    });
+
+    const user = users.find((u) => u.phoneNumber?.replace(/\D/g, '') === normalizedInput);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'No account registered with this phone number' });
+    }
+
+    switch (user.status) {
+      case 'banned':
+        return res.status(400).json({ success: false, message: 'Account banned.' });
+      case 'pending':
+        return res.status(400).json({ success: false, message: 'Account pending.' });
+      case 'blacklisted':
+        return res.status(400).json({ success: false, message: 'Account blacklisted.' });
+      case 'suspended':
+        return res.status(400).json({ success: false, message: 'Account suspended.' });
+      case 'spam':
+        return res.status(400).json({ success: false, message: 'Account spam.' });
+      case 'rejected':
+        return res.status(400).json({ success: false, message: 'Account rejected.' });
+      case 'deleted':
+        return res.status(400).json({ success: false, message: 'Account not found.' });
+    }
+
+    const whatsapp = new WhatsappSetting();
+    await whatsapp.initialize();
+
+    const secret = generateSecret();
+
+    // Generate current token
+    const token = await generate({ secret });
+
+    await prisma.resetPasswordToken.upsert({
+      where: { userId: user.id },
+      update: {
+        token: secret,
+        used: false,
+        attempts: 0,
+        expiresAt: dayjs().add(15, 'minute').toDate(),
+        createdAt: new Date(),
+      },
+      create: { userId: user.id, token: secret, used: false, expiresAt: dayjs().add(15, 'minute').toDate() },
+    });
+
+    await whatsapp.sendVerificationCode(user.phoneNumber!, token);
+
+    return res.status(200).json({ success: true, message: 'Verification code sent to your WhatsApp' });
+  } catch (error) {
+    console.error('forgetPassword error:', error);
+
+    if (error instanceof Error && error.message.includes('Whatsapp')) {
+      return res.status(400).json({ success: false, message: 'Please contact our admin.' });
+    }
+
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Failed' });
+  }
+};
+
+export const verifyResetCode = async (req: Request<{}, {}, { phone: string; code: string }>, res: Response) => {
+  try {
+    const { phone, code } = req.body;
+
+    if (!phone || typeof phone !== 'string' || !code || typeof code !== 'string') {
+      return res.status(400).json({ success: false, message: 'Phone number and code are required' });
+    }
+
+    const phoneResult = normalizePhone(phone);
+
+    if (phoneResult.status === 'invalid') {
+      return res.status(400).json({ success: false, message: 'Please enter a valid phone number' });
+    }
+
+    const normalizedInput = phoneResult.e164.replace(/\D/g, '');
+
+    const users = await prisma.user.findMany({
+      where: { phoneNumber: { not: null } },
+      select: { id: true, phoneNumber: true },
+    });
+
+    const user = users.find((u) => u.phoneNumber?.replace(/\D/g, '') === normalizedInput);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'No account registered with this phone number' });
+    }
+
+    const resetRecord = await prisma.resetPasswordToken.findUnique({ where: { userId: user.id } });
+
+    if (!resetRecord || !resetRecord.token || resetRecord.used) {
+      return res.status(400).json({ success: false, message: 'Please request a new code' });
+    }
+
+    if (resetRecord.expiresAt && dayjs().isAfter(resetRecord.expiresAt)) {
+      return res.status(400).json({ success: false, message: 'Code has expired, please request a new one' });
+    }
+
+    if (resetRecord.attempts >= 5) {
+      return res.status(429).json({ success: false, message: 'Too many attempts, please request a new code' });
+    }
+
+    const isValid = await verify({ token: code, secret: resetRecord.token, epochTolerance: 600 });
+
+    if (!isValid.valid) {
+      await prisma.resetPasswordToken.update({
+        where: { userId: user.id },
+        data: { attempts: { increment: 1 } },
+      });
+      return res.status(400).json({ success: false, message: 'Invalid code' });
+    }
+
+    // Consume the OTP so it can't be replayed; the reset token below carries the flow forward.
+    await prisma.resetPasswordToken.update({
+      where: { userId: user.id },
+      data: { used: true },
+    });
+
+    const resetToken = jwt.sign({ userId: user.id, purpose: 'reset-password' }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '10m',
+    });
+
+    return res.status(200).json({ success: true, message: 'Code verified', resetToken });
+  } catch (error) {
+    console.error('verifyResetCode error:', error);
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Failed' });
+  }
+};
+
+export const resetPassword = async (
+  req: Request<{}, {}, { resetToken: string; newPassword: string }>,
+  res: Response,
+) => {
+  try {
+    const { resetToken, newPassword } = req.body;
+
+    if (!resetToken || typeof resetToken !== 'string') {
+      return res.status(400).json({ success: false, message: 'Reset token is required' });
+    }
+
+    const schema = z.object({
+      newPassword: z
+        .string()
+        .min(8)
+        .regex(/[0-9]/)
+        .regex(/[@$!%*?&#]/)
+        .refine((p) => /[a-z]/.test(p) && /[A-Z]/.test(p)),
+    });
+
+    const parsed = schema.safeParse({ newPassword });
+
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, message: 'Invalid password format' });
+    }
+
+    let decoded: { userId: string; purpose: string };
+    try {
+      decoded = jwt.verify(resetToken, process.env.ACCESSKEY as Secret) as { userId: string; purpose: string };
+    } catch {
+      return res.status(401).json({ success: false, message: 'Invalid or expired reset token' });
+    }
+
+    if (decoded.purpose !== 'reset-password') {
+      return res.status(401).json({ success: false, message: 'Invalid reset token' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const resetRecord = await prisma.resetPasswordToken.findUnique({ where: { userId: user.id } });
+    if (!resetRecord || !resetRecord.used) {
+      return res.status(401).json({ success: false, message: 'Please verify your code again' });
+    }
+
+    const latestPassword = await bcrypt.hash(newPassword, 10);
+    console.log(latestPassword);
+
+    await handleChangePassword({ userId: user.id, latestPassword });
+
+    await prisma.resetPasswordToken.delete({ where: { userId: user.id } });
+
+    return res.status(200).json({ success: true, message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('resetPassword error:', error);
     return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Failed' });
   }
 };

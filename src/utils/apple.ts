@@ -16,7 +16,8 @@ import appleSignin from 'apple-signin-auth';
  * - APPLE_PRIVATE_KEY  the .p8 private key contents (PEM, newlines preserved)
  */
 
-const clientID = () => process.env.APPLE_CLIENT_ID || process.env.APPLE_BUNDLE_ID!.split(',')[0].trim();
+const clientID = (override?: string) =>
+  override || process.env.APPLE_CLIENT_ID || process.env.APPLE_BUNDLE_ID!.split(',')[0].trim();
 
 // The .p8 is commonly stored in .env with literal "\n" sequences; restore them.
 const privateKey = () => (process.env.APPLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
@@ -24,9 +25,9 @@ const privateKey = () => (process.env.APPLE_PRIVATE_KEY || '').replace(/\\n/g, '
 const appleConfigured = (): boolean =>
   Boolean(process.env.APPLE_TEAM_ID && process.env.APPLE_KEY_ID && process.env.APPLE_PRIVATE_KEY);
 
-const buildClientSecret = (): string =>
+const buildClientSecret = (override?: string): string =>
   appleSignin.getClientSecret({
-    clientID: clientID(),
+    clientID: clientID(override),
     teamID: process.env.APPLE_TEAM_ID!,
     keyIdentifier: process.env.APPLE_KEY_ID!,
     privateKey: privateKey(),
@@ -37,32 +38,51 @@ const buildClientSecret = (): string =>
  * refresh token. Returns null (never throws) if credentials aren't configured
  * or the exchange fails — sign-in must not break just because revoke isn't set up.
  */
-export const exchangeAppleRefreshToken = async (authorizationCode: string): Promise<string | null> => {
+export interface AppleAuthorizationExchange {
+  refreshToken: string | null;
+  identityToken: string | null;
+}
+
+export const exchangeAppleAuthorizationCode = async (
+  authorizationCode: string,
+  clientId?: string,
+): Promise<AppleAuthorizationExchange | null> => {
   if (!appleConfigured()) return null;
   try {
     const tokens = await appleSignin.getAuthorizationToken(authorizationCode, {
-      clientID: clientID(),
+      clientID: clientID(clientId),
       // Native (app) auth has no redirect; Apple accepts an empty string here.
       redirectUri: '',
-      clientSecret: buildClientSecret(),
+      clientSecret: buildClientSecret(clientId),
     });
-    return tokens.refresh_token || null;
-  } catch (e) {
-    console.error('Apple authorizationCode exchange failed:', e);
+    return {
+      refreshToken: tokens.refresh_token || null,
+      identityToken: tokens.id_token || null,
+    };
+  } catch {
+    console.error('Apple authorizationCode exchange failed');
     return null;
   }
+};
+
+export const exchangeAppleRefreshToken = async (
+  authorizationCode: string,
+  clientId?: string,
+): Promise<string | null> => {
+  const exchange = await exchangeAppleAuthorizationCode(authorizationCode, clientId);
+  return exchange?.refreshToken || null;
 };
 
 /**
  * Revoke a stored Apple refresh token. Best-effort — logs and swallows failure
  * so account deletion is never blocked by Apple being unreachable.
  */
-export const revokeAppleToken = async (refreshToken: string): Promise<void> => {
+export const revokeAppleToken = async (refreshToken: string, clientId?: string): Promise<void> => {
   if (!appleConfigured()) return;
   try {
     await appleSignin.revokeAuthorizationToken(refreshToken, {
-      clientID: clientID(),
-      clientSecret: buildClientSecret(),
+      clientID: clientID(clientId),
+      clientSecret: buildClientSecret(clientId),
       tokenTypeHint: 'refresh_token',
     });
   } catch (e) {
