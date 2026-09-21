@@ -47,11 +47,11 @@ import {
 } from '@services/submissionService';
 import { ensureValidInstagramToken, ensureValidTikTokToken } from '@controllers/socialController';
 import { clients, getIo } from '../config/socket';
+import { prisma } from '@/src/prisma/prisma';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
 
-const prisma = new PrismaClient();
 
 const INSTAGRAM_POST_REGEX = /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|reel|tv)\/[A-Za-z0-9_-]+/i;
 const TIKTOK_POST_REGEX = /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[^/]+\/(?:video|photo)\/\d+/i;

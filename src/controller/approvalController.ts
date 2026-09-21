@@ -1,15 +1,14 @@
 import crypto from 'crypto';
 import jwt, { Secret } from 'jsonwebtoken';
 import { Request, Response } from 'express';
-import { Prisma, PrismaClient } from '@prisma/client';
-
+import { Prisma } from '@prisma/client';
 import { sendCreatorApprovalListEmail, type ApprovalListEmailCreatorRow } from '@configs/nodemailer.config';
 import { getIo } from '../config/socket';
 import { awardXp, onShortlisted, progressAchievement } from '@/src/modules/gamification';
+import { prisma } from '@/src/prisma/prisma';
 
 // import { io } from '../server';
 
-const prisma = new PrismaClient();
 
 function formatFollowersShort(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;

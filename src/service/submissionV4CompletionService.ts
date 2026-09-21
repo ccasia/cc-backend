@@ -1,4 +1,3 @@
-import { PrismaClient } from '@prisma/client';
 import { createInvoiceService } from './invoiceService';
 import { saveNotification } from '../controller/notificationController';
 import { clients, getIo } from '../config/socket';
@@ -8,8 +7,7 @@ import {
 } from '@utils/campaignCompletionEvents';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
 import { onCampaignCompleted } from '@/src/modules/gamification';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * Interface for completion status result

@@ -1,6 +1,5 @@
-import { InvoiceStatus, Prisma, PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { InvoiceStatus, Prisma } from '@prisma/client';
+import { prisma } from '@/src/prisma/prisma';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

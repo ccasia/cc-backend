@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 // Check if the NPS modal should be shown to a creator.
 // Triggers when the creator has at least one completed campaign and hasn't already submitted NPS.

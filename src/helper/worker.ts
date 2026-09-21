@@ -13,13 +13,11 @@ import { createXeroContact, createXeroInvoiceLocal, sendToSpreadSheet } from '@s
 
 import fs from 'fs-extra';
 
-import { PrismaClient } from '@prisma/client';
 
 import { xero } from '@configs/xero';
 
 import { users } from '@utils/activeUsers';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 const worker = new Worker(
   'invoice-queue',

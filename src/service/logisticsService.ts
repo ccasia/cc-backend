@@ -1,6 +1,6 @@
-import { PrismaClient, LogisticStatus, SubmissionStatus, SubmissionEnum } from '@prisma/client';
+import { LogisticStatus, SubmissionStatus, SubmissionEnum } from '@prisma/client';
 import { addMinutes, format, isSameDay, addDays, startOfDay, isBefore, isAfter, getDay } from 'date-fns';
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const fetchAllLogisticsForCampaign = async (campaignId: string) => {
   const logistics = await prisma.logistic.findMany({

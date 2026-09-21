@@ -1,12 +1,10 @@
 /* eslint-disable no-unused-vars */
-import { Mode, Modules, PrismaClient } from '@prisma/client';
-// import { AdminInvite } from '@configs/nodemailer.config';
+import { Mode, Modules } from '@prisma/client';// import { AdminInvite } from '@configs/nodemailer.config';
 import jwt, { Secret } from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { createKanbanBoard } from '@controllers/kanbanController';
 import { uploadProfileImage } from '@configs/cloudStorage.config';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 interface AdminProfile {
   userId: string;

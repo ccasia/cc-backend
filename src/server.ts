@@ -7,7 +7,7 @@ import session from 'express-session';
 import cookieParser from 'cookie-parser';
 
 import fileUpload from 'express-fileupload';
-import { PrismaClient, Video } from '@prisma/client';
+import { Video } from '@prisma/client';
 
 import '@configs/cronjob';
 import http from 'http';
@@ -116,7 +116,7 @@ app.use(
       maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
       httpOnly: true,
     },
-    store: new PrismaSessionStore(new PrismaClient(), {
+    store: new PrismaSessionStore(prisma, {
       checkPeriod: 2 * 60 * 1000,
       dbRecordIdIsSessionId: true,
       dbRecordIdFunction: undefined,

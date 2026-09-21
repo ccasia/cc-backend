@@ -1,6 +1,5 @@
 import { PrismaClient, CreditTier } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 interface FollowerData {
   instagramFollowers?: number | null;

@@ -1,7 +1,7 @@
 import { decryptToken, encryptToken } from '@helper/encrypt';
 import axios, { get } from 'axios';
 import { Request, Response } from 'express';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import dayjs from 'dayjs';
 import {
   calculateAverageLikes,
@@ -32,6 +32,7 @@ import { onMediaKitConnected } from '@/src/modules/gamification';
 import crypto from 'crypto';
 import connection from '../config/redis';
 import { clients, getIo } from '../config/socket';
+import { prisma } from '@/src/prisma/prisma';
 
 // Type definitions
 export interface UrlData {
@@ -73,7 +74,6 @@ export type ComparisonResult = Record<string, MetricComparison>;
 // const CODE_VERIFIER = 'your_unique_code_verifier';
 // const CODE_CHALLENGE = 'SHA256_hash_of_code_verifier';
 
-const prisma = new PrismaClient();
 
 // Memory cache for campaign averages
 const campaignAveragesCache = new Map();

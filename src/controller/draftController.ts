@@ -1,9 +1,8 @@
-import { Entity, PrismaClient, User } from '@prisma/client';
+import { Entity, User } from '@prisma/client';
 import { Request, Response } from 'express';
 import amqplib from 'amqplib';
 import { Title, saveNotification } from './notificationController';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const submitFirstDraft = async (req: Request, res: Response) => {
   //   Get creator Id

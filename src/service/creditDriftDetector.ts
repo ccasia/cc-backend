@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 // Statuses where credits are still escrowed against the subscription.
 // COMPLETED / CANCELLED have already been refunded by closeCampaign.

@@ -1,7 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const isClient = async (req: Request, res: Response, next: NextFunction) => {
   // Check if client is logged in

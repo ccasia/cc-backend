@@ -1,7 +1,6 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { createVideoOfTheMonthThumbnail } from '@helper/videoOfTheMonthThumbnail';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 // Shape returned to the mobile app for each featured video.
 export interface FeaturedVideo {

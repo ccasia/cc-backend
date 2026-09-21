@@ -1,10 +1,9 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { V4SubmissionCreateData } from '../types/submissionV4Types';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { MAX_POSTING_LINKS, joinPostingLinksToContent } from '../utils/postingLinkValidation';
 import { onSubmissionSubmitted } from '@/src/modules/gamification';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 /** Max video versions returned in V4 list/detail APIs (newest first). Older rows stay in DB. */
 export const V4_ACTIVE_VIDEO_VERSIONS_LIMIT = 3;

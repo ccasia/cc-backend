@@ -16,9 +16,7 @@ import {
   GenerateReportRequest,
   ExternalMetrics,
 } from '../types/index';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 // ── Shared format rule ─────────────────────────────────────────────────────────
 

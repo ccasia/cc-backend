@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/src/prisma/prisma';
 // import passport from 'passport';
 
-const prisma = new PrismaClient();
 
 interface User {
   email: string;

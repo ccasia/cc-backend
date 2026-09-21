@@ -28,9 +28,7 @@ import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { authenticate } from '@middlewares/authenticate';
 import { createInvoiceService } from '@services/invoiceService';
 // import { prisma } from 'src/prisma/prisma';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 router.get('/', authenticate, isSuperAdmin, getAllInvoices);
 

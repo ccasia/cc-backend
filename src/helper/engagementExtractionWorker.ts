@@ -20,7 +20,7 @@ import {
 } from '@services/guestProfileExtraction/guestProfileExtractionService';
 import { applyExtractionToPendingPitchesSafe } from '@services/guestProfileExtraction/pendingPitchMetrics';
 import { enqueueExtraction } from '@utils/queue';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * Dedicated worker for guest profile extraction.
@@ -36,7 +36,6 @@ const RECONCILE_INTERVAL_MS = 5 * 60_000;
 const HEALTH_INTERVAL_MS = 60_000;
 
 const config = loadExtractionConfig();
-const prisma = new PrismaClient();
 
 const deps: ExtractionDeps = {
   store: prisma as never,

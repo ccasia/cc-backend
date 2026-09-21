@@ -1,10 +1,8 @@
 import { uploadAgreementTemplate, uploadDigitalSignature } from '@configs/cloudStorage.config';
-import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import dayjs from 'dayjs';
 import { Request, Response } from 'express';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const getAllTemplate = async (req: Request, res: Response) => {
   try {

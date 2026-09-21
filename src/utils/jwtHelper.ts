@@ -1,9 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { verify } from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const validateToken = async (req: any, res: Response, next: NextFunction) => {
   const accessToken = req.cookies['accessToken'];

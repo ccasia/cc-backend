@@ -7,8 +7,7 @@ import { getTaskId, updateTask } from './kanbanService';
 import { saveNotification } from '@controllers/notificationController';
 import { deductCredits } from './campaignServices';
 import { createInvoiceService } from './invoiceService';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const getCreatorInvoiceLists = async (submissionId: string, prismaFunc?: PrismaClient) => {
   try {

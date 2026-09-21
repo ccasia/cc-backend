@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 const parseTimestampToSeconds = (timestamp: string | null): number => {
   if (!timestamp) return Infinity;

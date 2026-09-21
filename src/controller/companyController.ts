@@ -7,15 +7,14 @@ import {
   handleCreateBrand,
 } from '@services/companyService';
 import { logAdminChange } from '@services/campaignServices';
-import { Company, CustomPackage, Package, PrismaClient } from '@prisma/client';
+import { Company, CustomPackage, Package } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
 import { ClientInvitation } from '@configs/nodemailer.config';
 import jwt, { Secret } from 'jsonwebtoken';
 import dayjs from 'dayjs';
 
 import { getIo } from '../config/socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 // for creating new company with brand
 export const createCompany = async (req: Request, res: Response) => {

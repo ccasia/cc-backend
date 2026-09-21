@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import { awardXp, progressAchievement } from './gamification.service';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 type SubmissionSubmittedInput = {
   submissionId: string;

@@ -96,11 +96,11 @@ import {
   getCampaignCreationDraftUploadPrefix,
   getLegacyCampaignCreationDraftUploadPrefix,
 } from '@services/campaignCreationDraftService';
+import { prisma } from '@/src/prisma/prisma';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
-const prisma = new PrismaClient();
 
 const emitCreatorCampaignMembershipUpdated = ({
   userId,

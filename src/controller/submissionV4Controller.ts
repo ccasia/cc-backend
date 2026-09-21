@@ -34,8 +34,7 @@ import { selectCurrentAgreementSubmission, selectAgreementSubmissions } from '@u
 import { clients, getIo } from '../config/socket';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
 import { awardXp, onAgreementApproved } from '@/src/modules/gamification';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 // Campaign relations required by getEffectiveCampaignOrigin (@utils/campaignFlow).
 // Queries whose campaign object feeds that helper must load these, otherwise the

@@ -1,12 +1,10 @@
 import { uploadImage } from '@configs/cloudStorage.config';
-import { PrismaClient } from '@prisma/client';
 import { createNewBugRowData } from '@services/google_sheets/sheets';
 import dayjs from 'dayjs';
 import { Request, Response } from 'express';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);

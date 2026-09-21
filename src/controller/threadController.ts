@@ -1,6 +1,5 @@
 /* eslint-disable no-unused-vars */
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import {
   markMessagesService,
   fetchMessagesFromThread,
@@ -9,8 +8,7 @@ import {
   ThreadServiceError,
 } from '@services/threadService';
 import { getIo } from '../config/socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 interface CreateThreadParams {
   title: string;

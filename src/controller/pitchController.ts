@@ -5,7 +5,6 @@ import { normalizeProfileUrl } from '@services/guestProfileExtraction/profileUrl
 import { parseEngagementRate, parseFollowerCount } from '@services/guestProfileExtraction/guestCreateService';
 import { applyExtractionToPendingPitchesSafe } from '@services/guestProfileExtraction/pendingPitchMetrics';
 import { averageLikesFromSelectedPosts } from '@services/guestProfileExtraction/selectedPostStats';
-import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 
 import { saveNotification } from './notificationController';
@@ -17,8 +16,7 @@ import {
 } from '@utils/campaignMembershipEvents';
 import { clients, getIo } from '../config/socket';
 import { awardXp, onShortlisted, progressAchievement } from '@/src/modules/gamification';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 const LATEST_SCRAPE_EVIDENCE = {
   guestCreatorMetricAudits: {

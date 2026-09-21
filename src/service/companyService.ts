@@ -1,8 +1,8 @@
 import { CustomPackage, Package, Prisma, PrismaClient, Subscription } from '@prisma/client';
 import dayjs from 'dayjs';
+import { prisma } from '@/src/prisma/prisma';
 // import { createClientPackageDefault } from './packageService';
 
-const prisma = new PrismaClient();
 
 interface companyForm {
   companyName: string;

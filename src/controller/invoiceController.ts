@@ -7,7 +7,7 @@ import { creatorInvoice as emailCreatorInvoice } from '@configs/nodemailer.confi
 import { logAdminChange } from '@services/campaignServices';
 import { logChange } from '@services/campaignServices';
 
-import { InvoiceStatus, Prisma, PrismaClient } from '@prisma/client';
+import { InvoiceStatus, Prisma } from '@prisma/client';
 import {
   notificationInvoiceGenerate,
   notificationInvoiceStatus,
@@ -37,8 +37,7 @@ import { creatorAgreements } from './campaignController';
 import { bulkInvoiceQueue, invoiceQueue } from '@utils/queue';
 import { xero } from '@configs/xero';
 import { clients, getIo } from '../config/socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 const MAX_INVOICE_NUMBER_RETRIES = 8;
 

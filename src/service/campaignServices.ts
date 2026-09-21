@@ -6,8 +6,7 @@ import { JWT } from 'google-auth-library';
 import { google } from 'googleapis';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * Fallback for when the last client is detached from a campaign mid-flight.

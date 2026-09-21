@@ -1,5 +1,4 @@
 import { decryptToken, encryptToken } from '@helper/encrypt';
-import { PrismaClient } from '@prisma/client';
 import {
   getInstagramMedias,
   getMediaInsight,
@@ -9,8 +8,7 @@ import {
 } from '@services/socialMediaService';
 import axios from 'axios';
 import dayjs from 'dayjs';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export interface BatchRequestConfig {
   platform: 'Instagram' | 'TikTok';

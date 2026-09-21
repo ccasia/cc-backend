@@ -7,7 +7,7 @@ import fs from 'fs';
 import { uploadPitchVideo, uploadImage } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses } from '../server';
-import { Entity, PrismaClient, Submission } from '@prisma/client';
+import { Entity, Submission } from '@prisma/client';
 import { spawn } from 'child_process';
 import path from 'path';
 
@@ -24,11 +24,11 @@ import {
 } from './draftSubmissionStatus';
 import { getIo, clients } from '../config/socket';
 import { onSubmissionSubmitted } from '@/src/modules/gamification';
+import { prisma } from '@/src/prisma/prisma';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
-const prisma = new PrismaClient();
 
 interface VideoFile {
   inputPath: string;

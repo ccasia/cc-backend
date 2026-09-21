@@ -1,7 +1,6 @@
-import { Event, PrismaClient } from '@prisma/client';
+import { Event } from '@prisma/client';
 import dayjs from 'dayjs';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const createEventService = async ({ title, description, userId, allDay, start, end, color }: Event) => {
   try {

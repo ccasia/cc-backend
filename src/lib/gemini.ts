@@ -1,6 +1,6 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { AiModel, PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import { AiModel } from '@prisma/client';
+import { prisma } from '@/src/prisma/prisma';
 
 export type GeminiModelName = 'gemini-1.5-flash' | 'gemini-1.5-pro' | 'gemini-2.0-flash-exp';
 

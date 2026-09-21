@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
-import { Employment, PrismaClient, RoleEnum, Prisma } from '@prisma/client';
+import { Employment, RoleEnum, Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import {
   AdminInvitaion,
@@ -39,8 +39,7 @@ import {
 import { revokeAppleToken } from '@utils/apple';
 import { normalizePhone, getCountryShortCode } from '@utils/phoneNumber';
 import { getIo } from '../config/socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 interface RequestData {
   email: string;

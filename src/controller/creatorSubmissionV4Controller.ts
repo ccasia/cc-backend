@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, LogisticStatus } from '@prisma/client';
+import { LogisticStatus } from '@prisma/client';
 import amqplib, { ChannelModel } from 'amqplib';
 import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
@@ -13,8 +13,7 @@ import { getIo } from '../config/socket';
 import { normalizePostingLinks, joinPostingLinksToContent } from '../utils/postingLinkValidation';
 import { scheduleUrlExtractionAndFetch } from './submissionV4Controller';
 import { awardXp, onSubmissionSubmitted } from '@/src/modules/gamification';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * Get creator's own V4 submissions for a campaign

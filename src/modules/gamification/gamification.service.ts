@@ -4,8 +4,7 @@ import { saveNotification } from '@controllers/notificationController';
 import { getPeriodId } from '@constants/gamification';
 import { previousDay } from 'date-fns';
 import { RowType } from 'xero-node';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 type TxClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$transaction' | '$on' | '$use' | '$extends'>;
 

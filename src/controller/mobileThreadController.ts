@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import {
   deleteMessageService,
   editMessageService,
@@ -12,8 +11,7 @@ import { CHAT_DOC_ALLOWED_MIMES, CHAT_DOC_MAX_SIZE } from '@constants/chatFileTy
 import { getLinkPreviewForUrl } from '@services/linkPreviewService';
 
 import { getIo } from '../config/socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 const mobileThreadInclude = (userId: string) => ({
   UserThread: {
