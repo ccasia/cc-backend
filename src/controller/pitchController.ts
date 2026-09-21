@@ -4,7 +4,7 @@ import { classifyMetricProvenance } from '@services/guestProfileExtraction/metri
 import { normalizeProfileUrl } from '@services/guestProfileExtraction/profileUrlNormalizer';
 import { parseEngagementRate, parseFollowerCount } from '@services/guestProfileExtraction/guestCreateService';
 import { applyExtractionToPendingPitchesSafe } from '@services/guestProfileExtraction/pendingPitchMetrics';
-import { averageLikesFromSelectedPosts } from '@services/guestProfileExtraction/selectedPostStats';
+import { withScrapedEvidence } from '@services/guestProfileExtraction/selectedPostStats';
 import dayjs from 'dayjs';
 
 import { saveNotification } from './notificationController';
@@ -23,23 +23,12 @@ const LATEST_SCRAPE_EVIDENCE = {
     orderBy: { createdAt: 'desc' as const },
     take: 1,
     select: {
+      formulaVersion: true,
       extraction: {
-        select: { selectedPosts: true },
+        select: { selectedPosts: true, formulaVersion: true },
       },
     },
   },
-};
-
-const withScrapedAverageLikes = <T extends { guestCreatorMetricAudits?: Array<{ extraction?: { selectedPosts?: unknown } | null }> }>(
-  pitch: T
-) => {
-  const { guestCreatorMetricAudits, ...rest } = pitch;
-  return {
-    ...rest,
-    scrapedAverageLikes: averageLikesFromSelectedPosts(
-      guestCreatorMetricAudits?.[0]?.extraction?.selectedPosts
-    ),
-  };
 };
 
 const emitCreatorCampaignMembershipUpdated = ({
@@ -1813,7 +1802,7 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
           sanitizedUser = { ...restUser };
         }
 
-        return withScrapedAverageLikes({
+        return withScrapedEvidence({
           ...pitch,
           status: normalizedStatus,
           user: sanitizedUser,
@@ -1930,7 +1919,7 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       }
     }
 
-    const transformedPitch = withScrapedAverageLikes({
+    const transformedPitch = withScrapedEvidence({
       ...pitch,
       displayStatus, // Add display status for frontend
     });
