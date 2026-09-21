@@ -12,11 +12,11 @@ import { missingInvoices } from '@constants/missing-invoices';
 import { getCreatorInvoiceLists } from './submissionService';
 import { Contact, Invoice as XeroInvoice, LineItem, Phone, XeroClient } from 'xero-node';
 import { xero } from '@configs/xero';
+import { prisma } from '@/src/prisma/prisma';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-const prisma = new PrismaClient();
 const MAX_INVOICE_NUMBER_RETRIES = 8;
 
 // type Invoice = {
@@ -140,6 +140,7 @@ export const createInvoiceService = async (
               invoiceTo,
               task: item,
               amount: parseFloat(amount) || 0,
+              round: data.round ?? 1,
               bankAcc: bankInfo,
               user: {
                 connect: {

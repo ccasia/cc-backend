@@ -1,12 +1,10 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 
-import { PrismaClient, User } from '@prisma/client';
-
+import { User } from '@prisma/client';
 import { createKanbanBoard } from '@controllers/kanbanController';
 import { saveCreatorToSpreadsheet } from '@helper/registeredCreatorSpreadsheet';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 passport.use(
   new GoogleStrategy(

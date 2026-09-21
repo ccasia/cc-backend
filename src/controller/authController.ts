@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
-import { Employment, PrismaClient, RoleEnum, Prisma } from '@prisma/client';
+import { Employment, RoleEnum, Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import {
   AdminInvitaion,
@@ -37,9 +37,9 @@ import {
   verifyRefreshToken,
 } from '@utils/tokens';
 import { revokeAppleToken } from '@utils/apple';
+import { normalizePhone, getCountryShortCode } from '@utils/phoneNumber';
 import { getIo } from '../config/socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 interface RequestData {
   email: string;
@@ -1415,6 +1415,12 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Creator not found' });
     }
 
+    const normalizedIncoming = phoneNumber
+      ? normalizePhone(phoneNumber, getCountryShortCode(country ?? creator.user.country))
+      : undefined;
+    const incomingE164 = normalizedIncoming?.status === 'valid' ? normalizedIncoming.e164 : phoneNumber;
+    const phoneNumberChanged = !!phoneNumber && incomingE164 !== creator.user.phoneNumber;
+
     await prisma.interest.deleteMany({
       where: {
         userId: creator.userId,
@@ -1457,6 +1463,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
           phoneNumber,
           country,
           city,
+          ...(phoneNumberChanged ? { isPhoneVerified: false } : {}),
           ...(removePhoto ? { photoURL: null } : {}),
         },
       },
@@ -1520,6 +1527,12 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       creator: updatedCreator,
     });
   } catch (error) {
+    if ((error as { code?: string })?.code === 'P2002') {
+      return res.status(409).json({
+        message: 'This phone number is already registered to another account.',
+      });
+    }
+
     if (error instanceof Error) {
       console.error('Error updating creator:', error.message);
     }
@@ -2139,6 +2152,9 @@ export const verifyCode = async (req: Request<{}, {}, { code: string }>, res: Re
     req.session.otp = undefined;
 
     const [user] = await prisma.$transaction([
+      // The code was delivered over WhatsApp to `phone`, so this registration
+      // doubles as proof of possession — record it so the user is never asked
+      // to claim a number they have already verified.
       prisma.user.update({ where: { id: userId }, data: { status: 'active', isPhoneVerified: true } }),
       prisma.emailVerification.deleteMany({
         where: {
@@ -2385,5 +2401,191 @@ export const checkEmailExistence = async (req: Request<{}, {}, {}, { email: stri
     return res.sendStatus(200);
   } catch (error) {
     return res.status(500).end();
+  }
+};
+
+export const checkPhoneExistence = async (req: Request<{}, {}, {}, { phone: string }>, res: Response) => {
+  const phone = req.query.phone;
+
+  if (!phone) return res.status(400).json({ message: 'Phone number is required', success: false });
+
+  try {
+    const isExist = await prisma.user.findFirst({
+      where: {
+        phoneNumber: phone,
+      },
+    });
+
+    if (isExist)
+      return res.status(400).json({ message: 'Phone number already registered.', success: false, phoneExist: true });
+
+    return res.sendStatus(200);
+  } catch (error) {
+    return res.status(500).end();
+  }
+};
+
+const CLAIM_MAX_ATTEMPTS = 5;
+
+export const sendPhoneClaimCode = async (req: Request<{}, {}, { phoneNumber?: string }>, res: Response) => {
+  const userId = req.userId as string;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, phoneNumber: true, country: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const requested = req.body.phoneNumber?.trim() || user.phoneNumber;
+
+    if (!requested) {
+      return res.status(400).json({ success: false, message: 'Phone number is required' });
+    }
+
+    const normalized = normalizePhone(requested, getCountryShortCode(user.country));
+
+    if (normalized.status === 'invalid') {
+      return res.status(400).json({ success: false, message: 'Please enter a valid phone number' });
+    }
+
+    const takenBy = await prisma.user.findFirst({
+      where: {
+        phoneNumber: normalized.e164,
+        role: 'creator',
+        status: { not: 'deleted' },
+        NOT: { id: user.id },
+      },
+      select: { id: true, isPhoneVerified: true },
+    });
+
+    if (takenBy) {
+      return res.status(409).json({
+        success: false,
+        message: takenBy.isPhoneVerified
+          ? 'This phone number is already verified on another account.'
+          : 'This phone number is already registered to another account.',
+      });
+    }
+
+    const whatsapp = new WhatsappSetting();
+    const initialized = await whatsapp.initialize();
+
+    if (!initialized.success) {
+      return res.status(503).json({
+        success: false,
+        message: 'Phone verification is unavailable right now. Please try again later.',
+      });
+    }
+
+    const secret = generateSecret();
+    const token = await generate({ secret });
+
+    req.session.otp = {
+      secret,
+      phone: normalized.e164,
+      sentAt: dayjs().toDate(),
+      attempts: 0,
+      isCodeUsed: false,
+      userId: user.id,
+    };
+
+    await whatsapp.sendVerificationCode(normalized.e164, token);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Verification code sent',
+      phoneNumber: normalized.e164,
+    });
+  } catch (error) {
+    console.error('Send phone claim code error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to send verification code' });
+  }
+};
+
+export const verifyPhoneClaim = async (req: Request<{}, {}, { code: string }>, res: Response) => {
+  const userId = req.userId as string;
+  const { code } = req.body;
+
+  if (!code) {
+    return res.status(400).json({ success: false, message: 'Code is required' });
+  }
+
+  if (!req.session.otp) {
+    return res.status(401).json({ success: false, message: 'Session expired, please request a new code' });
+  }
+
+  const { secret, phone, attempts, isCodeUsed, userId: otpUserId } = req.session.otp;
+
+  if (otpUserId !== userId) {
+    req.session.otp = undefined;
+    return res.status(401).json({ success: false, message: 'Session expired, please request a new code' });
+  }
+
+  if (isCodeUsed) {
+    return res.status(400).json({ success: false, message: 'This code has already been used' });
+  }
+
+  if (attempts >= CLAIM_MAX_ATTEMPTS) {
+    req.session.otp = undefined;
+    return res.status(429).json({ success: false, message: 'Too many attempts, please request a new code' });
+  }
+
+  try {
+    const isValid = await verify({ token: code, secret, epochTolerance: 600 });
+
+    if (!isValid.valid) {
+      req.session.otp.attempts += 1;
+      return res.status(400).json({ success: false, message: 'Invalid code' });
+    }
+
+    const takenBy = await prisma.user.findFirst({
+      where: {
+        phoneNumber: phone,
+        role: 'creator',
+        status: { not: 'deleted' },
+        NOT: { id: userId },
+      },
+      select: { id: true, isPhoneVerified: true },
+    });
+
+    if (takenBy) {
+      req.session.otp = undefined;
+      return res.status(409).json({
+        success: false,
+        message: takenBy.isPhoneVerified
+          ? 'This phone number is already verified on another account.'
+          : 'This phone number is already registered to another account.',
+      });
+    }
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { phoneNumber: phone, isPhoneVerified: true },
+      select: { id: true, phoneNumber: true, isPhoneVerified: true },
+    });
+
+    req.session.otp = undefined;
+
+    return res.status(200).json({
+      success: true,
+      message: 'Phone number verified',
+      phoneNumber: user.phoneNumber,
+      isPhoneVerified: user.isPhoneVerified,
+    });
+  } catch (error) {
+    if ((error as { code?: string })?.code === 'P2002') {
+      req.session.otp = undefined;
+      return res.status(409).json({
+        success: false,
+        message: 'This phone number is already registered to another account.',
+      });
+    }
+
+    console.error('Verify phone claim error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to verify code' });
   }
 };

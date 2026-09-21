@@ -1,9 +1,8 @@
-import { Entity, PrismaClient } from '@prisma/client';
+import { Entity } from '@prisma/client';
 import { Request, Response } from 'express';
 
 import { sendExpoPushToUser } from '../helper/expoPush';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export enum Title {
   Update,

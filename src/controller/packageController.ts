@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 // import {
 //   editDefalutPackage,

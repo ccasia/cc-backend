@@ -1,8 +1,6 @@
 import { Request, Response } from 'express';
 import { createNewKWSPRowData } from '@services/google_sheets/sheets';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const submitKWSPForm = async (req: Request, res: Response) => {
   try {

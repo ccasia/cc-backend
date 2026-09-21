@@ -1,10 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 import { normalizeVideoDraftHistory } from '@helper/draftSubmissionStatus';
 import { getIo } from '../config/socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * V2 (legacy) creator submission API.

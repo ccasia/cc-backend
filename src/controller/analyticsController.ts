@@ -1,9 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import dayjs from 'dayjs';
 import { sub } from 'date-fns';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const trackUserFlow = async (req: Request, res: Response) => {
   const { flow, step, status, timeSpentSeconds, userId, sessionId, meta } = req.body;

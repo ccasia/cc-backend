@@ -1,9 +1,8 @@
 import { Request, Response } from 'express';
-import { Entity, PrismaClient } from '@prisma/client';
+import { Entity } from '@prisma/client';
 import { uploadAgreementForm } from '@configs/cloudStorage.config';
 import { Title, saveNotification } from './notificationController';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const creatorUploadAgreement = async (req: Request, res: Response) => {
   const userid = req.userId;

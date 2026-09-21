@@ -7,7 +7,7 @@ import session from 'express-session';
 import cookieParser from 'cookie-parser';
 
 import fileUpload from 'express-fileupload';
-import { PrismaClient } from '@prisma/client';
+import { Video } from '@prisma/client';
 
 import '@configs/cronjob';
 import http from 'http';
@@ -32,11 +32,9 @@ import { PrismaSessionStore } from '@quixo3/prisma-session-store';
 
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
-import { buildGcsPublicUrl, storage } from '@configs/cloudStorage.config';
+import { storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import passport from 'passport';
-
-import amqplib from 'amqplib';
 
 import crypto from 'crypto';
 
@@ -69,7 +67,7 @@ app.use((req, res, next) => {
   if (req.path.startsWith('/webhooks')) {
     express.raw({ type: 'application/json' })(req, res, next);
   } else {
-    express.json()(req, res, next);
+    express.json({ limit: '2mb' })(req, res, next);
   }
 });
 
@@ -118,7 +116,7 @@ app.use(
       maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
       httpOnly: true,
     },
-    store: new PrismaSessionStore(new PrismaClient(), {
+    store: new PrismaSessionStore(prisma, {
       checkPeriod: 2 * 60 * 1000,
       dbRecordIdIsSessionId: true,
       dbRecordIdFunction: undefined,
@@ -267,20 +265,6 @@ app.post('/webhook/whatsapp', async (req: Request, res: Response) => {
 
 app.get('/', (req: Request, res: Response) => {
   res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
-});
-
-app.get('/users', authenticate, async (_req, res) => {
-  const prisma = new PrismaClient();
-  try {
-    const users = await prisma.user.findMany({
-      include: {
-        pitch: true,
-      },
-    });
-    res.send(users);
-  } catch (error) {
-    //console.log(error);
-  }
 });
 
 export const clients = new Map();
@@ -432,153 +416,43 @@ io.on('connection', (socket) => {
   });
 });
 
-const bucket = storage.bucket(process.env.BUCKET_NAME as string);
-
-app.post('/video', async (req: Request, res: Response) => {
-  const urls: string[] = [];
-
+app.post('/video', (req: Request, res: Response) => {
   try {
-    const videos = (req.files as any).rawFootages;
-
-    if (videos.length) {
-      for (const video of videos) {
-        let uploadedBytes = 0;
-        const { tempFilePath, name, mimetype, size } = video;
-
-        if (size > 100 * 1024 * 1024) {
-          return res.status(404).json({ message: 'File size too large' });
-        }
-
-        const readStream = fse.createReadStream(tempFilePath);
-
-        const blob = bucket.file(`videos/${dayjs().format()}-${name}`);
-
-        const totalBytes = fse.statSync(tempFilePath).size;
-
-        const blobStream = blob.createWriteStream({
-          resumable: false,
-          contentType: mimetype,
-        });
-
-        readStream.on('data', (chunk) => {
-          uploadedBytes += chunk.length;
-          const percentage = Math.round((uploadedBytes / totalBytes) * 100);
-          io.emit('uploadProgress', { name: name, percentage });
-        });
-
-        await new Promise<void>((resolve, reject) => {
-          readStream
-            .pipe(blobStream)
-            .on('error', (err) => {
-              console.error('Error uploading to GCS:', err);
-              reject('Failed to upload file.');
-            })
-            .on('finish', async () => {
-              await blob.makePublic();
-              const publicUrl = buildGcsPublicUrl(bucket.name, blob.name);
-              urls.push(publicUrl);
-              fse.unlinkSync(tempFilePath); // Cleanup temp file
-              resolve();
-            });
-        });
-      }
-    } else {
-      let uploadedBytes = 0;
-      const { tempFilePath, name, mimetype, size } = videos;
-
-      if (size > 1 * 1024 * 1024 * 1024) {
-        return res.status(404).json({ message: 'File size too large' });
-      }
-
-      const readStream = fse.createReadStream(tempFilePath);
-
-      const blob = bucket.file(`videos/${dayjs().format()}-${name}`);
-
-      const totalBytes = fse.statSync(tempFilePath).size;
-
-      const blobStream = blob.createWriteStream({
-        resumable: false,
-        contentType: mimetype,
-      });
-
-      readStream.on('data', (chunk) => {
-        uploadedBytes += chunk.length;
-        const percentage = Math.round((uploadedBytes / totalBytes) * 100);
-
-        io.emit('uploadProgress', { name: name, percentage });
-      });
-
-      await new Promise<void>((resolve, reject) => {
-        readStream
-          .pipe(blobStream)
-          .on('error', (err) => {
-            console.error('Error uploading to GCS:', err);
-            reject('Failed to upload file.');
-          })
-          .on('finish', async () => {
-            await blob.makePublic();
-            const publicUrl = buildGcsPublicUrl(bucket.name, blob.name);
-            urls.push(publicUrl);
-            fse.unlinkSync(tempFilePath); // Cleanup temp file
-            resolve();
-          });
-      });
-    }
-
-    return res.status(200).send({ message: 'File uploaded successfully.', url: urls });
+    const video = req.files;
+    console.log(video);
+    res.status(200).json({ message: 'Success' });
   } catch (error) {
-    return res.status(400).json(error);
+    res.status(500).json(error);
   }
-});
-
-app.post('/sendMessage', async (req: Request, res: Response) => {
-  let amqp: any;
-  let con: any;
-  try {
-    amqp = await amqplib.connect(process.env.RABBIT_MQ!);
-
-    con = await amqp.createChannel();
-    await con.assertQueue('draft', { durable: true });
-
-    con.sendToQueue('draft', Buffer.from(JSON.stringify({ name: req.body.username })), { persistent: true });
-
-    return res.status(200).json({ message: 'Send Sucessfully' });
-  } catch (error) {
-    return res.status(400).json(error);
-  } finally {
-    if (con) await con.close();
-    if (amqp) await amqp.close();
-  }
-});
-
-app.get('/report/:campaignId', async (req, res) => {
-  const campaignId = req.params.campaignId;
-
-  const data = await prisma.insightSnapshot.findMany({
-    where: {
-      campaignId: campaignId,
-    },
-  });
-
-  const dbViews = data.reduce((s, r) => s + r.totalViews, 0);
-
-  return res.status(200).json(dbViews);
 });
 
 const queueEvents = new QueueEvents('compression-queue', { connection: connection });
 
 queueEvents.on('progress', ({ data }) => {
-  const { submissionId, progress, uploadSessionId } = data as {
+  const { submissionId, progress, uploadSessionId, etaSeconds } = data as {
     submissionId: string;
     progress: number;
     uploadSessionId: string;
+    etaSeconds: number;
   };
-  console.log(progress);
-  io.to(`upload:${uploadSessionId}`).emit('compression:progress', { submissionId, progress, uploadSessionId });
+
+  // getIo()
+  //   .to(`upload:${uploadSessionId}`)
+  //   .emit('compression:progress', { submissionId, progress, uploadSessionId, etaSeconds });
+
+  getIo().emit('compression:progress', { submissionId, progress, uploadSessionId, etaSeconds });
 });
 
 queueEvents.on('completed', ({ returnvalue }) => {
-  getIo().to(`upload:${returnvalue}`).emit('status', 'completed');
+  const { submissionId, uploadSessionId, video } = returnvalue as unknown as {
+    submissionId: string;
+    uploadSessionId: string;
+    video: Video;
+  };
+
+  // getIo().to(`upload:${uploadSessionId}`).emit('status', { status: 'completed', submissionId, progress: 100, video });
+
+  getIo().emit('status', { submissionId, progress: 100, video });
 });
 
 if (require.main === module) {

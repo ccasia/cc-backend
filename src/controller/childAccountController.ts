@@ -1,10 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { sendEmail } from '@configs/nodemailer.config';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const addChildAccountsToCampaign = async (parentClientId: string, campaignId: string) => {
   try {

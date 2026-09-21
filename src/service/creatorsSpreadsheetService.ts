@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import { accessGoogleSheetAPI } from '@services/google_sheets/sheets';
 import { formatDateTimeMY } from '@helper/formateDateTime';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 // Define the expected headers for the creator spreadsheet
 const CREATOR_HEADERS = ['Name', 'Email', 'Phone Number', 'Country', 'Date Registered', 'Social Handle'];

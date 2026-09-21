@@ -1,12 +1,10 @@
-import { PrismaClient } from '@prisma/client';
 import { batchFetchInsights } from '@services/socialMediaBatchService';
 import { calculateDailyMetrics, storeInsightSnapshot } from '@services/trendAnalysisService';
 import { getCampaignSubmissionUrls, extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { normalizeInsightResults, UrlData } from '@utils/insightNormalizationHelper';
 import { getManualCreatorEntries } from '@services/manualCreatorService';
 import { storeDailyPostEngagementResults } from '@services/postEngagementSnapshotService';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * Initial fetch delay - wait 2 hours for post to accumulate engagement

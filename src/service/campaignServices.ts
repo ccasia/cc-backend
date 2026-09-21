@@ -6,8 +6,7 @@ import { JWT } from 'google-auth-library';
 import { google } from 'googleapis';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * Fallback for when the last client is detached from a campaign mid-flight.
@@ -338,18 +337,12 @@ export async function rejectPendingPitchInternal(
       });
     }
 
-    // Step 5: Delete creator agreement
-    const agreement = await tx.creatorAgreement.findFirst({
+    // Step 5: Delete all agreement rounds for this creator on this campaign, if any exist
+    await tx.creatorAgreement.deleteMany({
       where: {
         AND: [{ userId }, { campaignId }],
       },
     });
-
-    if (agreement) {
-      await tx.creatorAgreement.delete({
-        where: { id: agreement.id },
-      });
-    }
 
     return {
       success: true,

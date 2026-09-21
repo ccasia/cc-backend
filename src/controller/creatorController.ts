@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import https from 'https';
-import { Entity, PrismaClient } from '@prisma/client';
+import { Entity } from '@prisma/client';
 import { uploadAgreementForm, uploadProfileImage } from '@configs/cloudStorage.config';
 import { Title, saveNotification } from './notificationController';
 
@@ -16,8 +16,7 @@ import {
 } from '@services/socialMediaService';
 import { decryptToken } from '@helper/encrypt';
 import { CreatorRatingReveal, mapCompletedCreatorRatingReveal } from '@utils/creatorRatingReveal';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 type SocialMediaData = Record<
   string,

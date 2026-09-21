@@ -30,11 +30,11 @@ import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
-import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
+import { selectCurrentAgreementSubmission, selectAgreementSubmissions } from '@utils/submissionAgreement';
 import { clients, getIo } from '../config/socket';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
-
-const prisma = new PrismaClient();
+import { awardXp, onAgreementApproved } from '@/src/modules/gamification';
+import { prisma } from '@/src/prisma/prisma';
 
 // Campaign relations required by getEffectiveCampaignOrigin (@utils/campaignFlow).
 // Queries whose campaign object feeds that helper must load these, otherwise the
@@ -337,15 +337,16 @@ export const getV4SubmissionsController = async (req: Request, res: Response) =>
 
     const submissions = await getV4Submissions(campaignId as string, userId as string | undefined);
 
-    // Group submissions by type for easier frontend consumption
+    // Group submissions by type for easier frontend consumption. `agreements` holds one
+    // entry per agreement round (oldest first); `agreement` stays the single most-relevant
+    // one for older consumers.
     const groupedSubmissions = {
       agreement: selectCurrentAgreementSubmission(submissions),
+      agreements: selectAgreementSubmissions(submissions),
       videos: submissions.filter((s) => s.submissionType.type === 'VIDEO'),
       photos: submissions.filter((s) => s.submissionType.type === 'PHOTO'),
       rawFootage: submissions.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
     };
-
-    console.log(`🔍 Found ${submissions.length} v4 submissions for campaign ${campaignId}`);
 
     res.status(200).json({
       submissions,
@@ -506,6 +507,19 @@ export const approveV4Submission = async (req: Request, res: Response) => {
 
     if (newStatus === 'APPROVED' || newStatus === 'CLIENT_APPROVED') {
       updateData.approvedAt = new Date();
+    }
+
+    if (updateData.approvedAt && submission.submissionType.type !== 'AGREEMENT_FORM') {
+      void awardXp({
+        userId: submission.userId,
+        actionCode: 'submission_approved',
+        sourceId: submissionId,
+        metadata: { submissionId, campaignId: submission.campaignId, type: submission.submissionType.type },
+      });
+    }
+
+    if (newStatus === 'APPROVED' && submission.submissionType.type === 'AGREEMENT_FORM') {
+      onAgreementApproved({ userId: submission.userId, campaignId: submission.campaignId });
     }
 
     updates.push(
@@ -893,6 +907,15 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
           data: { isClientDraft: false },
         }),
       );
+    }
+
+    if (newSubmissionStatus === 'CLIENT_APPROVED' && submission.submissionType.type !== 'AGREEMENT_FORM') {
+      void awardXp({
+        userId: submission.userId,
+        actionCode: 'submission_approved',
+        sourceId: submissionId,
+        metadata: { submissionId, campaignId: submission.campaignId, type: submission.submissionType.type },
+      });
     }
 
     // Update submission status
@@ -1530,6 +1553,15 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
         updatedAt: new Date(),
       },
     });
+
+    if (action === 'approve') {
+      void awardXp({
+        userId: submission.userId,
+        actionCode: 'posting_link_approved',
+        sourceId: submissionId,
+        metadata: { submissionId, campaignId: submission.campaignId },
+      });
+    }
 
     // Emit socket event for real-time updates
 

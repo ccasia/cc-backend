@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import { extractWithRetry, ExtractedUrlData } from '@utils/urlExtractor';
 import { resolveTikTokShortCode } from '@services/socialMediaService';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * Extract and store posting URLs from Submission.content field

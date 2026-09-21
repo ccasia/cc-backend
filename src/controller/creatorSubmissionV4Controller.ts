@@ -8,12 +8,12 @@ import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { completeLogisticService } from '@services/logisticsService';
-import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
+import { selectCurrentAgreementSubmission, selectAgreementSubmissions } from '@utils/submissionAgreement';
 import { getIo } from '../config/socket';
 import { normalizePostingLinks, joinPostingLinksToContent } from '../utils/postingLinkValidation';
 import { scheduleUrlExtractionAndFetch } from './submissionV4Controller';
-
-const prisma = new PrismaClient();
+import { awardXp, onSubmissionSubmitted } from '@/src/modules/gamification';
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * Get creator's own V4 submissions for a campaign
@@ -79,9 +79,10 @@ export const getMyV4Submissions = async (req: Request<{}, {}, {}, { campaignId: 
       };
     });
 
-    // Group submissions by type for creator interface
+    const agreementSubmissions = selectAgreementSubmissions(submissionsWithFilteredFeedback);
     const groupedSubmissions = {
       agreement: selectCurrentAgreementSubmission(submissionsWithFilteredFeedback),
+      agreements: agreementSubmissions,
       videos: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'VIDEO'),
       photos: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'PHOTO'),
       rawFootage: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
@@ -100,8 +101,6 @@ export const getMyV4Submissions = async (req: Request<{}, {}, {}, { campaignId: 
       if (s.submissionType.type === 'PHOTO' && s.status === 'POSTED') return true;
       if (s.submissionType.type === 'RAW_FOOTAGE' && s.status === 'CLIENT_APPROVED') return true;
     }).length;
-
-    console.log(submissionsWithFilteredFeedback);
 
     const progress = totalSubmissions > 0 ? (completedSubmissions / totalSubmissions) * 100 : 0;
 
@@ -131,10 +130,6 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
   const creatorId = req.userId;
 
   try {
-    if (!creatorId) {
-      return res.status(401).json({ message: 'You are not logged in' });
-    }
-
     // Parse JSON data from form data
     let isSelectiveUpdate = false;
     let caption = '';
@@ -200,6 +195,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
 
     // Check if submission is in a state that allows content updates
     const allowedStatuses = ['IN_PROGRESS', 'CHANGES_REQUIRED', 'REJECTED', 'NOT_STARTED', 'CLIENT_FEEDBACK'];
+
     if (!allowedStatuses.includes(submission.status)) {
       return res.status(400).json({
         message: `Cannot submit content. Current status: ${submission.status}`,
@@ -217,22 +213,8 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         ? [files.rawFootages]
         : [];
 
-    // Debug logs for incoming files
-    console.log('V4 submit-content incoming payload:', {
-      fileKeys: files ? Object.keys(files) : [],
-      videosCount: uploadedVideos.length,
-      photosCount: uploadedPhotos.length,
-      rawFootagesCount: uploadedRawFootages.length,
-      submissionType: submission.submissionType.type,
-      existingVideos: submission.video?.length || 0,
-      existingPhotos: submission.photos?.length || 0,
-      existingRawFootages: submission.rawFootages?.length || 0,
-      submissionStatus: submission.status,
-      isSelectiveUpdate,
-      keepExistingPhotosCount: keepExistingPhotos.length,
-    });
-
     const hasUploadedFiles = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
+
     const existingMediaCount =
       (submission.video?.length || 0) + (submission.photos?.length || 0) + (submission.rawFootages?.length || 0);
 
@@ -265,11 +247,6 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
 
     // V4 Photo Additive System: Never delete existing photos, only add new ones
     const isResubmission = ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status);
-
-    if (isResubmission) {
-      // In V4, we can now both remove existing photos and add new ones
-      // This creates a flexible system where creators can manage their photo collection
-    }
 
     // Handle raw footage replacement for V4 resubmissions
     if (isResubmission) {
@@ -377,14 +354,6 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       (isResubmission && isSelectiveUpdate && keepExistingPhotos.length !== (submission.photos?.length || 0)) ||
       (caption && caption.trim() !== (submission.caption || '').trim());
 
-    console.log('🔍 Checking for meaningful changes:', {
-      hasUploadedFiles,
-      photosToRemove: photosToRemove.length,
-      hasRawFootageRemoval,
-      hasCaptionChange: caption && caption.trim() !== (submission.caption || '').trim(),
-      hasMeaningfulChanges,
-    });
-
     // Determine if async processing (worker) is needed
     const hasAsyncProcessing = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
 
@@ -401,6 +370,15 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           updatedAt: new Date(),
         },
       });
+
+      if (newStatus === 'PENDING_REVIEW') {
+        onSubmissionSubmitted({
+          submissionId,
+          userId: submission.userId,
+          campaignId: submission.campaignId,
+          submissionType: submission.submissionType?.type,
+        });
+      }
 
       // Auto-resolve all unresolved comments when creator submits new content
       await prisma.submissionComment.updateMany({
@@ -667,6 +645,13 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
 
     const result = await updatePostingLink(submissionId, normalizedLinks);
 
+    void awardXp({
+      userId: creatorId,
+      actionCode: 'posting_link_submitted',
+      sourceId: submissionId,
+      metadata: { submissionId, campaignId: submission.campaignId },
+    });
+
     scheduleUrlExtractionAndFetch(submissionId, joinPostingLinksToContent(normalizedLinks));
 
     // Emit socket event for real-time updates
@@ -816,6 +801,15 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
 
+    // Clear the "NEW" badge on first view.
+    if (!submission.viewedAt) {
+      submission.viewedAt = new Date();
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: { viewedAt: submission.viewedAt },
+      });
+    }
+
     // Filter feedback based on submission status and type
     let filteredFeedback = submission.feedback;
 
@@ -883,6 +877,48 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
     console.error('Error getting creator submission details:', error);
     res.status(500).json({
       message: 'Failed to get submission details',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
+/**
+ * Clear the "NEW" badge on a submission (e.g. an additional agreement round) without
+ * fetching its full detail — for list-row expand.
+ */
+export const markSubmissionViewed = async (req: Request, res: Response) => {
+  const { submissionId } = req.params;
+  const creatorId = req.userId;
+
+  try {
+    if (!creatorId) {
+      return res.status(401).json({ message: 'You are not logged in' });
+    }
+
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      select: { id: true, userId: true, viewedAt: true },
+    });
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
+    if (submission.userId !== creatorId) {
+      return res.status(403).json({ message: 'You can only view your own submissions' });
+    }
+
+    if (!submission.viewedAt) {
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: { viewedAt: new Date() },
+      });
+    }
+
+    return res.status(200).json({ message: 'Marked as viewed' });
+  } catch (error) {
+    console.error('Error marking submission as viewed:', error);
+    return res.status(500).json({
+      message: 'Failed to mark submission as viewed',
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
@@ -1092,10 +1128,11 @@ export const getMyCampaignOverview = async (req: Request, res: Response) => {
     // Get submission summary
     const submissions = await getV4Submissions(campaignId as string, creatorId);
 
-    // Find agreement form submission status
-    const agreementSubmission = selectCurrentAgreementSubmission(submissions);
-    const isAgreementApproved =
-      agreementSubmission?.status === 'APPROVED' || agreementSubmission?.status === 'CLIENT_APPROVED';
+    const agreementSubmissions = selectAgreementSubmissions(submissions);
+    const agreementSubmission = agreementSubmissions[agreementSubmissions.length - 1];
+    const isAgreementApproved = agreementSubmissions.some(
+      (a) => a.status === 'APPROVED' || a.status === 'CLIENT_APPROVED',
+    );
 
     // Filter out agreement form from summary calculations (only count content submissions)
     const contentSubmissions = submissions.filter((s) => s.submissionType.type !== 'AGREEMENT_FORM');
@@ -1121,6 +1158,7 @@ export const getMyCampaignOverview = async (req: Request, res: Response) => {
       creatorStatus: 'APPROVED', // ShortListedCreator doesn't have status field, so they're approved if they exist
       agreementStatus: agreementSubmission?.status || null,
       isAgreementApproved,
+      agreements: agreementSubmissions,
       submissions: submissionSummary,
       progress,
       isComplete: progress === 100,

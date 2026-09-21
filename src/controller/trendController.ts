@@ -1,9 +1,7 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { getEngagementHeatmap, getTopCreatorsTrend } from '@services/trendAnalysisService';
 import { fetchAndStoreInsightsForCampaign } from '@services/insightFetchService';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * GET /api/campaign/:campaignId/trends/engagement-heatmap

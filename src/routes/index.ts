@@ -6,6 +6,7 @@ import creatorRoute from './creatorRoute';
 import companyRoute from './companyRoute';
 import eventRoute from './eventRoute';
 import campaignRoute from './campaignRoute';
+import campaignAgreementRoute from '../modules/campaign/agreement/agreement.route';
 import notificationRoute from './notificationRoute';
 import pushTokenRoute from './pushTokenRoute';
 import draftRoute from './draftRoute';
@@ -47,14 +48,22 @@ import uploadRoute from './uploadRoute';
 
 import campaignCreationDraftRoute from './campaignCreationDraftRoute';
 
+import treasureHuntAdminRoute from './treasureHuntAdminRoute';
+import treasureHuntRoute from './treasureHuntRoute';
+
 export const router = express.Router();
 
 router.use('/user', userRoute);
 router.use('/auth', authRoute);
+// Mounted before the generic /admin router so its strict-superadmin routes are
+// matched first and not shadowed by adminRoute's own auth handling.
+router.use('/admin/treasure-hunts', treasureHuntAdminRoute);
 router.use('/admin', adminRoute);
 router.use('/creator', creatorRoute);
 router.use('/company', companyRoute);
 router.use('/event', eventRoute);
+// Mounted before the generic /campaign router so its paths are matched first.
+router.use('/campaign/agreement', campaignAgreementRoute);
 router.use('/campaign', campaignRoute);
 router.use('/campaign-creation-drafts', campaignCreationDraftRoute);
 router.use('/notification', notificationRoute);
@@ -95,3 +104,4 @@ router.use('/client-demo', clientDemoRoute);
 router.use('/video-of-the-month', videoOfTheMonthRoute);
 router.use('/finance', financeRoute);
 router.use('/upload-sessions', uploadRoute);
+router.use('/hunts', treasureHuntRoute);

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { prisma } from '@/src/prisma/prisma';
+import { Prisma } from '@prisma/client';
 
 import {
   deleteDraft,
@@ -14,8 +15,6 @@ import {
   setSessionDraft,
 } from '../service/pcrDraftService';
 import type { SessionPcrDraft } from '../service/pcrDraftService';
-
-const prisma = new PrismaClient();
 
 const isJsonObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);

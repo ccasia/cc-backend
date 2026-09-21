@@ -1,18 +1,16 @@
 import { uploadImage } from '@configs/cloudStorage.config';
-import { PrismaClient } from '@prisma/client';
 import { createNewBugRowData } from '@services/google_sheets/sheets';
 import dayjs from 'dayjs';
 import { Request, Response } from 'express';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
 export const createNewBug = async (req: Request, res: Response) => {
-  const { stepsToReproduce, campaignName } = JSON.parse(req.body.data);
+  const { stepsToReproduce, campaignName, category, context } = JSON.parse(req.body.data);
   const userid = req.userId;
 
   try {
@@ -21,8 +19,6 @@ export const createNewBug = async (req: Request, res: Response) => {
         id: userid,
       },
     });
-
-    if (!user) return res.status(404).json({ message: 'User not found' });
 
     // Normalize uploaded files to always be an array (express-fileupload returns single object or array)
     const rawFiles = (req.files as any)?.attachments;
@@ -40,12 +36,14 @@ export const createNewBug = async (req: Request, res: Response) => {
         attachments: uploadedUrls,
         campaignName: campaignName || undefined,
         userId: req.userId || undefined,
+        category,
+        context,
       },
     });
 
     await createNewBugRowData({
       spreadSheetId: '129mwFlatr5pMDTi3VxVzgx0hGhkOyUVvq4M_jAWieCc',
-      sheetByTitle: user.role === 'creator' ? 'Platform Creator Bugs' : 'Platform Admin Bugs',
+      sheetByTitle: user?.role === 'creator' ? 'Platform Creator Bugs' : 'Platform Admin Bugs',
       data: {
         email: user?.email,
         name: user?.name || '',

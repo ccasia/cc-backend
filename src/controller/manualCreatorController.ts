@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import {
   createManualCreatorEntry,
   getManualCreatorEntries,
@@ -9,8 +8,7 @@ import {
   validateUsername,
   detectPlatformFromUrl,
 } from '@services/manualCreatorService';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * POST /api/campaign/:campaignId/manual-creator

@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate } from '@middlewares/authenticate';
 import { isAdminOrClient } from '@middlewares/adminOrClient';
+import { isAdmin } from '@middlewares/onlySuperadmin';
 import {
   approvePitchByAdmin,
   rejectPitchByAdmin,
@@ -29,7 +30,9 @@ router.patch('/v3/:pitchId/reject/client', authenticate, isAdminOrClient, reject
 router.patch('/v3/:pitchId/maybe/client', authenticate, isAdminOrClient, maybePitchByClient);
 router.patch('/v3/:pitchId/agreement', authenticate, isAdminOrClient, setPitchAgreement);
 router.patch('/v3/:pitchId/submit-agreement', authenticate, submitAgreement);
-router.patch('/v3/:pitchId/updateGuest', authenticate, isAdminOrClient, updateGuestCreatorInfo);
+// Was `isAdminOrClient`, which let any client edit any guest creator's
+// metrics. The controller now runs canManageCampaignCreators for this pitch.
+router.patch('/v3/:pitchId/updateGuest', authenticate, isAdmin, updateGuestCreatorInfo);
 router.patch('/v3/:pitchId/withdraw', authenticate, isAdminOrClient, withdrawCreatorFromCampaign);
 router.patch('/v3/:pitchId/outreach-status', authenticate, isAdminOrClient, updateOutreachStatus);
 router.patch('/v3/:pitchId/accept-invite', authenticate, acceptInviteByCreator);

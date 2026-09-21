@@ -30,9 +30,12 @@ import {
   setupTwoFactor,
   getSessionStatus,
   checkEmailExistence,
+  checkPhoneExistence,
   sendVerificationCode,
   resendVerificationCode,
   verifyCode,
+  sendPhoneClaimCode,
+  verifyPhoneClaim,
   getOtpStatus,
 } from '@controllers/authController';
 
@@ -53,6 +56,15 @@ const limiter = rateLimit({
   ipv6Subnet: 56,
 });
 
+const phoneCheckLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  limit: 20,
+  message: { status: 429, message: 'Too many requests. Please try again in a minute.' },
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  ipv6Subnet: 56,
+});
+
 const router = Router();
 
 router.get('/me', authenticate, getprofile);
@@ -63,6 +75,7 @@ router.get('/currentUser', validateToken, getCurrentUser);
 router.get('/checkCreator', validateToken, checkCreator);
 router.get('/session-status', getSessionStatus);
 router.get('/check-email', limiter, checkEmailExistence);
+router.get('/check-phone', phoneCheckLimiter, checkPhoneExistence);
 
 // Google Auth
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
@@ -95,6 +108,9 @@ router.post('/setupTwoFactor', authenticate, setupTwoFactor);
 router.post('/send-code', sendVerificationCode);
 router.post('/resend-code', resendVerificationCode);
 router.patch('/verify-code', verifyCode);
+
+router.post('/claim-phone', authenticate, sendPhoneClaimCode);
+router.patch('/claim-phone/verify', authenticate, verifyPhoneClaim);
 
 // Client authentication routes
 router.post('/invite-client', inviteClient);

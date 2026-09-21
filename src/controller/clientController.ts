@@ -1,12 +1,11 @@
 import { Request, Response } from 'express';
-import { PrismaClient, CampaignStatus, LogisticType, ReservationMode, Prisma } from '@prisma/client';
+import { CampaignStatus, LogisticType, ReservationMode, Prisma } from '@prisma/client';
 import { uploadCompanyLogo, uploadAttachments } from '@configs/cloudStorage.config';
 import { getRemainingCredits } from '@services/companyService';
 
 import { saveNotification } from './notificationController';
 import { clients, getIo } from '../config/socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const updateClient = async (req: Request, res: Response) => {
   try {

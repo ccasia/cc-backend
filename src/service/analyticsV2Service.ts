@@ -1,6 +1,5 @@
-import { Prisma, PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { Prisma } from '@prisma/client';
+import { prisma } from '@/src/prisma/prisma';
 
 interface DemographicItem {
   label: string;
@@ -3300,22 +3299,36 @@ export const getCSMWorkloadDetailData = async (adminUserId: string, startDate?: 
   const CAMPAIGN_BUDGET_RATE_PER_CREDIT = 300;
   const campaignIds = campaignRows.map((row) => row.campaignId);
   const spentRows = campaignIds.length
-    ? await prisma.$queryRaw<{ campaignId: string; spent: number | null }[]>`
-        SELECT "campaignId", SUM(CAST(NULLIF(amount, '') AS numeric))::float AS spent
+    ? await prisma.$queryRaw<{ campaignId: string; currency: string | null; spent: number | null }[]>`
+        SELECT "campaignId", currency, SUM(CAST(NULLIF(amount, '') AS numeric))::float AS spent
         FROM "CreatorAgreement"
         WHERE "campaignId" IN (${Prisma.join(campaignIds)})
           AND "isSent" = true
-        GROUP BY "campaignId"
+        GROUP BY "campaignId", currency
       `
     : [];
-  const spentMap = new Map(spentRows.map((row) => [row.campaignId, Number(row.spent) || 0]));
+  // Cap is always MYR-denominated (credits x rate), so only MYR spend can be plotted
+  // against it. Spend booked in other currencies is surfaced separately rather than
+  // silently summed in or dropped.
+  const spentMyrMap = new Map<string, number>();
+  const spentOtherMap = new Map<string, { currency: string; amount: number }[]>();
+  spentRows.forEach((row) => {
+    const amount = Number(row.spent) || 0;
+    const currency = (row.currency || 'MYR').toUpperCase();
+    if (currency === 'MYR') {
+      spentMyrMap.set(row.campaignId, (spentMyrMap.get(row.campaignId) || 0) + amount);
+    } else {
+      const list = spentOtherMap.get(row.campaignId) || [];
+      list.push({ currency, amount });
+      spentOtherMap.set(row.campaignId, list);
+    }
+  });
 
   const campaigns = campaignRows.map((row) => {
     const imgs = Array.isArray(row.campaignImages) ? row.campaignImages : [];
     const campaignImage = imgs.length > 0 && typeof imgs[0] === 'string' ? imgs[0] : null;
     const credits = Number(row.credits) || 0;
-    const creatorBudget =
-      row.submissionVersion === 'v4' && credits > 0 ? credits * CAMPAIGN_BUDGET_RATE_PER_CREDIT : null;
+    const creatorBudget = credits > 0 ? credits * CAMPAIGN_BUDGET_RATE_PER_CREDIT : null;
     return {
       campaignId: row.campaignId,
       name: row.campaignName,
@@ -3330,7 +3343,8 @@ export const getCSMWorkloadDetailData = async (adminUserId: string, startDate?: 
       campaignImage,
       creatorCount: Number(row.creatorCount) || 0,
       creatorBudget,
-      creatorBudgetSpent: creatorBudget != null ? spentMap.get(row.campaignId) || 0 : null,
+      creatorBudgetSpent: spentMyrMap.get(row.campaignId) || 0,
+      creatorBudgetSpentOther: spentOtherMap.get(row.campaignId) || [],
       subscriptionExpiredAt: row.subscriptionExpiredAt,
       packageName: row.packageName,
     };
@@ -3642,26 +3656,41 @@ export const getCampaignsOverviewData = async (startDate?: Date, endDate?: Date)
   const CAMPAIGN_BUDGET_RATE_PER_CREDIT = 300;
   const campaignIds = rows.map((row) => row.campaignId);
   const spentRows = campaignIds.length
-    ? await prisma.$queryRaw<{ campaignId: string; spent: number | null }[]>`
-        SELECT "campaignId", SUM(CAST(NULLIF(amount, '') AS numeric))::float AS spent
+    ? await prisma.$queryRaw<{ campaignId: string; currency: string | null; spent: number | null }[]>`
+        SELECT "campaignId", currency, SUM(CAST(NULLIF(amount, '') AS numeric))::float AS spent
         FROM "CreatorAgreement"
         WHERE "campaignId" IN (${Prisma.join(campaignIds)})
           AND "isSent" = true
-        GROUP BY "campaignId"
+        GROUP BY "campaignId", currency
       `
     : [];
-  const spentMap = new Map(spentRows.map((row) => [row.campaignId, Number(row.spent) || 0]));
+  // Cap is always MYR-denominated (credits x rate), so only MYR spend can be plotted
+  // against it. Spend booked in other currencies is surfaced separately rather than
+  // silently summed in or dropped.
+  const spentMyrMap = new Map<string, number>();
+  const spentOtherMap = new Map<string, { currency: string; amount: number }[]>();
+  spentRows.forEach((row) => {
+    const amount = Number(row.spent) || 0;
+    const currency = (row.currency || 'MYR').toUpperCase();
+    if (currency === 'MYR') {
+      spentMyrMap.set(row.campaignId, (spentMyrMap.get(row.campaignId) || 0) + amount);
+    } else {
+      const list = spentOtherMap.get(row.campaignId) || [];
+      list.push({ currency, amount });
+      spentOtherMap.set(row.campaignId, list);
+    }
+  });
 
   const campaigns = rows.map((row) => {
     const credits = Number(row.credits) || 0;
     const creditsUtilized = Number(row.creditsUtilized) || 0;
-    const creatorBudget =
-      row.submissionVersion === 'v4' && credits > 0 ? credits * CAMPAIGN_BUDGET_RATE_PER_CREDIT : null;
-    const creatorBudgetSpent = creatorBudget != null ? spentMap.get(row.campaignId) || 0 : null;
+    const creatorBudget = credits > 0 ? credits * CAMPAIGN_BUDGET_RATE_PER_CREDIT : null;
+    const creatorBudgetSpent = spentMyrMap.get(row.campaignId) || 0;
+    const creatorBudgetSpentOther = spentOtherMap.get(row.campaignId) || [];
     const creditsPct = credits > 0 ? Math.min(100, Math.round((creditsUtilized / credits) * 100)) : 0;
     const budgetPct =
       creatorBudget != null && creatorBudget > 0
-        ? Math.min(100, Math.round(((creatorBudgetSpent || 0) / creatorBudget) * 100))
+        ? Math.min(100, Math.round((creatorBudgetSpent / creatorBudget) * 100))
         : 0;
 
     return {
@@ -3675,6 +3704,7 @@ export const getCampaignsOverviewData = async (startDate?: Date, endDate?: Date)
       creditsPending: Number(row.creditsPending) || 0,
       creatorBudget,
       creatorBudgetSpent,
+      creatorBudgetSpentOther,
       completionPct: Math.max(creditsPct, budgetPct),
     };
   });
@@ -3739,24 +3769,40 @@ export const getClientsOverviewData = async (startDate?: Date, endDate?: Date) =
   const CAMPAIGN_BUDGET_RATE_PER_CREDIT = 300;
   const companyIds = rows.map((row) => row.companyId);
   const spentRows = companyIds.length
-    ? await prisma.$queryRaw<{ companyId: string; spent: number | null }[]>`
-        SELECT comp.id AS "companyId", SUM(CAST(NULLIF(ca.amount, '') AS numeric))::float AS spent
+    ? await prisma.$queryRaw<{ companyId: string; currency: string | null; spent: number | null }[]>`
+        SELECT comp.id AS "companyId", ca.currency, SUM(CAST(NULLIF(ca.amount, '') AS numeric))::float AS spent
         FROM "CreatorAgreement" ca
         INNER JOIN "Campaign" c ON c.id = ca."campaignId"
         INNER JOIN "Company" comp ON comp.id = c."companyId"
         WHERE ca."isSent" = true
           AND c."submissionVersion" = 'v4'
           AND comp.id IN (${Prisma.join(companyIds)})
-        GROUP BY comp.id
+        GROUP BY comp.id, ca.currency
       `
     : [];
-  const spentMap = new Map(spentRows.map((row) => [row.companyId, Number(row.spent) || 0]));
+  // Cap is always MYR-denominated (credits x rate), so only MYR spend can be plotted
+  // against it. Spend booked in other currencies is surfaced separately rather than
+  // silently summed in or dropped.
+  const spentMyrMap = new Map<string, number>();
+  const spentOtherMap = new Map<string, { currency: string; amount: number }[]>();
+  spentRows.forEach((row) => {
+    const amount = Number(row.spent) || 0;
+    const currency = (row.currency || 'MYR').toUpperCase();
+    if (currency === 'MYR') {
+      spentMyrMap.set(row.companyId, (spentMyrMap.get(row.companyId) || 0) + amount);
+    } else {
+      const list = spentOtherMap.get(row.companyId) || [];
+      list.push({ currency, amount });
+      spentOtherMap.set(row.companyId, list);
+    }
+  });
 
   const clients = rows.map((row) => {
     const totalCredits = Number(row.totalCredits) || 0;
     const creditsUsed = Number(row.creditsUsed) || 0;
     const creatorBudget = totalCredits * CAMPAIGN_BUDGET_RATE_PER_CREDIT;
-    const creatorBudgetSpent = spentMap.get(row.companyId) || 0;
+    const creatorBudgetSpent = spentMyrMap.get(row.companyId) || 0;
+    const creatorBudgetSpentOther = spentOtherMap.get(row.companyId) || [];
 
     return {
       companyId: row.companyId,
@@ -3767,7 +3813,7 @@ export const getClientsOverviewData = async (startDate?: Date, endDate?: Date) =
       subscriptionStatus: row.subscriptionStatus,
       expiredAt: row.expiredAt,
       ugcCredits: { used: creditsUsed, total: totalCredits },
-      creatorBudget: { spent: creatorBudgetSpent, total: creatorBudget },
+      creatorBudget: { spent: creatorBudgetSpent, total: creatorBudget, spentOther: creatorBudgetSpentOther },
     };
   });
 

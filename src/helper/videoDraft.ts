@@ -7,7 +7,7 @@ import fs from 'fs';
 import { uploadPitchVideo, uploadImage } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses } from '../server';
-import { Entity, PrismaClient, Submission } from '@prisma/client';
+import { Entity, Submission } from '@prisma/client';
 import { spawn } from 'child_process';
 import path from 'path';
 
@@ -23,11 +23,12 @@ import {
   previousDraftUrlsForReplacement,
 } from './draftSubmissionStatus';
 import { getIo, clients } from '../config/socket';
+import { onSubmissionSubmitted } from '@/src/modules/gamification';
+import { prisma } from '@/src/prisma/prisma';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
-const prisma = new PrismaClient();
 
 interface VideoFile {
   inputPath: string;
@@ -239,6 +240,13 @@ const checkCurrentSubmission = async (submissionId: string) => {
         data: { status: 'PENDING_REVIEW', submissionDate: dayjs().format() },
       });
       console.log(`[videoDraft] V4: IN_PROGRESS -> PENDING_REVIEW for submission ${submission.id}`);
+
+      onSubmissionSubmitted({
+        submissionId: submission.id,
+        userId: submission.userId,
+        campaignId: submission.campaignId,
+        submissionType: submission.submissionType?.type,
+      });
     } else {
       // If status is already PENDING_REVIEW, APPROVED, SENT_TO_CLIENT, etc. — don't override
       console.log(`[videoDraft] V4: Preserving status ${currentSubmission?.status} for submission ${submission.id}`);

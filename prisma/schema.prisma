@@ -116,7 +116,56 @@ model User {
   refreshTokens  RefreshToken[]
   uploadSessions UploadSession[]
 
+  treasureHuntClaims       TreasureHuntClaim[]
+  xpTransactions           XpTransaction[]
+  xpBalance                UserXpBalance?
+  createdTreasureHunts     TreasureHunt[]         @relation("TreasureHuntCreatedBy")
+  updatedTreasureHunts     TreasureHunt[]         @relation("TreasureHuntUpdatedBy")
+  treasureHuntAuditActions TreasureHuntAuditLog[]
+
   isPhoneVerified Boolean @default(false)
+
+  creatorAchievements  CreatorAchievement[]
+  leaderboardSnapshots LeaderboardSnapshot[]
+
+  campaignCreationDrafts            CampaignCreationDraft[]
+  campaignCreationDraftUploadLeases CampaignCreationDraftUploadLease[]
+}
+
+model CampaignCreationDraft {
+  id                    String   @id
+  ownerId               String
+  name                  String
+  payload               Json
+  activeStep            Int
+  showAdditionalDetails Boolean
+  revision              Int
+  legacyFileStorage     Boolean  @default(false)
+  filesCleanupPending   Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  owner        User                               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  uploadLeases CampaignCreationDraftUploadLease[]
+
+  @@index([ownerId, updatedAt])
+}
+
+model CampaignCreationDraftUploadLease {
+  id             String    @id @default(uuid())
+  draftId        String
+  ownerId        String
+  expiresAt      DateTime
+  objectUrl      String?
+  cleanupPending Boolean   @default(false)
+  releasedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  draft CampaignCreationDraft @relation(fields: [draftId], references: [id], onDelete: Restrict)
+  owner User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([draftId, expiresAt])
+  @@index([ownerId, draftId])
 }
 
 model PendingSocialSignup {
@@ -344,6 +393,12 @@ model Creator {
 
   profileLink String? // Profile link for creator (Instagram/TikTok/etc.)
 
+  /// Canonical guest identity, for example `instagram:example`. Derived from
+  /// profileLink by profileUrlNormalizer. Unique, so two requests can never
+  /// create two guest identities for the same creator. Null for a platform
+  /// creator, or for a legacy guest that is part of an unresolved conflict.
+  guestProfileKey String? @unique @db.VarChar(120)
+
   instagramProfileLink String? @db.VarChar(255)
   tiktokProfileLink    String? @db.VarChar(255)
 
@@ -352,12 +407,21 @@ model Creator {
   dietaryRestrictions String?
 
   // Credit Tier fields
-  manualFollowerCount          Int?        @default(0) // Legacy fallback manual follower count
-  manualInstagramFollowerCount Int?        @default(0) // Platform-specific manual Instagram followers
-  manualTiktokFollowerCount    Int?        @default(0) // Platform-specific manual TikTok followers
-  creditTierId                 String?
-  creditTier                   CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
-  tierUpdatedAt                DateTime? // Last time tier was calculated
+  manualFollowerCount          Int? @default(0) // Legacy fallback manual follower count
+  manualInstagramFollowerCount Int? @default(0) // Platform-specific manual Instagram followers
+  manualTiktokFollowerCount    Int? @default(0) // Platform-specific manual TikTok followers
+
+  /// Engagement rate for a creator with no connected account, as a percentage
+  /// ("4.27" is 4.27%). Written by an Apify scrape or by an admin override in
+  /// the Add Platform Creators modal. `Float?` matches
+  /// InstagramUser.engagement_rate and TiktokUser.engagement_rate, so every
+  /// read site sees one type. Null means never measured; it is not zero.
+  manualInstagramEngagementRate Float?
+  manualTiktokEngagementRate    Float?
+
+  creditTierId  String?
+  creditTier    CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
+  tierUpdatedAt DateTime? // Last time tier was calculated
 
   @@index([formCompletedAt])
 }
@@ -862,6 +926,9 @@ model Campaign {
   approvalRequests ApprovalRequest[]
   uploadSessions   UploadSession[]
 
+  guestProfileExtractions    GuestProfileExtraction[]
+  guestCreatorCreateRequests GuestCreatorCreateRequest[]
+
   isForMobile Boolean @default(false)
 }
 
@@ -1216,7 +1283,12 @@ model Pitch {
   maybeByClient           User?    @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
   acceptedInviteByCreator User?    @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
 
-  approvalRequestCreators ApprovalRequestCreator[]
+  approvalRequestCreators  ApprovalRequestCreator[]
+  guestCreatorMetricAudits GuestCreatorMetricAudit[]
+
+  /// Set while an Apify run still owns Followers and ER for this pitch.
+  pendingExtractionId String?                 @unique
+  pendingExtraction   GuestProfileExtraction? @relation("PendingPitchExtraction", fields: [pendingExtractionId], references: [id], onDelete: SetNull)
 
   @@unique([userId, campaignId])
 }
@@ -1349,6 +1421,7 @@ model Submission {
   startDate            DateTime?
   endDate              DateTime?
   approvedAt           DateTime?
+  viewedAt             DateTime?
   submittedByAdminId   String? // Track if admin submitted for creator
   feedback             Feedback[]
   Notification         Notification[]
@@ -1566,7 +1639,9 @@ model Video {
 
   feedbackRecords    Feedback[]
   submissionComments SubmissionComment[]
-  uploadSession      UploadSession?
+
+  uploadSessionId String?        @unique
+  uploadSession   UploadSession? @relation(fields: [uploadSessionId], references: [id])
 }
 
 model RawFootage {
@@ -1771,6 +1846,7 @@ model Invoice {
   creatorId  String
   campaignId String
   adminId    String?
+  round      Int      @default(1)
 
   xeroInvoiceId String?
 
@@ -1868,12 +1944,38 @@ model CreatorAgreement {
   campaignId        String
   completedAt       DateTime?
   approvedByAdminId String?
-  version           Int?      @default(1)
-  campaign          Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  admin             Admin?    @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
 
-  @@unique([userId, campaignId])
+  round Int @default(1)
+
+  selectedPlatform SocialPlatform?
+  videoCount       Int?
+  followerCount    Int?
+  creditPerVideo   Int?
+  creditTierId     String?
+  creditsAssigned  Int?
+  campaign         Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin            Admin?          @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
+  creditTier       CreditTier?     @relation(fields: [creditTierId], references: [id])
+  version          Int?            @default(1)
+
+  isSeeding      Boolean          @default(false)
+  productSeeding ProductSeeding[]
+
+  @@unique([userId, campaignId, round])
+}
+
+model ProductSeeding {
+  id String @id @unique @default(cuid())
+
+  name  String
+  value Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creatorAgreement   CreatorAgreement? @relation(fields: [creatorAgreementId], references: [id])
+  creatorAgreementId String?
 }
 
 model Crawler {
@@ -1911,6 +2013,8 @@ enum AgreementTemplateType {
 model Bugs {
   id               String   @id @unique @default(cuid())
   stepsToReproduce String
+  category         String?
+  context          Json?
   attachment       String?
   attachments      String[]
   campaignName     String?
@@ -2382,7 +2486,6 @@ enum SlotStatus {
 }
 
 // logistics models
-
 model Product {
   id          String   @id @unique @default(cuid())
   productName String
@@ -2568,6 +2671,7 @@ model CreditTier {
 
   creators            Creator[]            @relation("UserCurrentTier")
   shortlistedCreators ShortListedCreator[]
+  creatorAgreements   CreatorAgreement[]
 
   @@index([minFollowers])
 }
@@ -2739,6 +2843,8 @@ enum TypeEnum {
 model UploadSession {
   id String @id @default(cuid())
 
+  fileName String?
+
   // GCS resumable session
   gcsSessionUri String? @db.Text // filled in after client reports the Location header
   gcsObjectPath String // e.g. "raw/{userId}/{timestamp}-{filename}"
@@ -2756,9 +2862,9 @@ model UploadSession {
   submissionId String?
   submission   Submission? @relation(fields: [submissionId], references: [id])
 
-  // Link to final Video once compression completes
-  videoId String? @unique
-  video   Video?  @relation(fields: [videoId], references: [id])
+  // // Link to final Video once compression completes
+  // videoId String? @unique
+  // video   Video?  @relation(fields: [videoId], references: [id])
 
   // Lifecycle
   expiresAt    DateTime
@@ -2767,6 +2873,7 @@ model UploadSession {
   completedAt  DateTime?
   failedAt     DateTime?
   errorMessage String?
+  video        Video?
 
   @@index([userId, status])
   @@index([status, expiresAt])
@@ -2781,4 +2888,543 @@ enum UploadStatus {
   COMPRESSION_FAILED
   COMPLETED // compressed file uploaded, Video row created
   FAILED
+}
+
+model TreasureHunt {
+  id             String                 @id @default(cuid())
+  eventKey       String                 @unique @default("FIND_CIPTA") @db.VarChar(50)
+  title          String                 @db.VarChar(255)
+  description    String                 @db.Text
+  heroArtworkUrl String?                @db.VarChar(2048)
+  startsAt       DateTime
+  endsAt         DateTime
+  rewardXp       Int                    @default(50)
+  status         TreasureHuntStatus     @default(DRAFT)
+  featuredSlot   Int?                   @unique
+  publishedAt    DateTime?
+  pausedAt       DateTime?
+  archivedAt     DateTime?
+  createdById    String
+  updatedById    String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  createdBy      User                   @relation("TreasureHuntCreatedBy", fields: [createdById], references: [id])
+  updatedBy      User?                  @relation("TreasureHuntUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  locations      TreasureHuntLocation[]
+  auditLogs      TreasureHuntAuditLog[]
+
+  @@index([status, startsAt, endsAt])
+  @@index([createdAt])
+}
+
+model TreasureHuntLocation {
+  id                    String                        @id @default(cuid())
+  huntId                String
+  name                  String                        @db.VarChar(255)
+  hint                  String                        @db.Text
+  sortOrder             Int
+  artworkUrl            String                        @db.VarChar(2048)
+  isEnabled             Boolean                       @default(true)
+  publicTokenHash       String?                       @unique @db.VarChar(64)
+  publicTokenCiphertext String?                       @db.Text
+  tokenIssuedAt         DateTime?
+  tokenVersion          Int                           @default(0)
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+  hunt                  TreasureHunt                  @relation(fields: [huntId], references: [id], onDelete: Cascade)
+  bitlyPublication      TreasureHuntBitlyPublication?
+  claims                TreasureHuntClaim[]
+  auditLogs             TreasureHuntAuditLog[]
+
+  @@unique([huntId, sortOrder])
+  @@index([huntId, isEnabled, sortOrder])
+}
+
+model TreasureHuntBitlyPublication {
+  id                    String                 @id @default(cuid())
+  locationId            String                 @unique
+  status                BitlyPublicationStatus @default(NOT_STARTED)
+  bitlinkId             String?                @unique @db.VarChar(255)
+  bitlinkUrl            String?                @unique @db.VarChar(2048)
+  qrCodeId              String?                @unique @db.VarChar(255)
+  qrImageUrl            String?                @db.VarChar(2048)
+  rawScanCount          Int                    @default(0)
+  analyticsSource       String?                @db.VarChar(100)
+  lastAnalyticsSyncedAt DateTime?
+  lastAttemptAt         DateTime?
+  nextRetryAt           DateTime?
+  lastErrorCode         String?                @db.VarChar(100)
+  lastErrorMessage      String?                @db.Text
+  leaseId               String?                @db.VarChar(64)
+  leaseExpiresAt        DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  location              TreasureHuntLocation   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRetryAt])
+  @@index([leaseExpiresAt])
+}
+
+model TreasureHuntClaim {
+  id         String                  @id @default(cuid())
+  userId     String
+  locationId String
+  source     TreasureHuntClaimSource
+  claimedAt  DateTime                @default(now())
+  user       User                    @relation(fields: [userId], references: [id])
+  location   TreasureHuntLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  capture    TreasureHuntCapture?
+
+  @@unique([userId, locationId])
+  @@index([userId, claimedAt])
+  @@index([locationId, claimedAt])
+}
+
+model TreasureHuntCapture {
+  id          String            @id @default(cuid())
+  claimId     String            @unique
+  objectPath  String            @unique @db.VarChar(2048)
+  contentType String            @db.VarChar(100)
+  byteSize    Int
+  sha256      String            @db.VarChar(64)
+  width       Int
+  height      Int
+  createdAt   DateTime          @default(now())
+  claim       TreasureHuntClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+}
+
+model XpTransaction {
+  id String @id @default(cuid())
+
+  amount Int //points
+  userId String
+
+  sourceType XpSourceType? // maybe we are not using this anymore
+  sourceId   String // maybe we are not using this anymore
+
+  actionId String?
+  action   XpAction? @relation(references: [id], fields: [actionId])
+
+  periodId String?
+
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, actionId, sourceId])
+  @@index([userId, createdAt])
+  @@index([periodId])
+  @@index([actionId])
+}
+
+model UserXpBalance {
+  total           Int       @default(0)
+  mediaKitBonusAt DateTime?
+
+  userId        String  @id
+  currentRankId String?
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rank Rank? @relation(fields: [currentRankId], references: [id])
+
+  updatedAt DateTime @updatedAt
+}
+
+model TreasureHuntAuditLog {
+  id          String                @id @default(cuid())
+  huntId      String?
+  locationId  String?
+  actorUserId String
+  action      String                @db.VarChar(100)
+  metadata    Json?
+  requestId   String?               @db.VarChar(255)
+  createdAt   DateTime              @default(now())
+  hunt        TreasureHunt?         @relation(fields: [huntId], references: [id], onDelete: SetNull)
+  location    TreasureHuntLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  actor       User                  @relation(fields: [actorUserId], references: [id])
+
+  @@index([huntId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+enum TreasureHuntStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  ARCHIVED
+}
+
+enum TreasureHuntClaimSource {
+  IN_APP_CAMERA
+  EXTERNAL_LINK
+}
+
+enum BitlyPublicationStatus {
+  NOT_STARTED
+  BITLINK_CREATED
+  QR_CREATED
+  READY
+  RATE_LIMITED
+  FAILED
+}
+
+enum XpSourceType {
+  HUNT_LOCATION_CLAIM
+  PITCH_SUBMITTED
+  PITCH_APPROVED
+  SHORTLISTED
+  SUBMISSION_SUBMITTED
+  SUBMISSION_APPROVED
+  POSTING_SUBMITTED
+  POSTING_APPROVED
+  CLIENT_RATING
+  MEDIA_KIT_CONNECTED
+  LEADERBOARD_TOP_10
+  LEADERBOARD_TOP_3
+  WEEKLY_TASK
+  ACHIEVEMENT
+}
+
+// ─────────────────────────── Gamification ────────────────────────────
+
+model Achievement {
+  id          String               @id @default(cuid())
+  code        String               @unique
+  name        String
+  category    String
+  rarity      String
+  icon        String
+  description String
+  xp          Int
+  target      Int
+  active      Boolean              @default(true)
+  sortOrder   Int
+  creators    CreatorAchievement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CreatorAchievement {
+  userId        String
+  achievementId String
+  unlockedAt    DateTime?
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  events CreatorAchievementEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, achievementId])
+  @@index([achievementId])
+}
+
+model CreatorAchievementEvent {
+  id            String @id @default(cuid())
+  userId        String
+  achievementId String
+  sourceId      String
+  increment     Int    @default(1)
+
+  creatorAchievement CreatorAchievement @relation(fields: [userId, achievementId], references: [userId, achievementId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, achievementId, sourceId])
+  @@index([userId, achievementId])
+}
+
+model LeaderboardSnapshot {
+  periodId String
+  userId   String
+  rank     Int
+  xp       Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([periodId, userId])
+  @@index([userId])
+}
+
+model XpAction {
+  id         String     @id @default(cuid())
+  code       String     @unique
+  name       String
+  points     Int?
+  rewardType RewardType
+
+  xpTransactions XpTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("xp_action")
+}
+
+enum RewardType {
+  repeatable
+  one_time
+}
+
+model Rank {
+  id        String @id @default(cuid())
+  name      String @unique
+  minPoints Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userXpBalances UserXpBalance[]
+}
+
+// =============================================================================
+// Guest profile extraction
+//
+// Automatic engagement rate for non-platform creators. See
+// engagement-rate-new/02-architecture.md.
+// =============================================================================
+
+enum GuestProfileExtractionStatus {
+  QUEUED
+  RUNNING
+  POLLING
+  READY
+  INSUFFICIENT_DATA
+  FAILED
+  CANCELLED
+  STALE
+  /// The provider start response was ambiguous, so the run ID is unknown.
+  /// Reconciliation resolves this. It never starts a second paid run.
+  REQUIRES_RECONCILIATION
+}
+
+enum GuestMetricSource {
+  automatic
+  manual_override
+  unavailable
+}
+
+enum GuestIdentityConflictStatus {
+  UNRESOLVED
+  RESOLVED
+}
+
+enum GuestCreateRequestStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+/// One durable unit of provider work.
+///
+/// Written before the job is enqueued, so a restart can recover it. Holds
+/// typed results only. Raw provider JSON is never persisted.
+model GuestProfileExtraction {
+  id String @id @default(cuid())
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  /// The admin who started the work. Status and receipt access require this
+  /// exact user. Not a relation, so a user record change never deletes work.
+  requestedByUserId String
+
+  /// Canonical identity, for example `instagram:example`.
+  canonicalProfileKey String         @db.VarChar(120)
+  canonicalProfileUrl String         @db.VarChar(255)
+  platform            SocialPlatform
+
+  actorId        String  @db.VarChar(120)
+  /// Exact pinned build. Never `latest`.
+  actorBuild     String  @db.VarChar(40)
+  actorRunId     String? @db.VarChar(60)
+  actorDatasetId String? @db.VarChar(60)
+
+  /// Instagram only. The actor caps `details` mode at 12 posts, so the metrics
+  /// come from a `posts` run and the follower count from a second `details`
+  /// run. Recorded before polling, so a paid run is never untracked.
+  profileActorRunId     String? @db.VarChar(60)
+  profileActorDatasetId String? @db.VarChar(60)
+
+  status GuestProfileExtractionStatus @default(QUEUED)
+
+  /// Typed result. Present only for READY.
+  resultName           String?  @db.VarChar(255)
+  resultFollowerCount  Int?
+  /// Percentage without the sign. `"4.27"` means 4.27%.
+  resultEngagementRate String?  @db.VarChar(24)
+  sampleSize           Int?
+  formulaVersion       String?  @db.VarChar(60)
+  /// Selected-post evidence built by this backend. Not provider JSON.
+  selectedPosts        Json?
+  /// Every candidate the actor returned, with the verdict the policy gave it.
+  /// Counters, IDs and timestamps only. No caption, media URL, avatar or bio.
+  candidatePosts       Json?
+  /// Policy flags the pinned actor build did not report.
+  unverifiedFlags      String[]
+
+  failureCode    String? @db.VarChar(60)
+  failureMessage String?
+
+  /// Start idempotency. The same key with a different body is a conflict.
+  idempotencyKey     String @db.VarChar(120)
+  requestFingerprint String @db.VarChar(64)
+
+  /// Receipt binding. The nonce is consumed inside the create transaction.
+  receiptNonce      String?   @unique @db.VarChar(64)
+  receiptDigest     String?   @db.VarChar(64)
+  receiptExpiresAt  DateTime?
+  receiptConsumedAt DateTime?
+
+  /// Measured charge for this run, from the provider. Null until a run
+  /// finishes. Release gate 2 needs this recorded, not estimated.
+  costUsd Decimal? @db.Decimal(10, 6)
+
+  /// Measured charge for the secondary profile run, where one was needed.
+  profileCostUsd Decimal? @db.Decimal(10, 6)
+
+  /// Set when this row copied a completed result instead of paying again.
+  reusedFromExtractionId String?
+
+  /// Starts refused because the same work was already running or already
+  /// done. A high number means the browser is asking twice.
+  duplicateStartAttempts Int @default(0)
+
+  reconcileAttempts Int       @default(0)
+  lastReconciledAt  DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+  /// Cleanup boundary. Removing a row here must never remove an audit.
+  expiresAt   DateTime?
+
+  metricAudits   GuestCreatorMetricAudit[]
+  pendingPitches Pitch[]                   @relation("PendingPitchExtraction")
+
+  @@unique([requestedByUserId, idempotencyKey])
+  @@index([canonicalProfileKey, platform, actorBuild, status])
+  @@index([requestedByUserId, status])
+  @@index([campaignId, status])
+  @@index([status, updatedAt])
+  @@index([expiresAt])
+  @@index([completedAt])
+}
+
+/// Provenance for every guest metric written to a Pitch.
+///
+/// Denormalized on purpose. It must stay readable after the extraction row is
+/// cleaned up, so the extraction link is optional and set to null on delete.
+model GuestCreatorMetricAudit {
+  id String @id @default(cuid())
+
+  pitchId String
+  pitch   Pitch  @relation(fields: [pitchId], references: [id], onDelete: Cascade)
+
+  extractionId String?
+  extraction   GuestProfileExtraction? @relation(fields: [extractionId], references: [id], onDelete: SetNull)
+
+  /// The guest User the pitch belongs to.
+  guestUserId         String?
+  canonicalProfileKey String?         @db.VarChar(120)
+  platform            SocialPlatform?
+
+  /// What the fetch produced. Null when there was no fetch.
+  originalName           String? @db.VarChar(255)
+  originalFollowerCount  Int?
+  originalEngagementRate String? @db.VarChar(24)
+
+  /// What was saved.
+  finalName           String? @db.VarChar(255)
+  finalFollowerCount  Int?
+  finalEngagementRate String? @db.VarChar(24)
+
+  source         GuestMetricSource
+  overrideReason String?
+
+  /// Copied from the extraction so cleanup cannot erase it.
+  actorId        String? @db.VarChar(120)
+  actorBuild     String? @db.VarChar(40)
+  actorRunId     String? @db.VarChar(60)
+  formulaVersion String? @db.VarChar(60)
+
+  /// The authenticated admin who made the request.
+  performedByUserId String
+  /// The admin who reviewed the values, when that differs.
+  reviewerUserId    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([pitchId])
+  @@index([extractionId])
+  @@index([canonicalProfileKey])
+  @@index([performedByUserId, createdAt])
+}
+
+/// Database idempotency for the final create call.
+///
+/// The same key with the same body returns the saved response. The same key
+/// with a different body is a conflict.
+model GuestCreatorCreateRequest {
+  id String @id @default(cuid())
+
+  /// Scoped to the authenticated actor and the operation, never global.
+  performedByUserId String @db.VarChar(60)
+  operation         String @db.VarChar(60)
+  idempotencyKey    String @db.VarChar(120)
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  /// Hash of the normalized request body.
+  requestHash String @db.VarChar(64)
+
+  status GuestCreateRequestStatus @default(IN_PROGRESS)
+
+  /// Saved response, replayed for a repeated key.
+  responseStatus Int?
+  responseBody   Json?
+  resultPitchIds String[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+  expiresAt   DateTime?
+
+  @@unique([performedByUserId, operation, idempotencyKey])
+  @@index([campaignId])
+  @@index([expiresAt])
+}
+
+/// A legacy group of guest creators that share one canonical identity.
+///
+/// Created by the backfill. While UNRESOLVED it blocks both extraction and
+/// creation for that key. A conflicting key is never set to null so that a
+/// duplicate can be created instead.
+model GuestProfileIdentityConflict {
+  id String @id @default(cuid())
+
+  canonicalProfileKey String         @unique @db.VarChar(120)
+  platform            SocialPlatform
+
+  /// Every Creator and User record in the conflicting group.
+  creatorIds   String[]
+  userIds      String[]
+  /// The raw profileLink values that produced the same canonical key.
+  profileLinks String[]
+
+  status GuestIdentityConflictStatus @default(UNRESOLVED)
+
+  detectedAt       DateTime  @default(now())
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  resolutionNote   String?
+
+  @@index([status])
 }

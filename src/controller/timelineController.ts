@@ -1,10 +1,9 @@
 import { Request, Response } from 'express';
-import { Entity, PrismaClient } from '@prisma/client';
+import { Entity } from '@prisma/client';
 import { time } from 'console';
 import { Title, saveNotification } from './notificationController';
 import { clients, getIo } from '../config/socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const getTimelineType = async (req: Request, res: Response) => {
   try {

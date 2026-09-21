@@ -1,12 +1,11 @@
 import { Request, Response } from 'express';
-import { Entity, Invoice, PrismaClient, FeedbackType } from '@prisma/client';
+import { Entity, Invoice, FeedbackType } from '@prisma/client';
 import {
   generateCampaignAccessService,
   validateCampaignPasswordService,
   regenerateCampaignPasswordService,
 } from '@services/publicService';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 // Generate campaign access
 export const generateCampaignAccess = async (req: Request, res: Response) => {

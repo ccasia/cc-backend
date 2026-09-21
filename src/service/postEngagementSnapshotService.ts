@@ -1,14 +1,14 @@
-import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { batchFetchInsights, BatchInsightResult } from './socialMediaBatchService';
 import { getMetricValue } from '@utils/insightNormalizationHelper';
+import { onPostSnapshot } from '@/src/modules/gamification';
+import { prisma } from '@/src/prisma/prisma';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-const prisma = new PrismaClient();
 
 // Snapshot days from campaign start
 const SNAPSHOT_DAYS = [7, 15, 30];
@@ -319,6 +319,12 @@ async function storePostSnapshot(snapshot: PostSnapshot): Promise<void> {
       engagementRate: snapshot.metrics.engagementRate,
       rawMetrics: snapshot.rawMetrics,
     },
+  });
+
+  onPostSnapshot({
+    userId: snapshot.userId,
+    submissionId: snapshot.submissionId,
+    views: snapshot.metrics.views,
   });
 }
 

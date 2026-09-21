@@ -1,4 +1,3 @@
-import { PrismaClient } from '@prisma/client';
 import { sendMessageInThread } from '@controllers/threadController';
 import { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
@@ -11,8 +10,7 @@ import {
 import { clients, getIo } from '../config/socket';
 import { notificationCSMChat, notificationGroupChat } from '@helper/notification';
 import { saveNotification } from '@controllers/notificationController';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export class ThreadServiceError extends Error {
   status: number;

@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { UploadedFile } from 'express-fileupload';
 import { generateRandomString } from '@utils/randomString';
 import { getUser } from '@services/userServices';
@@ -30,8 +29,7 @@ import {
   getBdOverview as svcGetBdOverview,
   setBriefHold as svcSetBriefHold,
 } from '@services/campaignBriefService';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 const clientPublicUrl = (magicToken: string) => {
   const base =

@@ -1,8 +1,6 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { Columns } from '../types/columns';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const ADMIN_COLUMNS = ['To Do', 'Actions Needed', 'Done'];
 const CREATOR_COLUMNS = ['To Do', 'In Progress', 'In Review', 'Done'];

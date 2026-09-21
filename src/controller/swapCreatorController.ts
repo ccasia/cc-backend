@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { logAdminChange } from '@services/campaignServices';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 /**
  * Swap a guest creator with an existing platform creator
@@ -335,6 +334,7 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
               submissionTypeId: agreementTimeline.submissionTypeId as string,
               dueDate: agreementTimeline.endDate,
               status: 'IN_PROGRESS',
+              contentOrder: 1, // round 1's AGREEMENT_FORM submission
               ...(inProgressColumn && {
                 task: {
                   create: {
@@ -451,11 +451,14 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
       if (otherShortlists === 0 && otherPitches === 0 && otherSubmissions === 0) {
         console.log(`[SWAP] Guest user has no other relationships, deleting...`);
 
-        // Delete guest user's notifications first (foreign key constraint)
         const deletedNotifications = await tx.userNotification.deleteMany({
           where: { userId: guestUserId },
         });
         console.log(`[SWAP] Deleted ${deletedNotifications.count} notification(s)`);
+
+        await tx.xpTransaction.deleteMany({
+          where: { userId: guestUserId },
+        });
 
         // Delete guest creator (foreign key constraint)
         await tx.creator.delete({
@@ -545,8 +548,10 @@ export const cleanupOrphanedGuestUsers = async (req: Request, res: Response) => 
 
       for (const guest of orphanedGuests) {
         try {
-          // Delete user notifications first (foreign key constraint)
           await tx.userNotification.deleteMany({
+            where: { userId: guest.id },
+          });
+          await tx.xpTransaction.deleteMany({
             where: { userId: guest.id },
           });
 

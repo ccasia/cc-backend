@@ -7,7 +7,7 @@ import { creatorInvoice as emailCreatorInvoice } from '@configs/nodemailer.confi
 import { logAdminChange } from '@services/campaignServices';
 import { logChange } from '@services/campaignServices';
 
-import { InvoiceStatus, Prisma, PrismaClient } from '@prisma/client';
+import { InvoiceStatus, Prisma } from '@prisma/client';
 import {
   notificationInvoiceGenerate,
   notificationInvoiceStatus,
@@ -16,6 +16,7 @@ import {
   notificationInvoicePaid,
 } from '@helper/notification';
 import { saveNotification } from './notificationController';
+import { onInvoicePaid } from '@/src/modules/gamification';
 
 import { TokenSet } from 'openid-client';
 import { error } from 'console';
@@ -36,8 +37,7 @@ import { creatorAgreements } from './campaignController';
 import { bulkInvoiceQueue, invoiceQueue } from '@utils/queue';
 import { xero } from '@configs/xero';
 import { clients, getIo } from '../config/socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 const MAX_INVOICE_NUMBER_RETRIES = 8;
 
@@ -1057,6 +1057,12 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
       );
     }
 
+    // Manual status change; the Xero sync awards on its own path. side-hustle
+    // recomputes from all paid invoices, so both routes converge on the same total.
+    if (status === 'paid' && invoice.creatorId) {
+      onInvoicePaid(invoice.creatorId);
+    }
+
     // Creator-facing notification, tailored per status.
     // approved -> In-App only (sendPush: false); paid -> Push + In-App (sendPush: true).
     if (status === 'approved' || status === 'paid') {
@@ -1333,7 +1339,9 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     const creatorUser = invoice.creator.user;
     const creatorPaymentForm = creatorUser?.paymentForm;
-    const agreement = invoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
+    const agreement = invoice.creator.user.creatorAgreement.find(
+      (item) => item.campaignId === campaignId && item.round === 1,
+    );
 
     if (status === 'approved') {
       await prisma.invoice.update({
@@ -1728,6 +1736,8 @@ export const attachInvoicePDF = async (tenantId: string, invoiceId: string, file
 
 export const generateInvoice = async (req: Request, res: Response) => {
   const { userId, campaignId } = req.body;
+  // Defaults to round 1 for callers that don't specify a round.
+  const round: number = req.body.round ?? 1;
 
   try {
     const creator = await prisma.shortListedCreator.findFirst({
@@ -1763,18 +1773,19 @@ export const generateInvoice = async (req: Request, res: Response) => {
       where: {
         campaignId: campaignId,
         creatorId: userId,
+        round,
       },
     });
 
-    if (invoice) return res.status(400).json({ message: 'Invoice has been generated for this campaign' });
+    if (invoice) return res.status(400).json({ message: `Invoice has already been generated for round ${round}.` });
 
     if (!creator.isCampaignDone && !invoice) {
       const invoiceAmount = creator?.user?.creatorAgreement.find(
-        (elem) => elem.campaignId === creator.campaign.id,
+        (elem) => elem.campaignId === creator.campaign.id && elem.round === round,
       )?.amount;
 
       const invoice = await createInvoiceService(
-        { ...creator, userId: creator.user?.id, campaignId: creator.campaign.id },
+        { ...creator, userId: creator.user?.id, campaignId: creator.campaign.id, round },
         req.userId,
         invoiceAmount,
         undefined,
@@ -1935,6 +1946,7 @@ export async function generateMissingInvoices(req: Request, res: Response) {
         where: {
           userId: item.userId,
           campaignId: item.campaignId,
+          round: 1,
         },
         include: {
           user: {

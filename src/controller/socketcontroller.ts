@@ -1,10 +1,8 @@
 // @controllers/socketController.ts
-import { PrismaClient } from '@prisma/client';
 import { sendMessageInThread } from './threadController';
 import { fetchMessagesFromThread } from '@services/threadService';
 import { Request, Response } from 'express';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const handleSendMessage = async (message: any, io: any) => {
   const { senderId, threadId, content, role, name, photoURL, file, fileType } = message;

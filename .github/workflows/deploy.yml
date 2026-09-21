@@ -1,0 +1,89 @@
+name: Deploy cc-backend to production
+
+# Runs automatically every time you push to "staging".
+on:
+    push:
+        branches:
+            - staging
+
+env:
+    # ---- CHANGE THIS ONE: your real GCP project ID ----
+    GCP_PROJECT_ID: cult-creative-421007
+    # ---- These already match what you set up ----
+    GCP_REGION: asia-southeast1
+    ARTIFACT_REPO: cc-backend
+    IMAGE_NAME: cc-backend
+
+jobs:
+    build-and-push:
+        runs-on: ubuntu-latest
+        steps:
+            # 1. Get the code
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            # 2. Log in to GCP using the service account key you saved as a secret
+            - name: Authenticate to Google Cloud
+              uses: google-github-actions/auth@v2
+              with:
+                  credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+            - name: Set up gcloud CLI
+              uses: google-github-actions/setup-gcloud@v2
+              with:
+                  project_id: ${{ env.GCP_PROJECT_ID }}
+
+            # 3. Let Docker push to your asia-southeast1 Artifact Registry
+            - name: Configure Docker for Artifact Registry
+              run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+            # 4. Build the image, tagged both "latest" and with the commit SHA
+            #    (the SHA tag is what lets you roll back to any previous version later)
+            - name: Build Docker image
+              run: |
+                  IMAGE_URI=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}
+                  docker build -t $IMAGE_URI:latest -t $IMAGE_URI:${{ github.sha }} .
+
+            # 5. Push both tags to Artifact Registry
+            - name: Push Docker image
+              run: |
+                  IMAGE_URI=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}
+                  docker push $IMAGE_URI:latest
+                  docker push $IMAGE_URI:${{ github.sha }}
+
+    deploy:
+        needs: build-and-push
+        runs-on: ubuntu-latest
+        steps:
+            # 6. SSH into your GCP server and swap in the new image
+            - name: Deploy to server via SSH
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                  host: ${{ secrets.GCP_SERVER_HOST }}
+                  username: ${{ secrets.GCP_SERVER_USER }}
+                  key: ${{ secrets.GCP_SERVER_SSH_KEY }}
+                  script: |
+                      IMAGE_URI=asia-southeast1-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/cc-backend/cc-backend
+                      gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
+
+                      # Go to wherever your docker-compose.yml for cc-backend lives
+                      cd cultcreative/cc-backend
+
+                      # Pull the new image (docker-compose.yml must reference this image,
+                      # not a local "build:" step, for this to pick up the new version)
+                      docker compose pull cc-backend
+
+                      # Recreate just the cc-backend service with the new image.
+                      # Other containers on the same network are untouched.
+                      docker compose up -d cc-backend
+
+            - name: Send message to Lark
+              uses: Nghi-NV/lark-message-action@v1
+              if: success()
+              with:
+                  title: "GitHub Actions Build - ${{env.IMAGE_NAME}}"
+                  content: "The workflow has run successfully on branch ${{ github.ref_name }}."
+                  header-color: "green"
+                  lark-bot-notify-webhook: ${{ secrets.LARK_WEBHOOK }}
+                  lark-signature-verification: ${{ secrets.LARK_SECRET }} # Omit if signature verification is disabled
+

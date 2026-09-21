@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 
 import {
@@ -34,8 +33,7 @@ import {
   getRequireChangesRateData,
   getTopShortlistedCreatorsData,
 } from '@services/analyticsV2Service';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 // Shared date-range parsing for analytics endpoints
 const parseDateRange = async (

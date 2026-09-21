@@ -14,16 +14,16 @@ import {
   // createNewAdmin,
 } from '@services/userServices';
 import { Storage } from '@google-cloud/storage';
-import { Entity, PrismaClient } from '@prisma/client';
+import { Entity } from '@prisma/client';
 import { Title, saveNotification } from './notificationController';
 import { uploadProfileImage } from '@configs/cloudStorage.config';
+import { prisma } from '@/src/prisma/prisma';
 // import { serializePermission } from '@utils/serializePermission';
 
 const storage = new Storage({
   keyFilename: '@configs/test-cs.json',
 });
 
-const prisma = new PrismaClient();
 
 export const updateProfileAdmin = async (req: Request, res: Response) => {
   const { files } = req;

@@ -1,4 +1,3 @@
-import { PrismaClient } from '@prisma/client';
 import { campaignHasClient } from '@utils/campaignFlow';
 import { decryptToken, encryptToken } from '@helper/encrypt';
 import { refreshTikTokToken } from '@services/socialMediaService';
@@ -38,8 +37,8 @@ import {
 import { mapPronounsToGender } from '@utils/mapPronounsToGender';
 import { calculateAge } from '@utils/calculateAge';
 import { saveNotification } from '@controllers/notificationController';
+import { prisma } from '@/src/prisma/prisma';
 
-const prisma = new PrismaClient();
 const prismaAny = prisma as any;
 
 const DISCOVERY_API_CACHE_TTL_MS = Number(process.env.DISCOVERY_API_CACHE_TTL_MS || 5 * 60 * 1000);
@@ -1783,6 +1782,7 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
             data: {
               userId: creatorUser.id,
               campaignId,
+              round: 1,
               agreementUrl: '',
             },
           });

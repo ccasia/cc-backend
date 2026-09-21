@@ -18,6 +18,7 @@ import { saveCreatorToSpreadsheet } from '@/src/helper/registeredCreatorSpreadsh
 import { exchangeAppleAuthorizationCode, exchangeAppleRefreshToken, revokeAppleToken } from '@/src/utils/apple';
 import { verifyGoogleIdToken } from '@/src/utils/google';
 import WhatsappSetting from '@/src/service/whatsappSetting';
+import { progressAchievement } from '@/src/modules/gamification';
 import { generate, generateSecret, verify } from 'otplib';
 import { normalizePhone } from '@/src/service/phone_number';
 
@@ -108,6 +109,10 @@ export const login = async (
         userAgent,
       },
     });
+
+    if (user.role === 'creator') {
+      void progressAchievement({ userId: user.id, code: 'first-light', sourceId: 'first-login' });
+    }
 
     return res.status(200).json({ user, token: { accessToken, refreshToken } });
   } catch (err) {
@@ -461,6 +466,131 @@ export const changePasword = async (
   }
 };
 
+export const forgotPassword = async (req: Request<{}, {}, { phone: string }>, res: Response) => {
+  const { phone } = req.body;
+
+  if (!phone) {
+    return res.status(400).json({ success: false, message: 'Phone number is required' });
+  }
+
+  const genericMessage = 'If an account exists for this phone number, a reset code has been sent.';
+
+  try {
+    const user = await prisma.user.findFirst({ where: { phoneNumber: phone.trim() } });
+
+    if (!user || !user.phoneNumber) {
+      return res.status(200).json({ success: true, message: genericMessage });
+    }
+
+    const code = generateNumericCode(6);
+
+    await prisma.resetPasswordToken.upsert({
+      where: { userId: user.id },
+      update: { token: code, used: false, attempts: 0, expiresAt: dayjs().add(15, 'minute').toDate(), createdAt: new Date() },
+      create: { userId: user.id, token: code, used: false, expiresAt: dayjs().add(15, 'minute').toDate() },
+    });
+
+    const whatsapp = new WhatsappSetting();
+    await whatsapp.initialize();
+    await whatsapp.sendVerificationCode(user.phoneNumber, code);
+
+    return res.status(200).json({ success: true, message: genericMessage });
+  } catch (error) {
+    console.error('Mobile forgot password error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to process request' });
+  }
+};
+
+type ResetCodeCheck =
+  | { ok: true; userId: string; resetRecordId: string }
+  | { ok: false; status: number; message: string };
+
+const checkResetCode = async (userId: string, code: string): Promise<ResetCodeCheck> => {
+  const resetRecord = await prisma.resetPasswordToken.findUnique({ where: { userId } });
+  if (!resetRecord || resetRecord.used || !resetRecord.token) {
+    return { ok: false, status: 400, message: 'Invalid or expired code' };
+  }
+
+  if (resetRecord.attempts >= 5) {
+    return { ok: false, status: 429, message: 'Too many attempts. Please request a new code.' };
+  }
+
+  if (!resetRecord.expiresAt || resetRecord.expiresAt < new Date()) {
+    return { ok: false, status: 410, message: 'Code expired. Please request a new one.' };
+  }
+
+  if (resetRecord.token !== code) {
+    await prisma.resetPasswordToken.update({ where: { id: resetRecord.id }, data: { attempts: { increment: 1 } } });
+    return { ok: false, status: 401, message: 'Incorrect code' };
+  }
+
+  return { ok: true, userId, resetRecordId: resetRecord.id };
+};
+
+export const verifyResetCode = async (req: Request<{}, {}, { phone: string; code: string }>, res: Response) => {
+  const { phone, code } = req.body;
+
+  if (!phone || !code) {
+    return res.status(400).json({ success: false, message: 'Phone number and code are required' });
+  }
+
+  try {
+    const user = await prisma.user.findFirst({ where: { phoneNumber: phone.trim() } });
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired code' });
+    }
+
+    const result = await checkResetCode(user.id, code);
+    if (!result.ok) {
+      return res.status(result.status).json({ success: false, message: result.message });
+    }
+
+    return res.status(200).json({ success: true, message: 'Code verified' });
+  } catch (error) {
+    console.error('Mobile verify reset code error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to verify code' });
+  }
+};
+
+export const resetPassword = async (
+  req: Request<{}, {}, { phone: string; code: string; password: string }>,
+  res: Response,
+) => {
+  const { phone, code, password } = req.body;
+
+  if (!phone || !code || !password) {
+    return res.status(400).json({ success: false, message: 'Phone number, code, and password are required' });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+  }
+
+  try {
+    const user = await prisma.user.findFirst({ where: { phoneNumber: phone.trim() } });
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired code' });
+    }
+
+    const result = await checkResetCode(user.id, code);
+    if (!result.ok) {
+      return res.status(result.status).json({ success: false, message: result.message });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: result.userId }, data: { password: hashedPassword } }),
+      prisma.resetPasswordToken.delete({ where: { id: result.resetRecordId } }),
+    ]);
+
+    return res.status(200).json({ success: true, message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Mobile reset password error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to reset password' });
+  }
+};
+
 export const tokenRefresh = async (req: Request, res: Response) => {
   try {
     const refreshSchema = z.object({ refreshToken: z.string().min(1) });
@@ -622,6 +752,10 @@ export const verifyEmail = async (req: Request<{}, {}, { email: string; shortCod
       ipAddress: req.ip ?? null,
     },
   });
+
+  if (user.role === 'creator') {
+    void progressAchievement({ userId: user.id, code: 'first-light', sourceId: 'first-login' });
+  }
 
   // issue your real access + refresh tokens here
   return res.json({ success: true, message: 'Email verified', token: { accessToken, refreshToken } });
@@ -938,6 +1072,10 @@ const handleSocialSignIn = async ({
       userAgent,
     },
   });
+
+  // Same badge as the password path — the role check above already guarantees
+  // this is a creator. Shared by both Google and Apple sign-in.
+  void progressAchievement({ userId: user.id, code: 'first-light', sourceId: 'first-login' });
 
   // Return the creator so the app can route on isOnBoardingFormCompleted.
   const userWithCreator = await prisma.user.findUnique({

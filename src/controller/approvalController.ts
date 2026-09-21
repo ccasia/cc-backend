@@ -1,14 +1,18 @@
 import crypto from 'crypto';
 import jwt, { Secret } from 'jsonwebtoken';
 import { Request, Response } from 'express';
-import { Prisma, PrismaClient } from '@prisma/client';
-
+import { Prisma } from '@prisma/client';
 import { sendCreatorApprovalListEmail, type ApprovalListEmailCreatorRow } from '@configs/nodemailer.config';
 import { getIo } from '../config/socket';
+import { awardXp, onShortlisted, progressAchievement } from '@/src/modules/gamification';
+import { prisma } from '@/src/prisma/prisma';
+
+interface ShortlistedEvent {
+  userId: string;
+  campaignId: string;
+}
 
 // import { io } from '../server';
-
-const prisma = new PrismaClient();
 
 function formatFollowersShort(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -94,7 +98,10 @@ function buildApprovalEmailCreatorRow(pitch: {
   };
 }
 
-async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, pitchId: string) {
+export async function ensureApprovedCreatorCampaignSetup(
+  tx: Prisma.TransactionClient,
+  pitchId: string,
+): Promise<ShortlistedEvent> {
   const pitch = await tx.pitch.findUnique({
     where: { id: pitchId },
     include: {
@@ -138,6 +145,8 @@ async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, 
     });
   }
 
+  const shortlistEvent = { userId: pitch.userId, campaignId: pitch.campaignId };
+
   const existingAgreement = await tx.creatorAgreement.findFirst({
     where: {
       userId: pitch.userId,
@@ -150,6 +159,7 @@ async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, 
       data: {
         userId: pitch.userId,
         campaignId: pitch.campaignId,
+        round: 1,
         agreementUrl: '',
       },
     });
@@ -193,14 +203,14 @@ async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, 
   });
 
   if (!board || timelinesWithoutExisting.length === 0) {
-    return;
+    return shortlistEvent;
   }
 
   const columnToDo = board.columns.find((column) => column.name.includes('To Do'));
   const columnInProgress = board.columns.find((column) => column.name.includes('In Progress'));
 
   if (!columnToDo || !columnInProgress) {
-    return;
+    return shortlistEvent;
   }
 
   const submissions = await Promise.all(
@@ -231,7 +241,7 @@ async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, 
   );
 
   if (pitch.campaign.submissionVersion === 'v4') {
-    return;
+    return shortlistEvent;
   }
 
   const agreement = submissions.find((submission) => submission.submissionType?.type === 'AGREEMENT_FORM');
@@ -252,6 +262,8 @@ async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, 
   if (dependencies.length > 0) {
     await tx.submissionDependency.createMany({ data: dependencies });
   }
+
+  return shortlistEvent;
 }
 
 const APPROVAL_COMMENT_MAX_LEN = 5000;
@@ -628,7 +640,7 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
         });
       }
 
-      await prisma.$transaction(async (tx) => {
+      const shortlistEvent = await prisma.$transaction(async (tx) => {
         await tx.approvalRequestCreator.update({
           where: { id: creatorEntry.id },
           data: {
@@ -636,7 +648,7 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
             ...(commentToStore !== null && { comment: commentToStore }),
           },
         });
-        await tx.pitch.update({
+        const updatedPitch = await tx.pitch.update({
           where: { id: pitchId },
           data: {
             status: pitchStatus,
@@ -645,9 +657,33 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
         });
 
         if (action === 'approve') {
-          await ensureApprovedCreatorCampaignSetup(tx, pitchId);
+          const event = await ensureApprovedCreatorCampaignSetup(tx, pitchId);
+
+          // A synthesized shortlist entry is not a pitch the creator wrote.
+          if (updatedPitch.type !== 'shortlisted') {
+            await awardXp({
+              userId: updatedPitch.userId,
+              actionCode: 'pitch_approved',
+              sourceId: updatedPitch.campaignId,
+              tx,
+            });
+            await progressAchievement({
+              userId: updatedPitch.userId,
+              code: 'in-demand',
+              sourceId: updatedPitch.campaignId,
+              tx,
+            });
+          }
+
+          return event;
         }
+
+        return null;
       });
+
+      if (shortlistEvent) {
+        onShortlisted(shortlistEvent.userId, shortlistEvent.campaignId);
+      }
 
       try {
         const creatorLabel = pitchBefore?.user?.name?.trim() || 'Creator';

@@ -1,16 +1,13 @@
 import { CronJob } from 'cron';
 
-import { Entity, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import LocalizedFormat from 'dayjs/plugin/localizedFormat';
-import { Title, saveNotification } from '@controllers/notificationController';
+import { saveNotification } from '@controllers/notificationController';
 import { notifications } from '@constants/reminders';
-import { clients } from '../server';
 
-import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
-import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
 // import { clients, io } from '../server';
 import {
   reminderDueDate,
@@ -18,7 +15,10 @@ import {
   escalationDraftNotSubmitted,
   escalationPostingNotSubmitted,
 } from '@helper/notification';
-import { getIo } from './socket';
+import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
+import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
+import { clients, getIo } from './socket';
+import { snapshotLeaderboard } from '../modules/gamification';
 import { reconcileStuckLogistics } from '../service/logisticsService';
 
 const prisma = new PrismaClient();
@@ -44,6 +44,7 @@ new CronJob(
     await prisma.campaign.updateMany({
       where: {
         status: 'SCHEDULED',
+
         campaignBrief: {
           startDate: {
             gte: todayStart,
@@ -149,6 +150,7 @@ new CronJob(
             userId: agreement.userId,
             campaignId: agreement.campaignId,
             submissionType: { type: 'AGREEMENT_FORM' },
+            contentOrder: agreement.round,
           },
           include: { campaign: { select: { name: true } } },
         });
@@ -284,6 +286,32 @@ new CronJob(
 //   true, // start
 //   'Asia/Kuala_Lumpur',
 // );
+
+new CronJob(
+  '30 0 1 * *',
+  async function () {
+    const periodId = dayjs().tz('Asia/Kuala_Lumpur').subtract(1, 'month').format('YYYY-MM');
+
+    console.log('[Cronjob] Starting leaderboard snapshot for', periodId);
+
+    try {
+      const result = await snapshotLeaderboard(periodId);
+
+      console.log('[Cronjob] Leaderboard snapshot completed:', {
+        periodId: result.periodId,
+        ranked: result.ranked,
+        awarded: result.awarded,
+        skipped: result.skipped,
+        timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+      });
+    } catch (error) {
+      console.error('[Cronjob] Leaderboard snapshot failed:', error);
+    }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur',
+);
 
 new CronJob(
   '15 2 * * *', // 02:15 AM daily

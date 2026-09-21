@@ -16,8 +16,9 @@
       "@middlewares/*": ["./src/middleware/*"],
       "@services/*": ["./src/service/*"],
       "@utils/*": ["./src/utils/*"],
-      "@helper/*": ["./src/helper/*"]
-      // "@types": ["./src/types.ts"]
+      "@helper/*": ["./src/helper/*"],
+      "@types": ["./src/types.ts"],
+      "@modules/*": ["./src/modules/*"]
     },
     "skipLibCheck": true,
     "esModuleInterop": true,

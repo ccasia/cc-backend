@@ -16,10 +16,11 @@ import {
   GenerateReportRequest,
   ExternalMetrics,
 } from '../types/index';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/src/prisma/prisma';
+
 import { getLatestCampaignPostEngagement } from './postEngagementSnapshotService';
 
-const prisma = new PrismaClient();
+
 
 // ── Shared format rule ─────────────────────────────────────────────────────────
 

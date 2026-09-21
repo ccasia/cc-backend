@@ -38,6 +38,7 @@ import {
   creatorAgreements,
   updateAmountAgreement,
   sendAgreement,
+  sendAdditionalAgreement,
   resendAgreement,
   editCampaignImages,
   draftPitch,
@@ -71,7 +72,6 @@ import {
   getCampaignsForPublic,
   exportActiveCompletedToSheet,
   exportCreatorsCampaignSheet,
-  exportCampaignMasterList,
   syncCampaignCredits,
   updateAllCampaignCredits,
   getCampaignStatus,
@@ -79,6 +79,7 @@ import {
   getDraftCampaigns,
   deleteDraftCampaign,
   unlinkCampaignCompany,
+  getCreatorAgreement,
 } from '@controllers/campaignController';
 import {
   swapGuestWithPlatformCreator,
@@ -137,6 +138,13 @@ import { authenticate } from '@middlewares/authenticate';
 
 import { createNewTemplate, getAllTemplate, getTemplatebyId } from '@controllers/templateController';
 
+import {
+  getGuestProfileExtraction,
+  getGuestProfileMetricsDecision,
+  listResumableExtractions,
+  startGuestProfileExtraction,
+} from '@controllers/guestProfileExtractionController';
+
 const router = Router();
 
 router.get('/total', authenticate, isSuperAdmin, getCampaignsTotal);
@@ -183,6 +191,9 @@ router.get('/getClientCampaigns', authenticate, getClientCampaigns);
 
 // Debug endpoint to check campaign admin entries
 router.get('/checkCampaignAdmin', authenticate, checkCampaignAdmin);
+
+// Get individual agreement
+router.get('/:id/agreement/:userId', authenticate, getCreatorAgreement);
 
 // Debug endpoint to update campaign origin for testing
 router.post('/updateCampaignOrigin', authenticate, updateCampaignOrigin);
@@ -242,7 +253,15 @@ router.post('/removeCreatorFromCampaign', authenticate, isSuperAdmin, removeCrea
 router.post('/v2/shortlistCreator', authenticate, isSuperAdmin, shortlistCreatorV2);
 router.post('/v2/shortlistCreator/client', authenticate, isSuperAdmin, shortlistCreatorV2ForClient);
 router.post('/v3/shortlistCreator', authenticate, shortlistCreatorV3);
-router.post('/v3/shortlistCreator/guest', authenticate, shortlistGuestCreators);
+router.post('/v3/shortlistCreator/guest', authenticate, isAdmin, shortlistGuestCreators);
+// Guest profile extraction. Every route applies the feature decision and
+// canManageCampaignCreators inside the controller; status also requires the
+// requesting admin to own the record.
+router.get('/v3/guest-profile-metrics/decision', authenticate, isAdmin, getGuestProfileMetricsDecision);
+router.post('/v3/:campaignId/guest-profile-extractions', authenticate, isAdmin, startGuestProfileExtraction);
+router.get('/v3/:campaignId/guest-profile-extractions', authenticate, isAdmin, listResumableExtractions);
+router.get('/v3/guest-profile-extractions/:extractionId', authenticate, isAdmin, getGuestProfileExtraction);
+
 router.post('/v3/assignUGCCredits', authenticate, assignUGCCreditsV3);
 
 router.patch('/v4/changeCredits', authenticate, isSuperAdmin, changeCampaignCredit);
@@ -268,10 +287,10 @@ router.patch('/editCampaignAdmins/:id', authenticate, isSuperAdmin, editCampaign
 router.patch('/editCampaignAttachments/:id', authenticate, isSuperAdmin, editCampaignAttachments);
 router.patch('/editCampaignReference/:id', authenticate, isSuperAdmin, editCampaignReference);
 router.patch('/changePitchStatus', authenticate, isSuperAdmin, changePitchStatus);
-// router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
-// router.patch('/receiveLogistic', authenticate, receiveLogistic);
+
 router.patch('/updateAmountAgreement', authenticate, isSuperAdmin, updateAmountAgreement);
 router.patch('/sendAgreement', authenticate, isSuperAdmin, sendAgreement);
+router.patch('/sendAdditionalAgreement', authenticate, isSuperAdmin, sendAdditionalAgreement);
 router.patch('/resendAgreement', authenticate, resendAgreement);
 router.patch('/removePitchVideo', authenticate, removePitchVideo);
 router.patch('/linkNewAgreement', authenticate, isSuperAdmin, linkNewAgreement);
@@ -344,6 +363,7 @@ router.get(
   checkCampaignAccess,
   getLatestCampaignPostSnapshots,
 );
+
 router.get('/:campaignId/post-engagement-snapshots/daily', authenticate, getCampaignDailyTrends);
 router.get('/:campaignId/post-engagement-snapshots/daily-by-url', authenticate, getPostDailyTrendByUrl);
 router.get('/:campaignId/post-engagement-snapshots/daily/:submissionId', authenticate, getPostDailyTrend);

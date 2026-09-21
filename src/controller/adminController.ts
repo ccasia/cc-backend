@@ -1,9 +1,7 @@
 import { Request, Response } from 'express';
 import { handleDeleteAdminById } from '@services/adminService';
 import { logAdminChange } from '@services/campaignServices';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const getAllAdmins = async (req: Request, res: Response) => {
   try {

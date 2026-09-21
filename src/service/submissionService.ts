@@ -7,8 +7,7 @@ import { getTaskId, updateTask } from './kanbanService';
 import { saveNotification } from '@controllers/notificationController';
 import { deductCredits } from './campaignServices';
 import { createInvoiceService } from './invoiceService';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 export const getCreatorInvoiceLists = async (submissionId: string, prismaFunc?: PrismaClient) => {
   try {
@@ -394,7 +393,7 @@ export const handleCompletedCampaign = async (submissionId: string, adminId?: st
     );
 
     const invoiceAmount = submission.user.creatorAgreement.find(
-      (elem: any) => elem.campaignId === submission.campaignId,
+      (elem: any) => elem.campaignId === submission.campaignId && elem.round === 1,
     )?.amount;
 
     console.log('💰 Invoice amount found:', invoiceAmount);

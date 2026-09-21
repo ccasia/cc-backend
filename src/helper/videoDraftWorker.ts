@@ -7,7 +7,7 @@ import fs from 'fs';
 import { uploadPitchVideo, uploadImage } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses } from '../server';
-import { Entity, PrismaClient, Submission } from '@prisma/client';
+import { Entity, Submission } from '@prisma/client';
 import { saveNotification } from '@controllers/notificationController';
 import { spawn } from 'child_process';
 import path from 'path';
@@ -23,11 +23,11 @@ import {
   previousDraftUrlsForReplacement,
 } from './draftSubmissionStatus';
 import { getIo, clients } from '../config/socket';
+import { prisma } from '@/src/prisma/prisma';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
-const prisma = new PrismaClient();
 
 interface VideoFile {
   inputPath: string;
@@ -144,10 +144,6 @@ const checkCurrentSubmission = async (submissionId: string) => {
     hasPhotos: submission.photos.length,
   });
 
-  // Special handling for V3 campaigns (origin: 'CLIENT')
-  const isV3Campaign = submission.campaign.origin === 'CLIENT';
-  console.log(`Worker - V3 Campaign detected: ${isV3Campaign}`);
-
   const user = await prisma.shortListedCreator.findFirst({
     where: {
       userId: submission?.userId,
@@ -202,28 +198,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
       allDeliverablesSent,
       campaignRequiresRawFootage: submission.campaign.rawFootage,
       campaignRequiresPhotos: submission.campaign.photos,
-      isV3Campaign,
     });
-
-    // For V3 campaigns, use the same logic but with enhanced logging
-    if (isV3Campaign) {
-      console.log(`Worker - V3 Campaign ${submissionId}: Deliverable requirements check`, {
-        campaignRequiresVideos: true, // Always required
-        campaignRequiresRawFootage: submission.campaign.rawFootage,
-        campaignRequiresPhotos: submission.campaign.photos,
-        actualVideos: videos,
-        actualRawFootages: rawFootages,
-        actualPhotos: photos,
-        hasVideo,
-        hasRawFootage,
-        hasPhotos,
-        allDeliverablesSent,
-      });
-
-      // V3 uses same logic as V2 - allDeliverablesSent already calculated above
-      // hasVideo && hasRawFootage && hasPhotos
-      // where hasRawFootage/hasPhotos are true if not required by campaign
-    }
   } else if (submission?.submissionType.type === 'FINAL_DRAFT') {
     const [
       currentVideos,

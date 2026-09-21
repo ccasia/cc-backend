@@ -28,12 +28,10 @@ import {
 } from '@services/logisticsService';
 import { logChange } from '@services/campaignServices';
 import { computeChanges, FieldMapping } from '@utils/campaignLogDiff';
-import { PrismaClient } from '@prisma/client';
 import { saveNotification } from '@controllers/notificationController';
 import { notificationLogisticShipped } from '@helper/notification';
 import { clients, getIo } from '../config/socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 async function getLogisticContext(logisticId: string) {
   const logistic = await prisma.logistic.findUnique({
