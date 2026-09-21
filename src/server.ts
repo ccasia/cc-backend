@@ -67,7 +67,7 @@ app.use((req, res, next) => {
   if (req.path.startsWith('/webhooks')) {
     express.raw({ type: 'application/json' })(req, res, next);
   } else {
-    express.json()(req, res, next);
+    express.json({ limit: '2mb' })(req, res, next);
   }
 });
 
