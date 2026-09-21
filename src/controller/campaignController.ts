@@ -98,9 +98,13 @@ import {
 } from '@services/campaignCreationDraftService';
 import { prisma } from '@/src/prisma/prisma';
 
+interface ShortlistedEvent {
+  userId: string;
+  campaignId: string;
+}
+
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
-
 
 const emitCreatorCampaignMembershipUpdated = ({
   userId,
@@ -9873,7 +9877,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
   const adminId = req.userId;
 
   try {
-    await prisma.$transaction(
+    const shortlistEvents = await prisma.$transaction(
       async (tx) => {
         try {
           const campaign = await tx.campaign.findUnique({
@@ -9987,8 +9991,6 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           });
 
           for (const creator of creatorData) {
-            onShortlisted(creator.id, campaign.id);
-
             const notification = await saveNotification({
               userId: creator.id,
               entityId: campaignId,
@@ -10028,6 +10030,13 @@ export const shortlistCreator = async (req: Request, res: Response) => {
               });
             }
           }
+
+          return creatorData.map(
+            (creator): ShortlistedEvent => ({
+              userId: creator.id,
+              campaignId: campaign.id,
+            }),
+          );
         } catch (error) {
           console.error('Transaction error:', error);
           throw error;
@@ -10035,6 +10044,10 @@ export const shortlistCreator = async (req: Request, res: Response) => {
       },
       { timeout: 10000 },
     );
+
+    for (const event of shortlistEvents) {
+      onShortlisted(event.userId, event.campaignId);
+    }
 
     const adminLogMessage = `Creator Shortlisted for Campaign - ${campaignId.name} `;
     logAdminChange(adminLogMessage, adminId, req);
@@ -10052,7 +10065,7 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
   console.log('shortlistCreatorV2 called with:', { creators, campaignId });
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const shortlistEvents = await prisma.$transaction(async (tx) => {
       try {
         const campaign = await tx.campaign.findUnique({
           where: {
@@ -10224,8 +10237,6 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
         });
 
         for (const creator of creatorData) {
-          onShortlisted(creator.id, campaign.id);
-
           const notification = await saveNotification({
             userId: creator.id,
             entityId: campaignId,
@@ -10265,10 +10276,21 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
             });
           }
         }
+
+        return creatorData.map(
+          (creator): ShortlistedEvent => ({
+            userId: creator.id,
+            campaignId: campaign.id,
+          }),
+        );
       } catch (error) {
         throw new Error(error);
       }
     });
+
+    for (const event of shortlistEvents) {
+      onShortlisted(event.userId, event.campaignId);
+    }
 
     // After successful shortlist, sync creators-campaign sheet (best-effort)
     try {
@@ -11840,7 +11862,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Not authorized to shortlist creators for this campaign' });
     }
 
-    await prisma.$transaction(async (tx) => {
+    const shortlistEvents = await prisma.$transaction(async (tx) => {
+      const events: ShortlistedEvent[] = [];
       const campaign = await tx.campaign.findUnique({
         where: {
           id: campaignId,
@@ -12119,12 +12142,12 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         if (!requiresClientReview) {
           console.log(`Direct-approval shortlist: Creating ShortListedCreator for ${user.id}`);
 
-          // Awarded here rather than above the branch: on client-review campaigns the
+          // Queued here for post-commit dispatch rather than above the branch: on client-review campaigns the
           // creator is only proposed at this point (pitch SENT_TO_CLIENT, no
           // ShortListedCreator row), so awarding there paid out for campaigns the client
           // could still reject, and left showrunner counting a row that did not exist.
           // The client-approval path awards on its own when it creates the row.
-          onShortlisted(user.id, campaign.id);
+          events.push({ userId: user.id, campaignId: campaign.id });
 
           // For credit tier campaigns, calculate creditPerVideo from creator's tier
           let creditPerVideo: number | null = null;
@@ -12379,7 +12402,13 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           });
         }
       }
+
+      return events;
     });
+
+    for (const event of shortlistEvents) {
+      onShortlisted(event.userId, event.campaignId);
+    }
 
     const pendingExtractionIds = [...verifiedByLink.values()]
       .filter((row) => row.extraction?.kind === 'pending')
@@ -12537,7 +12566,7 @@ export const shortlistCreatorV2ForClient = async (req: Request, res: Response) =
   console.log('shortlistCreatorV2ForClient called with:', { creators, campaignId });
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const shortlistEvents = await prisma.$transaction(async (tx) => {
       try {
         const campaign = await tx.campaign.findUnique({
           where: {
@@ -12646,8 +12675,6 @@ export const shortlistCreatorV2ForClient = async (req: Request, res: Response) =
 
         // Create notifications for shortlisted creators
         for (const creator of creatorData) {
-          onShortlisted(creator.id, campaign.id);
-
           await tx.notification.create({
             data: {
               title: 'You have been shortlisted!',
@@ -12679,11 +12706,22 @@ export const shortlistCreatorV2ForClient = async (req: Request, res: Response) =
         }
 
         console.log(`Successfully shortlisted ${creatorData.length} creators for client campaign ${campaignId}`);
+
+        return creatorData.map(
+          (creator): ShortlistedEvent => ({
+            userId: creator.id,
+            campaignId: campaign.id,
+          }),
+        );
       } catch (error) {
         console.error('Error in shortlistCreatorV2ForClient transaction:', error);
         throw error;
       }
     });
+
+    for (const event of shortlistEvents) {
+      onShortlisted(event.userId, event.campaignId);
+    }
 
     return res.status(200).json({ message: 'Creators shortlisted successfully' });
   } catch (error) {
@@ -13125,7 +13163,8 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
     const hasClient = campaignHasClient(campaign);
 
     const createdCreators: { id: string }[] = [];
-    await prisma.$transaction(async (tx) => {
+    const shortlistEvents = await prisma.$transaction(async (tx) => {
+      const events: ShortlistedEvent[] = [];
       for (const guest of validated.accepted) {
         // Spend the receipt here, inside the transaction, and only once. A
         // replay or a second batch finds the nonce already consumed.
@@ -13191,7 +13230,9 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
           continue; // Skip and move to the next guest
         }
 
-        onShortlisted(userId, campaignId);
+        if (!isV4Campaign || !hasClient) {
+          events.push({ userId, campaignId });
+        }
 
         // Also create a V3 pitch entry so it appears in the pitches list
         const existingPitch = await tx.pitch.findFirst({
@@ -13437,7 +13478,13 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
           });
         }
       }
+
+      return events;
     });
+
+    for (const event of shortlistEvents) {
+      onShortlisted(event.userId, event.campaignId);
+    }
 
     for (const guest of validated.accepted) {
       if (guest.extraction?.kind !== 'pending') continue;
