@@ -996,21 +996,17 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
       ) {
         throw new Error('A valid creationDraftRevision is required with creationDraftId');
       }
-
       const draftForCampaign = await getCampaignCreationDraftForCampaign(req.userId!, creationDraftId);
       if (draftForCampaign.status === 'locked') throw new CampaignCreationDraftLockedError();
       if (draftForCampaign.status === 'not-found') {
         throw new Error('Campaign creation draft not found or not owned by the current user');
       }
-
       draftUploadPrefixes.push(getCampaignCreationDraftUploadPrefix(req.userId!, creationDraftId));
       if (draftForCampaign.legacyFileStorage) {
         draftUploadPrefixes.push(getLegacyCampaignCreationDraftUploadPrefix(req.userId!));
       }
     }
-
     const { images } = await uploadCampaignAssets(req.files);
-
     const campaign = await prisma.$transaction(
       async (tx) => {
         const admins = await Promise.all(
@@ -1021,7 +1017,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             });
           }),
         );
-
         const clientManagerUsers = await Promise.all(
           clientManagers.map(async (cm: any) => {
             if (cm?.id) {
@@ -1033,41 +1028,30 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             return null;
           }),
         );
-
         const existingClient = await tx.company.findUnique({
           where: { id: client.id },
           include: { subscriptions: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } } },
         });
-
         if (!existingClient) throw new Error('Company not found');
-
         const availableCredits = await getRemainingCredits(existingClient.id);
-
         if (availableCredits === null || typeof availableCredits !== 'number') {
           throw new Error('Unable to retrieve available credits for the client');
         }
-
         if (campaignCredits > availableCredits) {
           throw new Error('Not enough credits to create the campaign');
         }
-
         const creditAllocationBreakdown: any[] = [];
         const parsedCampaignCredits = Number(campaignCredits) || 0;
         let remainingCreditsToAllocate = parsedCampaignCredits;
         const selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
-
         if (existingClient.subscriptions && existingClient.subscriptions.length > 0 && parsedCampaignCredits > 0) {
           for (const sub of existingClient.subscriptions) {
             if (remainingCreditsToAllocate <= 0) break;
-
             const available = (sub.totalCredits || 0) - (sub.creditsUsed || 0);
             if (available > 0) {
               const chargeAmount = Math.min(available, remainingCreditsToAllocate);
-
               creditAllocationBreakdown.push({ subscriptionId: sub.id, amount: chargeAmount });
-
               remainingCreditsToAllocate -= chargeAmount;
-
               await tx.subscription.update({
                 where: { id: sub.id },
                 data: { creditsUsed: { increment: chargeAmount } },
@@ -1075,11 +1059,11 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             }
           }
         }
-
         // Process uploaded images
         const publicURL: string[] = Array.isArray(rawData.draftCampaignImageUrls)
           ? rawData.draftCampaignImageUrls.filter(isOwnedDraftFileUrl)
           : [];
+
         if (req.files && (req.files as any).campaignImages) {
           const images = Array.isArray((req.files as any).campaignImages)
             ? (req.files as any).campaignImages
@@ -1091,13 +1075,11 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             publicURL.push(url);
           }
         }
-
         // Normalize dates
         const normalizedStartDate = campaignStartDate ? dayjs(campaignStartDate).toDate() : new Date();
         const normalizedEndDate = campaignEndDate ? dayjs(campaignEndDate).toDate() : normalizedStartDate;
         const normalizedPostingStartDate = postingStartDate ? dayjs(postingStartDate).toDate() : normalizedStartDate;
         const normalizedPostingEndDate = postingEndDate ? dayjs(postingEndDate).toDate() : normalizedStartDate;
-
         // Handle products for delivery logistics
         let productsToCreate: any[] = [];
         if (logisticsType === 'PRODUCT_DELIVERY' && Array.isArray(products)) {
@@ -1105,7 +1087,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             .filter((product: any) => product.name && product.name.trim() !== '')
             .map((product: any) => ({ productName: product.name }));
         }
-
         // Handle reservation config
         let reservationConfigCreate = undefined;
         if (logisticsType === 'RESERVATION') {
@@ -1123,7 +1104,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             },
           };
         }
-
         // Finalize countries - combine country, secondaryCountry
         let finalizedCountries: string[] = [];
         if (typeof country === 'string' && country) {
@@ -1138,13 +1118,13 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         }
         // Remove duplicates
         finalizedCountries = [...new Set(finalizedCountries)];
-
         // Create the campaign with submissionVersion from form data (v2 default, v4 for client-managed)
         const campaign = await tx.campaign.create({
           data: {
             campaignId: campaignId,
             name: campaignName,
             campaignType: campaignType,
+
             description: campaignDescription,
             status: campaignStage as CampaignStatus,
             publishedAt: campaignStage === 'ACTIVE' || campaignStage === 'SCHEDULED' ? new Date() : null,
@@ -1177,7 +1157,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
                 boostContent: boostContent || '',
                 primaryKPI: primaryKPI || '',
                 performanceBaseline: performanceBaseline || '',
-                images: images,
+                images: publicURL,
                 startDate: campaignStartDate ? new Date(campaignStartDate) : new Date(),
                 endDate: campaignEndDate ? new Date(campaignEndDate) : new Date(),
                 postingStartDate: postingStartDate ? new Date(postingStartDate) : null,
@@ -1224,7 +1204,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             campaignAdditionalDetails: true,
           },
         });
-
         // Process brand guidelines PDF/image upload (support multiple)
         const brandGuidelinesUrls: string[] = Array.isArray(rawData.draftBrandGuidelineUrls)
           ? rawData.draftBrandGuidelineUrls.filter(isOwnedDraftFileUrl)
@@ -1244,7 +1223,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             }
           }
         }
-
         // Process product image 1 upload
         let productImage1Url: string | null = isOwnedDraftFileUrl(rawData.draftProductImage1Url)
           ? rawData.draftProductImage1Url
@@ -1257,7 +1235,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             productImage1Url = await uploadCompanyLogo(productImage1Files[0].tempFilePath, productImage1Files[0].name);
           }
         }
-
         // Process product image 2 upload
         let productImage2Url: string | null = isOwnedDraftFileUrl(rawData.draftProductImage2Url)
           ? rawData.draftProductImage2Url
@@ -1270,7 +1247,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             productImage2Url = await uploadCompanyLogo(productImage2Files[0].tempFilePath, productImage2Files[0].name);
           }
         }
-
         // Create CampaignAdditionalDetails if any additional detail fields are provided
         const hasAdditionalDetails =
           (contentFormat && contentFormat.length > 0) ||
@@ -1290,7 +1266,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           ctaLinkInBioRequirements ||
           specialNotesInstructions ||
           needAds;
-
         if (hasAdditionalDetails) {
           await tx.campaignAdditionalDetails.create({
             data: {
@@ -1321,13 +1296,11 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             },
           });
         }
-
         // Deduct credits from subscription
         // await tx.subscription.update({
         //   where: { id: existingClient.subscriptions[0].id },
         //   data: { creditsUsed: { increment: campaignCredits } },
         // });
-
         // Create Campaign Timeline
         // For v4 campaigns: uses proportional date calculation based on campaign dates
         // For v2 campaigns: uses the timeline array from frontend with date validation
@@ -1340,7 +1313,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           postingEndDate: normalizedPostingEndDate,
           campaignType: campaignType,
         });
-
         // Connect to brand or company
         if (campaignBrand) {
           await tx.campaign.update({
@@ -1353,11 +1325,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             data: { company: { connect: { id: client.id } } },
           });
         }
-
         if (!campaign || !campaign.id) {
           throw new Error('Campaign creation failed or campaign ID is missing');
         }
-
         // Check if creating user is a Client
         const userId = req.userId;
         if (userId) {
@@ -1371,7 +1341,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             });
           }
         }
-
         // Create thread
         await tx.thread.create({
           data: {
@@ -1384,13 +1353,11 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             },
           },
         });
-
         // Add campaignManager and clientManagers to campaignAdmin
         const adminIdsToAdd = [
           ...admins.map((a: any) => a?.id).filter(Boolean),
           ...clientManagerUsers.map((u: any) => u?.id).filter(Boolean),
         ] as string[];
-
         for (const adminUserId of adminIdsToAdd) {
           const exists = await tx.campaignAdmin.findUnique({
             where: { adminId_campaignId: { adminId: adminUserId, campaignId: campaign.id } },
@@ -1399,21 +1366,17 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             await tx.campaignAdmin.create({ data: { adminId: adminUserId, campaignId: campaign.id } });
           }
         }
-
         // Create events and notifications for admins
         await Promise.all(
           admins.filter(Boolean).map(async (admin: any) => {
             const existing = await tx.campaignAdmin.findUnique({
               where: { adminId_campaignId: { adminId: admin?.id, campaignId: campaign?.id } },
             });
-
             if (existing) return null;
-
             const createdAdminRel = await tx.campaignAdmin.create({
               data: { adminId: admin?.id, campaignId: campaign.id },
               include: { admin: true },
             });
-
             await tx.event.create({
               data: {
                 start: dayjs(normalizedStartDate).format(),
@@ -1423,9 +1386,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
                 allDay: false,
               },
             });
-
             const { title, message } = notificationAdminAssign(campaign.name);
-
             const data = await tx.notification.create({
               data: {
                 title,
@@ -1436,14 +1397,11 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               },
               include: { userNotification: { select: { userId: true } } },
             });
-
             getIo().to(clients.get(admin.id)).emit('notification', data);
             return createdAdminRel;
           }),
         );
-
         logChange('Created the Campaign', campaign.id, req);
-
         // Log campaign activity
         await tx.campaignLog.create({
           data: {
@@ -1452,16 +1410,13 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             campaignId: campaign.id,
           },
         });
-
         const adminId = req.userId;
         if (adminId) {
           logAdminChange(`Created campaign - "${campaign.name}"`, adminId, req);
         }
-
         if (getIo()) {
           getIo().emit('campaign');
         }
-
         // Add child accounts for client-created campaigns
         if (campaign.origin === 'CLIENT' && client) {
           try {
@@ -1471,7 +1426,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             console.error('Error adding child accounts to campaign:', error);
           }
         }
-
         // Client campaigns only: Add client users to CampaignClient and CampaignAdmin
         // This ensures clients can only manage campaigns when explicitly enabled
         if (isClientCampaign && client?.id) {
@@ -1480,23 +1434,19 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               where: { companyId: client.id },
               include: { user: true },
             });
-
             for (const companyClient of companyClients) {
               const existingCampaignClient = await tx.campaignClient.findUnique({
                 where: { clientId_campaignId: { clientId: companyClient.id, campaignId: campaign.id } },
               });
-
               if (!existingCampaignClient) {
                 await tx.campaignClient.create({
                   data: { clientId: companyClient.id, campaignId: campaign.id, role: 'owner' },
                 });
               }
-
               if (companyClient.userId) {
                 const existingCampaignAdmin = await tx.campaignAdmin.findUnique({
                   where: { adminId_campaignId: { adminId: companyClient.userId, campaignId: campaign.id } },
                 });
-
                 if (!existingCampaignAdmin) {
                   await tx.campaignAdmin.create({
                     data: { adminId: companyClient.userId, campaignId: campaign.id },
@@ -1508,7 +1458,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             console.error('Error adding clients to CampaignClient/CampaignAdmin:', error);
           }
         }
-
         // Client users explicitly picked as campaign managers are always tracked in
         // CampaignClient, regardless of the client-campaign toggle
         if (submissionVersion !== 'v2') {
@@ -1518,7 +1467,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
                 const existingCampaignClient = await tx.campaignClient.findUnique({
                   where: { clientId_campaignId: { clientId: (user as any).client.id, campaignId: campaign.id } },
                 });
-
                 if (!existingCampaignClient) {
                   await tx.campaignClient.create({
                     data: { clientId: (user as any).client.id, campaignId: campaign.id, role: 'owner' },
@@ -1530,7 +1478,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             console.error('Error adding client users from campaignManager to CampaignClient:', error);
           }
         }
-
         if (typeof creationDraftId === 'string' && typeof creationDraftRevision === 'number') {
           await tx.$queryRaw`
             SELECT "id"
@@ -1557,15 +1504,13 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           // Campaign records now own these URLs. The discard cleanup is intentionally
           // not called here, so successful campaign assets remain available.
         }
-
         return campaign;
       },
       { timeout: 500000 },
     );
-
     createNewSpreadSheetAsync({ title: campaignName, campaignId: campaign.id });
-
     return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
+    return res.status(200).json({ message: 'Campaign created successfully.' });
   } catch (error) {
     if (error instanceof CampaignCreationDraftLockedError) {
       return res.status(409).json({ code: 'DRAFT_LOCKED', message: error.message });

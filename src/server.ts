@@ -405,7 +405,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    //console.log('Client disconnected:', socket.id);
     clients.forEach((value, key) => {
       if (value === socket.id) {
         clients.delete(key);
