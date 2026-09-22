@@ -1310,6 +1310,7 @@ export const login = async (req: Request, res: Response) => {
         },
         pitch: true,
         shortlisted: true,
+        client: true,
       },
     });
 
@@ -1330,6 +1331,10 @@ export const login = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Account rejected.' });
       case 'deleted':
         return res.status(400).json({ message: 'Account not found.' });
+    }
+
+    if (data.client && data.client.isActive === false) {
+      return res.status(400).json({ message: 'This account has been deleted. Contact your admin.' });
     }
 
     // // Hashed password
