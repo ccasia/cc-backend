@@ -23,6 +23,7 @@ import {
   activateClient,
   resendClientActivation,
   getClientsByCompanyId,
+  archiveCompanies,
 } from '@controllers/companyController';
 import { authenticate } from '@middlewares/authenticate';
 const router = Router();
@@ -51,6 +52,7 @@ router.patch('/linkPackage/:companyId', isBdOrSuperadmin, handleLinkNewPackage);
 
 router.post('/activateClient/:companyId', isSuperAdmin, activateClient);
 router.post('/:companyId/resend-activation', isSuperAdmin, resendClientActivation);
+router.post('/archiveCompanies', isSuperAdmin, archiveCompanies);
 
 router.delete('/deleteCompany/:id', isSuperAdmin, deleteCompany);
 
