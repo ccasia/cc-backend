@@ -13,8 +13,6 @@ import { prisma } from '../prisma/prisma';
 
 const DEFAULT_DRAFT_NAME = 'Untitled draft';
 
-import { uploadImage } from '@configs/cloudStorage.config';
-
 export interface CampaignCreationDraft {
   id: string;
   ownerId: string;
