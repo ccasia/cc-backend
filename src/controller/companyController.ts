@@ -47,6 +47,9 @@ export const createCompany = async (req: Request, res: Response) => {
 export const getAllCompanies = async (_req: Request, res: Response) => {
   try {
     const companies = await prisma.company.findMany({
+      where: {
+        isArchived: false,
+      },
       include: {
         brand: {
           include: {
@@ -349,6 +352,40 @@ export const deleteCompany = async (req: Request, res: Response) => {
       logAdminChange(adminLogMessage, adminId, req);
       return res.status(200).json({ message: 'Sucessfully remove company' });
     }
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const archiveCompanies = async (req: Request, res: Response) => {
+  const { ids } = req.body as { ids: string[] };
+  const adminId = req.userId;
+
+  if (!Array.isArray(ids) || ids.length < 1) {
+    return res.status(400).json({ message: 'No company ids provided' });
+  }
+
+  try {
+    const companies = await prisma.company.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true },
+    });
+
+    await prisma.$transaction([
+      prisma.company.updateMany({
+        where: { id: { in: ids } },
+        data: { isArchived: true, archivedAt: new Date() },
+      }),
+      prisma.client.updateMany({
+        where: { companyId: { in: ids } },
+        data: { isActive: false },
+      }),
+    ]);
+
+    const adminLogMessage = `Deleted ${companies.length} company(ies) - ${companies.map((c) => c.name).join(', ')}`;
+    logAdminChange(adminLogMessage, adminId, req);
+
+    return res.status(200).json({ message: 'Successfully deleted company(ies)' });
   } catch (error) {
     return res.status(400).json(error);
   }
