@@ -16,8 +16,7 @@ export type CampaignCreatorDenialCode =
   | 'NOT_ADMIN'
   | 'CAMPAIGN_NOT_FOUND'
   | 'ROLE_NOT_ALLOWED'
-  | 'NO_CAMPAIGN_ROLE'
-  | 'VIEWER_ONLY';
+  | 'NO_CAMPAIGN_ROLE';
 
 export type CampaignCreatorPolicyResult =
   | { allowed: true; reason: 'superadmin' | 'campaignAdmin' }
@@ -25,14 +24,15 @@ export type CampaignCreatorPolicyResult =
 
 /**
  * Internal admin roles that may manage campaign creators when they also hold a
- * qualifying `CampaignAdmin` row.
+ * `CampaignAdmin` row for the campaign.
+ *
+ * Any `CampaignAdmin.role` qualifies, `viewer` included. Campaign create and
+ * edit assign admins without a role, so the schema default `viewer` is what a
+ * normally assigned CSM holds; it does not mean view only.
  *
  * Open product decision 1 in 06-decisions.md. Change this one constant.
  */
 export const ALLOWED_INTERNAL_ADMIN_ROLES = ['csm', 'csl'] as const;
-
-/** `CampaignAdmin.role` values that grant management. `viewer` never does. */
-export const MANAGING_CAMPAIGN_ROLES = ['owner', 'editor', 'manager'] as const;
 
 export interface PolicyStore {
   user: { findUnique(args: { where: any; include?: any; select?: any }): Promise<any | null> };
@@ -96,9 +96,6 @@ export async function canManageCampaignCreators(
 
   if (!membership) {
     return deny('NO_CAMPAIGN_ROLE', 'You are not assigned to this campaign.');
-  }
-  if (!(MANAGING_CAMPAIGN_ROLES as readonly string[]).includes(membership.role)) {
-    return deny('VIEWER_ONLY', 'Your access to this campaign is view only.');
   }
 
   return { allowed: true, reason: 'campaignAdmin' };
