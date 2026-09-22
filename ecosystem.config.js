@@ -3,6 +3,8 @@ module.exports = {
     {
       name: 'cc-backend-api',
       script: 'server.js',
+      instances: 2,
+      exec_mode: 'cluster',
     },
     {
       name: 'invoice-worker',
