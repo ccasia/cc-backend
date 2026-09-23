@@ -20,7 +20,10 @@ import { normalizeProfileUrl } from './profileUrlNormalizer';
 export const GUEST_CREATE_OPERATION = 'guest_shortlist_create';
 
 /** Matches the existing controller guard and the frontend row machine. */
-export const MAX_FOLLOWER_COUNT = 10_000_000_000;
+// Below Postgres INT (2,147,483,647): manualFollowerCount, the shortlist
+// follower count, and the audit columns are all INT, and a larger value fails
+// the write. Still about 3x the largest account on either platform.
+export const MAX_FOLLOWER_COUNT = 2_000_000_000;
 
 export const ALLOWED_FALLBACK_REASONS = ['INSUFFICIENT_DATA', 'PRIVATE_PROFILE', 'PROFILE_NOT_FOUND'] as const;
 
