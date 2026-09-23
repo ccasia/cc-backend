@@ -3,7 +3,10 @@ import { canManageCampaignCreators } from '@services/guestProfileExtraction/camp
 import { classifyMetricProvenance } from '@services/guestProfileExtraction/metricProvenance';
 import { normalizeProfileUrl } from '@services/guestProfileExtraction/profileUrlNormalizer';
 import { parseEngagementRate, parseFollowerCount } from '@services/guestProfileExtraction/guestCreateService';
-import { applyExtractionToPendingPitchesSafe } from '@services/guestProfileExtraction/pendingPitchMetrics';
+import {
+  applyExtractionToPendingPitchesSafe,
+  assignCreditTier,
+} from '@services/guestProfileExtraction/pendingPitchMetrics';
 import { withScrapedEvidence } from '@services/guestProfileExtraction/selectedPostStats';
 import dayjs from 'dayjs';
 
@@ -2701,6 +2704,155 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error updating guest creator info:', error);
     return res.status(500).json({ message: 'Failed to update guest creator information' });
+  }
+};
+
+/**
+ * Hand-entered Followers and ER for a platform creator whose scrape failed.
+ *
+ * Open only while `metricsFailureCode` is set, and only for a creator with no
+ * connected account on the pitch platform. A connected account supplies live
+ * numbers, and a successful scrape supplies verified ones; neither is edited
+ * here. Guest creators use `updateGuestCreatorInfo`.
+ */
+export const updatePlatformCreatorMetrics = async (req: Request, res: Response) => {
+  const { pitchId } = req.params;
+  const { followerCount, engagementRate } = req.body;
+  const userId = req.userId;
+
+  try {
+    const pitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: { user: { include: { creator: { include: { instagramUser: true, tiktokUser: true } } } } },
+    });
+    if (!pitch) return res.status(404).json({ message: 'Pitch not found' });
+
+    const policy = await canManageCampaignCreators(userId, pitch.campaignId, prisma as never);
+    if (!policy.allowed) {
+      return res
+        .status(policy.code === 'CAMPAIGN_NOT_FOUND' ? 404 : 403)
+        .json({ message: policy.message, code: policy.code });
+    }
+
+    const creator = pitch.user?.creator;
+    const isGuest =
+      pitch.user?.email?.includes('@tempmail.com') ||
+      pitch.user?.email?.startsWith('guest_') ||
+      creator?.isGuest === true;
+    if (!creator || isGuest) {
+      return res
+        .status(400)
+        .json({ message: 'Use the guest creator form for this creator.', code: 'NOT_PLATFORM_CREATOR' });
+    }
+
+    if (pitch.pendingExtractionId) {
+      return res.status(409).json({ message: 'The fetch for this creator is still running.', code: 'METRICS_PENDING' });
+    }
+    if (!pitch.metricsFailureCode) {
+      return res.status(409).json({
+        message: 'These numbers can only be entered by hand when the fetch failed.',
+        code: 'METRICS_NOT_EDITABLE',
+      });
+    }
+
+    const platform = pitch.selectedPlatform;
+    const instagramConnected = creator.isFacebookConnected || Boolean(creator.instagramUser);
+    const tiktokConnected = creator.isTiktokConnected || Boolean(creator.tiktokUser);
+    const connected =
+      platform === 'instagram'
+        ? instagramConnected
+        : platform === 'tiktok'
+          ? tiktokConnected
+          : instagramConnected || tiktokConnected;
+    if (connected) {
+      return res.status(409).json({
+        message: 'This creator has a connected account. Its numbers come from that account.',
+        code: 'ACCOUNT_CONNECTED',
+      });
+    }
+
+    const parsedFollowerCount = parseFollowerCount(followerCount);
+    if (parsedFollowerCount === 'invalid') {
+      return res.status(400).json({ message: 'Follower count must be a whole number above zero.' });
+    }
+    const parsedEngagementRate = parseEngagementRate(engagementRate);
+    if (parsedEngagementRate === 'invalid') {
+      return res.status(400).json({ message: 'Engagement rate must be a percentage between 0 and 1,000.' });
+    }
+    if (parsedFollowerCount === null && parsedEngagementRate === null) {
+      return res.status(400).json({ message: 'Enter a follower count or an engagement rate.' });
+    }
+
+    // An empty or missing field means "leave it as is", never "erase it". The
+    // dialog may open without a value the row showed from another source.
+    const updated = await prisma.$transaction(async (tx) => {
+      const next = await tx.pitch.update({
+        where: { id: pitchId },
+        data: {
+          ...(parsedFollowerCount !== null ? { followerCount: String(parsedFollowerCount) } : {}),
+          ...(parsedEngagementRate !== null ? { engagementRate: parsedEngagementRate } : {}),
+        },
+      });
+
+      if (parsedFollowerCount !== null) {
+        await assignCreditTier(tx as never, pitch.userId, parsedFollowerCount, platform);
+        await tx.shortListedCreator.updateMany({
+          where: { userId: pitch.userId, campaignId: pitch.campaignId },
+          data: { followerCount: parsedFollowerCount },
+        });
+      }
+
+      // Carries the rate into the creator's other campaigns, as a scrape does.
+      // Only a typed rate is written; a blank one must not erase a rate that
+      // another campaign saved.
+      if (parsedEngagementRate !== null) {
+        const rate = Number(parsedEngagementRate);
+        if (platform === 'tiktok') {
+          await tx.creator.update({ where: { userId: pitch.userId }, data: { manualTiktokEngagementRate: rate } });
+        } else if (platform === 'instagram') {
+          await tx.creator.update({ where: { userId: pitch.userId }, data: { manualInstagramEngagementRate: rate } });
+        }
+      }
+
+      const provenance = classifyMetricProvenance({
+        receiptVerified: false,
+        original: {
+          name: pitch.user?.name ?? null,
+          followerCount: pitch.followerCount ? Number(pitch.followerCount) : null,
+          engagementRate: pitch.engagementRate ?? null,
+        },
+        final: {
+          name: pitch.user?.name ?? null,
+          followerCount: next.followerCount ? Number(next.followerCount) : null,
+          engagementRate: next.engagementRate ?? null,
+        },
+      });
+
+      await tx.guestCreatorMetricAudit.create({
+        data: {
+          pitchId,
+          guestUserId: pitch.userId,
+          platform,
+          originalName: provenance.original.name,
+          originalFollowerCount: provenance.original.followerCount,
+          originalEngagementRate: provenance.original.engagementRate,
+          finalName: provenance.final.name,
+          finalFollowerCount: provenance.final.followerCount,
+          finalEngagementRate: provenance.final.engagementRate,
+          source: provenance.source,
+          overrideReason: `Entered by hand after the fetch failed: ${pitch.metricsFailureCode}.`,
+          performedByUserId: userId as string,
+          reviewerUserId: userId as string,
+        },
+      });
+
+      return next;
+    });
+
+    return res.status(200).json({ message: 'Creator numbers updated.', pitch: updated });
+  } catch (error) {
+    console.error('Error updating platform creator metrics:', error);
+    return res.status(500).json({ message: 'Failed to update creator numbers' });
   }
 };
 
