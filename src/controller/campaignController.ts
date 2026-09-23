@@ -7465,7 +7465,10 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
         return res.status(400).json({ message: `Video count for ${user.name || 'a creator'} must be greater than 0.` });
       }
 
-      if (creatorInput.isSeeding && (!creatorInput.product?.name || creatorInput.product?.value == null || creatorInput.product?.value === '')) {
+      if (
+        creatorInput.isSeeding &&
+        (!creatorInput.product?.name || creatorInput.product?.value == null || creatorInput.product?.value === '')
+      ) {
         return res.status(400).json({
           message: `Product name and value are required for ${user.name || 'this creator'} when product seeding is enabled.`,
         });

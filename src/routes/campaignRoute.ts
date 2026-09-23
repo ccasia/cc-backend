@@ -253,7 +253,7 @@ router.post('/export/active-completed', authenticate, isSuperAdmin, exportActive
 router.post('/export/campaign-creators', authenticate, isSuperAdmin, exportCreatorsCampaignSheet);
 // Registered as its own path (not /export/post-performance/all) so it can't collide with the
 // :campaignId route below regardless of route registration order.
-router.post('/export/post-performance-all', exportAllCampaignsPostPerformanceToSheet);
+router.post('/export/post-performance-all', authenticate, isSuperAdmin, exportAllCampaignsPostPerformanceToSheet);
 router.post('/export/post-performance/:campaignId', authenticate, isSuperAdmin, exportCampaignPostPerformance);
 router.post('/removeCreatorFromCampaign', authenticate, isSuperAdmin, removeCreatorFromCampaign);
 router.post('/v2/shortlistCreator', authenticate, isSuperAdmin, shortlistCreatorV2);
