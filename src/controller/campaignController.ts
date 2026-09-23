@@ -7401,6 +7401,8 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
       amount?: string;
       currency?: string;
       followerCount?: number;
+      isSeeding?: boolean;
+      product?: { name: string; value: number | string };
     }[];
   };
   const adminId = req.userId;
@@ -7442,6 +7444,8 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
       amount?: string;
       currency?: string;
       isGuest: boolean;
+      isSeeding: boolean;
+      product?: { name: string; value: number | string };
     }[] = [];
 
     for (const creatorInput of creators) {
@@ -7471,6 +7475,12 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
 
       if (!Number.isFinite(videoCount) || videoCount <= 0) {
         return res.status(400).json({ message: `Video count for ${user.name || 'a creator'} must be greater than 0.` });
+      }
+
+      if (creatorInput.isSeeding && (!creatorInput.product?.name || creatorInput.product?.value == null || creatorInput.product?.value === '')) {
+        return res.status(400).json({
+          message: `Product name and value are required for ${user.name || 'this creator'} when product seeding is enabled.`,
+        });
       }
 
       let creditPerVideo = 1;
@@ -7509,6 +7519,8 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
         amount: creatorInput.amount,
         currency: creatorInput.currency,
         isGuest,
+        isSeeding: !!creatorInput.isSeeding,
+        product: creatorInput.product,
       });
     }
 
@@ -7570,6 +7582,16 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
             creditPerVideo: r.creditPerVideo,
             creditTierId: r.creditTierId,
             creditsAssigned: r.creditsAssigned,
+            isSeeding: r.isSeeding,
+            ...(r.isSeeding &&
+              r.product && {
+                productSeeding: {
+                  create: {
+                    name: r.product.name,
+                    value: parseFloat(String(r.product.value)),
+                  },
+                },
+              }),
           },
         });
 
