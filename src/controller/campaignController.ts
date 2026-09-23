@@ -54,6 +54,12 @@ import {
 } from '@helper/notification';
 import { shortlisted } from '@configs/nodemailer.config';
 import { createNewSpreadSheet, upsertSheetAndWriteRows } from '@services/google_sheets/sheets';
+import {
+  exportAllCampaignsPostPerformance,
+  exportCampaignPostPerformance as exportCampaignPostPerformanceSheet,
+  writeAllCampaignsPostPerformance,
+  writeCampaignPostPerformance as writeCampaignPostPerformanceSheet,
+} from '@services/campaignPostExportService';
 import { getRemainingCredits } from '@services/companyService';
 import { handleGuestForShortListing } from '@services/shortlistService';
 import { maxProfilesPerBatch } from '@configs/guestProfileExtractionConfig';
@@ -2155,6 +2161,43 @@ export const exportCreatorsCampaignSheet = async (_req: Request, res: Response) 
   try {
     await syncCreatorsCampaignSheetInternal();
     return res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: error?.message || 'Failed to export' });
+  }
+};
+
+export const exportCampaignPostPerformance = async (req: Request, res: Response) => {
+  const { campaignId } = req.params;
+  // Pass the spreadSheetId back from a previous run's `url` to update that sheet instead of
+  // generating a new one each time.
+  const { spreadSheetId } = req.query;
+  try {
+    if (spreadSheetId && typeof spreadSheetId === 'string') {
+      const { rowCount } = await writeCampaignPostPerformanceSheet(campaignId, spreadSheetId);
+      return res.status(200).json({ success: true, rowCount });
+    }
+
+    const { rowCount, url } = await exportCampaignPostPerformanceSheet(campaignId);
+    return res.status(200).json({ success: true, rowCount, url });
+  } catch (error: any) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: error?.message || 'Failed to export' });
+  }
+};
+
+export const exportAllCampaignsPostPerformanceToSheet = async (req: Request, res: Response) => {
+  // Pass the spreadSheetId back from a previous run's `url` to update that sheet instead of
+  // generating a new one each time.
+  const { spreadSheetId } = req.query;
+  try {
+    if (spreadSheetId && typeof spreadSheetId === 'string') {
+      const { rowCount } = await writeAllCampaignsPostPerformance(spreadSheetId);
+      return res.status(200).json({ success: true, rowCount });
+    }
+
+    const { rowCount, url } = await exportAllCampaignsPostPerformance();
+    return res.status(200).json({ success: true, rowCount, url });
   } catch (error: any) {
     console.log(error);
     return res.status(500).json({ success: false, message: error?.message || 'Failed to export' });
