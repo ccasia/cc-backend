@@ -1291,6 +1291,9 @@ model Pitch {
   /// Set while an Apify run still owns Followers and ER for this pitch.
   pendingExtractionId String?                 @unique
   pendingExtraction   GuestProfileExtraction? @relation("PendingPitchExtraction", fields: [pendingExtractionId], references: [id], onDelete: SetNull)
+  /// Why that run gave no metrics, e.g. INSUFFICIENT_DATA. While set, an admin
+  /// may enter Followers and ER by hand.
+  metricsFailureCode  String?
 
   @@unique([userId, campaignId])
 }
