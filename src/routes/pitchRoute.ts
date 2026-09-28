@@ -13,6 +13,7 @@ import {
   getPitchesV3,
   getPitchByIdV3,
   updateGuestCreatorInfo,
+  updatePlatformCreatorMetrics,
   withdrawCreatorFromCampaign,
   updateOutreachStatus,
   acceptInviteByCreator,
@@ -33,6 +34,8 @@ router.patch('/v3/:pitchId/submit-agreement', authenticate, submitAgreement);
 // Was `isAdminOrClient`, which let any client edit any guest creator's
 // metrics. The controller now runs canManageCampaignCreators for this pitch.
 router.patch('/v3/:pitchId/updateGuest', authenticate, isAdmin, updateGuestCreatorInfo);
+// Followers and ER typed by hand after a platform creator's fetch failed.
+router.patch('/v3/:pitchId/metrics', authenticate, isAdmin, updatePlatformCreatorMetrics);
 router.patch('/v3/:pitchId/withdraw', authenticate, isAdminOrClient, withdrawCreatorFromCampaign);
 router.patch('/v3/:pitchId/outreach-status', authenticate, isAdminOrClient, updateOutreachStatus);
 router.patch('/v3/:pitchId/accept-invite', authenticate, acceptInviteByCreator);

@@ -7,6 +7,7 @@ import {
   errorItemFailure,
   fail,
   flag,
+  isNoItemsError,
   normalizeHandle,
   runFailure,
   text,
@@ -102,6 +103,15 @@ export function parseInstagramActorOutput(input: AdapterInput): AdapterResult {
   }
 
   const items = asArray(input.items);
+
+  // A public account with no Reels. The feed run reports `no_items` for an
+  // empty Reels tab, but the profile run already proved the account exists
+  // and is public. Zero candidates lets the policy report INSUFFICIENT_DATA
+  // and keeps the follower count.
+  if (profileRun.ok && items.length > 0 && items.every(isNoItemsError)) {
+    return { ok: true, profile: toProfile(expected, profileRun, null), candidates: [] };
+  }
+
   const errorItem = errorItemFailure(items);
   if (errorItem) return errorItem;
 
@@ -154,16 +164,22 @@ export function parseInstagramActorOutput(input: AdapterInput): AdapterResult {
   // Only the follower count needs the profile run.
   const fromPosts = parsed.find((r) => normalizeHandle(r.data.ownerUsername ?? '') === expected)?.data;
 
-  const profile: ExtractedProfile = {
+  return { ok: true, profile: toProfile(expected, profileRun, fromPosts?.ownerFullName ?? null), candidates };
+}
+
+function toProfile(
+  expected: string,
+  profileRun: ReturnType<typeof readProfileRun>,
+  fallbackName: string | null,
+): ExtractedProfile {
+  return {
     platform: 'instagram',
     username: expected,
     biography: profileRun.ok ? profileRun.profile.biography : null,
-    displayName: profileRun.ok ? profileRun.profile.fullName : (fromPosts?.ownerFullName ?? null),
+    displayName: profileRun.ok ? profileRun.profile.fullName : fallbackName,
     // Null when the profile run failed. v2 does not divide by followers, so a
     // rate is still produced; the admin sees an empty Follower Count field.
     followerCount: profileRun.ok ? profileRun.profile.followersCount : null,
     isPrivate: false,
   };
-
-  return { ok: true, profile, candidates };
 }
