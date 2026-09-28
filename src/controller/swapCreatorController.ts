@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { logAdminChange } from '@services/campaignServices';
+import { moveBookmarks, moveDiscoveryProfiles } from '@services/creatorDiscoveryProfileService';
 import { prisma } from '@/src/prisma/prisma';
 
 type SwapUser = Prisma.UserGetPayload<{ include: { creator: true } }>;
@@ -73,6 +74,7 @@ async function copyGuestMetrics(tx: Prisma.TransactionClient, { guestUser, platf
     if (isEmptyMetric(platform[field]) && !isEmptyMetric(guest[field])) data[field] = guest[field];
   }
   if (!platform.creditTierId && guest.creditTierId) data.creditTierId = guest.creditTierId;
+  if (!platform.profileLink && guest.profileLink) data.profileLink = guest.profileLink;
   if (Object.keys(data).length === 0) return;
 
   await tx.creator.update({ where: { id: platform.id }, data });
@@ -84,6 +86,8 @@ async function swapGuestInCampaign(
   tx: Prisma.TransactionClient,
   { guestUser, platformUser }: SwapUsers,
   campaignId: string,
+  // False when copyGuestMetrics already owns the creator-level fields (link across campaigns).
+  copyCreatorFields = true,
 ) {
   const guestUserId = guestUser.id;
   const platformUserId = platformUser.id;
@@ -144,7 +148,7 @@ async function swapGuestInCampaign(
   };
 
   // Transfer guest creator's profileLink to platform creator
-  if (guestUser.creator?.profileLink && platformUser.creator) {
+  if (copyCreatorFields && guestUser.creator?.profileLink && platformUser.creator) {
     await tx.creator.update({
       where: { id: platformUser.creator.id },
       data: {
@@ -157,7 +161,7 @@ async function swapGuestInCampaign(
   // Carry the follower count the admin sourced onto the platform creator. It is recorded
   // per platform, so copy the platform-specific fields - the legacy manualFollowerCount is
   // not what the guest shortlist writes.
-  if (platformUser.creator && guestCreator) {
+  if (copyCreatorFields && platformUser.creator && guestCreator) {
     const guestPlatform = guestShortlist?.selectedPlatform ?? guestPitch?.selectedPlatform;
     const manualCount =
       guestPlatform === 'tiktok' ? guestCreator.manualTiktokFollowerCount : guestCreator.manualInstagramFollowerCount;
@@ -446,6 +450,7 @@ async function deleteGuestIfOrphaned(
 
     // Saved scrapes cascade with the guest creator, so move them first.
     await moveDiscoveryProfiles(tx, guestUserId, platformUserId);
+    await moveBookmarks(tx, guestUserId, platformUserId);
 
     const deletedNotifications = await tx.userNotification.deleteMany({
       where: { userId: guestUserId },
@@ -472,23 +477,6 @@ async function deleteGuestIfOrphaned(
 
   console.log(`[SWAP] Guest user has other relationships, keeping user record`);
   return false;
-}
-
-/**
- * Moves the guest's saved scrapes to the platform creator. When both have one
- * for the same platform, the newer save wins.
- */
-async function moveDiscoveryProfiles(tx: Prisma.TransactionClient, guestUserId: string, platformUserId: string) {
-  const guestProfiles = await tx.creatorDiscoveryProfile.findMany({ where: { userId: guestUserId } });
-  for (const profile of guestProfiles) {
-    const existing = await tx.creatorDiscoveryProfile.findUnique({
-      where: { userId_platform: { userId: platformUserId, platform: profile.platform } },
-    });
-    if (existing && existing.savedAt >= profile.savedAt) continue;
-    if (existing) await tx.creatorDiscoveryProfile.delete({ where: { id: existing.id } });
-    await tx.creatorDiscoveryProfile.update({ where: { id: profile.id }, data: { userId: platformUserId } });
-    console.log(`[SWAP] Moved saved ${profile.platform} scrape to platform creator`);
-  }
 }
 
 /**
@@ -621,18 +609,25 @@ export const linkGuestAcrossCampaigns = async (req: Request, res: Response) => {
       ...new Set([...pitches, ...shortlists].map((row) => row.campaignId).filter(Boolean)),
     ] as string[];
 
-    // Same rule as the single-campaign swap: one shortlist row per creator per campaign.
-    const conflicts = await prisma.shortListedCreator.findMany({
-      where: { userId: platformUserId, campaignId: { in: campaignIds } },
-      select: { campaign: { select: { name: true } } },
-    });
-    if (conflicts.length > 0) {
-      const names = conflicts
-        .map((row) => row.campaign?.name)
-        .filter(Boolean)
-        .join(', ');
+    // The platform creator must not already be in any of these campaigns. A V4
+    // invite creates only a pitch, so check pitches as well as shortlists, or
+    // the link would silently overwrite that pitch.
+    const [shortlistConflicts, pitchConflicts] = await Promise.all([
+      prisma.shortListedCreator.findMany({
+        where: { userId: platformUserId, campaignId: { in: campaignIds } },
+        select: { campaign: { select: { name: true } } },
+      }),
+      prisma.pitch.findMany({
+        where: { userId: platformUserId, campaignId: { in: campaignIds } },
+        select: { campaign: { select: { name: true } } },
+      }),
+    ]);
+    const conflictNames = [
+      ...new Set([...shortlistConflicts, ...pitchConflicts].map((row) => row.campaign?.name).filter(Boolean)),
+    ];
+    if (conflictNames.length > 0) {
       return res.status(400).json({
-        message: `This platform creator is already shortlisted in: ${names}. Remove one of the two creators from those campaigns first.`,
+        message: `This platform creator is already in: ${conflictNames.join(', ')}. Remove one of the two creators from those campaigns first.`,
       });
     }
 
@@ -643,7 +638,7 @@ export const linkGuestAcrossCampaigns = async (req: Request, res: Response) => {
         );
         await copyGuestMetrics(tx, users);
         for (const campaignId of campaignIds) {
-          await swapGuestInCampaign(tx, users, campaignId);
+          await swapGuestInCampaign(tx, users, campaignId, false);
         }
         const guestDeleted = await deleteGuestIfOrphaned(tx, guestUserId, platformUserId);
         return { guestUserId, platformUserId, campaignIds, guestDeleted };

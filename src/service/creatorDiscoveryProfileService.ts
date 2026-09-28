@@ -85,7 +85,8 @@ export async function saveDiscoveryProfile(tx: any, audit: any, extraction?: any
   // Conditional writes also make the backfill safe to repeat while saves continue.
   await tx.creatorDiscoveryProfile.upsert({
     where,
-    create: { userId, platform, savedAt, profileUrl, handle },
+    // createdAt = the first save, so a backfill keeps the historical date and not the run date.
+    create: { userId, platform, savedAt, createdAt: savedAt, profileUrl, handle },
     update: {},
   });
   if (!fallbackOnly)
@@ -128,4 +129,57 @@ export async function createDiscoveryMetricAudit(tx: any, args: any) {
     : null;
   await saveDiscoveryProfile(tx, audit, extraction);
   return audit;
+}
+
+/**
+ * Moves the guest's saved scrapes to the platform creator. When both have one
+ * for the same platform, the newer save wins.
+ */
+export async function moveDiscoveryProfiles(tx: Prisma.TransactionClient, guestUserId: string, platformUserId: string) {
+  const linkedAt = new Date();
+  const guestProfiles = await tx.creatorDiscoveryProfile.findMany({ where: { userId: guestUserId } });
+  for (const profile of guestProfiles) {
+    const existing = await tx.creatorDiscoveryProfile.findUnique({
+      where: { userId_platform: { userId: platformUserId, platform: profile.platform } },
+    });
+    // The platform creator keeps its newer scrape, but the link still counts as recently added.
+    if (existing && existing.savedAt >= profile.savedAt) {
+      await tx.creatorDiscoveryProfile.update({ where: { id: existing.id }, data: { linkedAt } });
+      continue;
+    }
+    if (existing) await tx.creatorDiscoveryProfile.delete({ where: { id: existing.id } });
+    await tx.creatorDiscoveryProfile.update({
+      where: { id: profile.id },
+      data: { userId: platformUserId, linkedAt },
+    });
+    console.log(`[SWAP] Moved saved ${profile.platform} scrape to platform creator`);
+  }
+}
+
+/**
+ * Moves the guest's bookmark rows to the platform creator. BookMarkCreator has
+ * no onDelete rule, so a row left on the guest blocks the guest delete. A row
+ * the platform creator already has in the same list and platform is dropped.
+ */
+export async function moveBookmarks(tx: Prisma.TransactionClient, guestUserId: string, platformUserId: string) {
+  const guestBookmarks = await tx.bookMarkCreator.findMany({ where: { creatorUserId: guestUserId } });
+  for (const bookmark of guestBookmarks) {
+    const duplicate = await tx.bookMarkCreator.findUnique({
+      where: {
+        listId_creatorUserId_platform: {
+          listId: bookmark.listId,
+          creatorUserId: platformUserId,
+          platform: bookmark.platform,
+        },
+      },
+    });
+    if (duplicate) {
+      await tx.bookMarkCreator.delete({ where: { id: bookmark.id } });
+    } else {
+      await tx.bookMarkCreator.update({ where: { id: bookmark.id }, data: { creatorUserId: platformUserId } });
+    }
+  }
+  if (guestBookmarks.length > 0) {
+    console.log(`[SWAP] Moved ${guestBookmarks.length} bookmark(s) to platform creator`);
+  }
 }
