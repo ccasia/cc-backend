@@ -28,7 +28,11 @@
     "seed-gamification": "npx tsx prisma/seedGamification.ts",
     "seed-leaderboard": "npx tsx src/scripts/snapshotLeaderboard.ts",
     "backfill-guest-keys": "npx tsx src/scripts/backfillGuestProfileKeys.ts",
-    "run-engagement-worker": "npx tsx src/helper/engagementExtractionWorker"
+    "run-engagement-worker": "npx tsx src/helper/engagementExtractionWorker",
+    "backfill-discovery-profiles": "ts-node -r tsconfig-paths/register src/scripts/backfillCreatorDiscoveryProfiles.ts",
+    "backfill-discovery-media": "ts-node -r tsconfig-paths/register src/scripts/backfillDiscoveryMedia.ts",
+    "verify-discovery-profiles": "ts-node -r tsconfig-paths/register src/scripts/verifyDiscoveryProfileLifecycle.ts",
+    "check-discovery-samples": "ts-node -r tsconfig-paths/register src/scripts/checkDiscoveryProfiles.ts"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.9.0",

@@ -90,6 +90,7 @@ function medianViewRate(
   const evidence: SelectedPostEvidence[] = posts.map((post) => ({
     postId: post.postId,
     postUrl: post.postUrl,
+    thumbnailUrl: post.thumbnailUrl ?? null,
     publishedAt: post.publishedAt.toISOString(),
     likes: post.likes,
     comments: post.comments,

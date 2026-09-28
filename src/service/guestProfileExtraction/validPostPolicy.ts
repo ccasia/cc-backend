@@ -88,6 +88,7 @@ export function applyValidPostPolicy(
     const record: EvaluatedCandidate = {
       postId: id || null,
       postUrl: candidate.postUrl,
+      thumbnailUrl: candidate.thumbnailUrl ?? null,
       publishedAt: candidate.publishedAt,
       likes: candidate.likes,
       comments: candidate.comments,
@@ -165,6 +166,7 @@ export function applyValidPostPolicy(
       platform: candidate.platform,
       postId: id,
       postUrl: candidate.postUrl,
+      thumbnailUrl: candidate.thumbnailUrl ?? null,
       publishedAt,
       likes: candidate.likes as number,
       comments: candidate.comments as number,

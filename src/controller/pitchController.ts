@@ -1,3 +1,4 @@
+import { createDiscoveryMetricAudit } from '@services/creatorDiscoveryProfileService';
 import { Request, Response } from 'express';
 import { canManageCampaignCreators } from '@services/guestProfileExtraction/campaignCreatorPolicy';
 import { classifyMetricProvenance } from '@services/guestProfileExtraction/metricProvenance';
@@ -2671,7 +2672,7 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
         },
       });
 
-      await tx.guestCreatorMetricAudit.create({
+      await createDiscoveryMetricAudit(tx, {
         data: {
           pitchId,
           guestUserId: pitch.userId,

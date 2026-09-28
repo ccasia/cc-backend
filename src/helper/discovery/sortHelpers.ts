@@ -107,9 +107,10 @@ export const sortDiscoveryRows = (rows: any[], sortBy: DiscoverySortBy, sortDire
     const leftName = String(left?.name || '').toLocaleLowerCase();
     const rightName = String(right?.name || '').toLocaleLowerCase();
 
-    if (leftName < rightName) return -1;
-    if (leftName > rightName) return 1;
-    return 0;
+    const direction = sortBy === 'name' && sortDirection === 'desc' ? -1 : 1;
+    if (leftName < rightName) return -direction;
+    if (leftName > rightName) return direction;
+    return String(left.rowId).localeCompare(String(right.rowId));
   });
 
   return rowsCopy;

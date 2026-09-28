@@ -1,3 +1,4 @@
+import { createDiscoveryMetricAudit } from '@services/creatorDiscoveryProfileService';
 import { Request, Response } from 'express';
 import {
   CampaignRequirement,
@@ -11223,7 +11224,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
          */
         if (verified && savedPitchId && verified.extraction?.kind !== 'pending') {
           const provenance = provenanceFor(verified);
-          await tx.guestCreatorMetricAudit.create({
+          await createDiscoveryMetricAudit(tx, {
             data: {
               pitchId: savedPitchId,
               extractionId: verified.extraction?.id ?? null,
@@ -11244,6 +11245,26 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               formulaVersion: verified.extraction?.formulaVersion ?? null,
               performedByUserId: userId as string,
               reviewerUserId: userId as string,
+            },
+          });
+        }
+
+        if (
+          !verified &&
+          savedPitchId &&
+          selectedPlatform &&
+          (manualEngagementRate !== undefined || manualFollowerCountByCreator.has(creator))
+        ) {
+          await createDiscoveryMetricAudit(tx, {
+            data: {
+              pitchId: savedPitchId,
+              guestUserId: user.id,
+              platform: selectedPlatform,
+              finalName: user.name,
+              finalFollowerCount: manualFollowerCountByCreator.get(creator) ?? null,
+              finalEngagementRate: manualEngagementRate ?? null,
+              source: 'manual_override',
+              performedByUserId: userId as string,
             },
           });
         }
@@ -12381,7 +12402,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
             // Provenance for this metric. Written in the same transaction, and
             // it outlives extraction cleanup.
             const provenance = provenanceFor(guest);
-            await tx.guestCreatorMetricAudit.create({
+            await createDiscoveryMetricAudit(tx, {
               data: {
                 pitchId: pitch.id,
                 extractionId: guest.extraction?.id ?? null,
@@ -12417,7 +12438,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
 
           if (guest.extraction?.kind !== 'pending') {
             const provenance = provenanceFor(guest);
-            await tx.guestCreatorMetricAudit.create({
+            await createDiscoveryMetricAudit(tx, {
               data: {
                 pitchId: existingPitch.id,
                 extractionId: guest.extraction?.id ?? null,

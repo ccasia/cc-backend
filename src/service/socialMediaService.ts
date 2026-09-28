@@ -42,7 +42,7 @@ const uploadInstagramThumbnailFromUrl = async (sourceUrl: string, destination: s
 
     const file = storage.bucket(process.env.BUCKET_NAME).file(destination);
 
-    file.save(buffer, {
+    await file.save(buffer, {
       resumable: false,
       metadata: {
         contentType: contentType as string,
@@ -85,6 +85,17 @@ export const cacheInstagramThumbnail = async (media: any, creatorId?: string): P
   const owner = creatorId || 'unknown';
   const destination = `${INSTAGRAM_THUMBNAIL_FOLDER}/${owner}/${mediaId}${extension}`;
 
+  return uploadInstagramThumbnailFromUrl(sourceUrl, destination);
+};
+
+/** Copies a scraped post thumbnail to GCS. Provider CDN URLs expire and block hotlinking. */
+export const cacheDiscoveryThumbnail = async (
+  sourceUrl: string,
+  platform: string,
+  postId: string,
+): Promise<string | null> => {
+  if (isDurableStorageUrl(sourceUrl)) return sourceUrl;
+  const destination = `discovery-thumbnails/${platform}/${postId}${getUrlExtension(sourceUrl)}`;
   return uploadInstagramThumbnailFromUrl(sourceUrl, destination);
 };
 

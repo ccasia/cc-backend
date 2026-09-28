@@ -83,6 +83,7 @@ import {
 } from '@controllers/campaignController';
 import {
   swapGuestWithPlatformCreator,
+  linkGuestAcrossCampaigns,
   cleanupOrphanedGuestUsers,
   getGuestCreatorsForCampaign,
 } from '@controllers/swapCreatorController';
@@ -212,6 +213,7 @@ router.get('/public', getCampaignsForPublic);
 // Swap Creator endpoints
 router.get('/:campaignId/guestCreators', authenticate, getGuestCreatorsForCampaign);
 router.post('/swapCreator', authenticate, isSuperAdmin, swapGuestWithPlatformCreator);
+router.post('/linkGuestCreator', authenticate, isSuperAdmin, linkGuestAcrossCampaigns);
 router.post('/cleanupGuestCreators', authenticate, isSuperAdmin, cleanupOrphanedGuestUsers);
 
 // Get Campaigns for Client users
