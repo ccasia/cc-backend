@@ -3,6 +3,494 @@ import { Prisma } from '@prisma/client';
 import { logAdminChange } from '@services/campaignServices';
 import { prisma } from '@/src/prisma/prisma';
 
+type SwapUser = Prisma.UserGetPayload<{ include: { creator: true } }>;
+interface SwapUsers {
+  guestUser: SwapUser;
+  platformUser: SwapUser;
+}
+
+/** Loads both users and checks that one is a guest and the other an active platform creator. */
+async function loadSwapUsers(
+  guestUserId: string,
+  platformUserId: string,
+): Promise<SwapUsers | { status: number; message: string }> {
+  // Validate guest user exists and is actually a guest
+  const guestUser = await prisma.user.findUnique({
+    where: { id: guestUserId },
+    include: { creator: true },
+  });
+
+  if (!guestUser) {
+    return { status: 404, message: 'Guest user not found.' };
+  }
+
+  if (guestUser.status !== 'guest' || !guestUser.creator?.isGuest) {
+    return { status: 400, message: 'The specified user is not a guest creator.' };
+  }
+
+  // Validate platform user exists and is active
+  const platformUser = await prisma.user.findUnique({
+    where: { id: platformUserId },
+    include: { creator: true },
+  });
+
+  if (!platformUser) {
+    return { status: 404, message: 'Platform creator not found.' };
+  }
+
+  if (platformUser.status !== 'active') {
+    return { status: 400, message: 'Platform creator must be active to be assigned to campaigns.' };
+  }
+
+  if (!platformUser.creator || platformUser.creator.isGuest) {
+    return { status: 400, message: 'The specified user is not a valid platform creator.' };
+  }
+
+  return { guestUser, platformUser };
+}
+
+const CREATOR_METRIC_FIELDS = [
+  'manualFollowerCount',
+  'manualInstagramFollowerCount',
+  'manualTiktokFollowerCount',
+  'manualInstagramEngagementRate',
+  'manualTiktokEngagementRate',
+] as const;
+
+const isEmptyMetric = (value: number | null | undefined) => value == null || value === 0;
+
+/**
+ * Copies the guest's creator-level metrics and tier into the platform creator's
+ * empty fields. The Creator Master List falls back to these in every campaign.
+ */
+async function copyGuestMetrics(tx: Prisma.TransactionClient, { guestUser, platformUser }: SwapUsers) {
+  const guest = guestUser.creator;
+  const platform = platformUser.creator;
+  if (!guest || !platform) return;
+
+  const data: Prisma.CreatorUncheckedUpdateInput = {};
+  for (const field of CREATOR_METRIC_FIELDS) {
+    if (isEmptyMetric(platform[field]) && !isEmptyMetric(guest[field])) data[field] = guest[field];
+  }
+  if (!platform.creditTierId && guest.creditTierId) data.creditTierId = guest.creditTierId;
+  if (Object.keys(data).length === 0) return;
+
+  await tx.creator.update({ where: { id: platform.id }, data });
+  console.log(`[SWAP] Copied guest metrics to platform creator: ${Object.keys(data).join(', ')}`);
+}
+
+/** Moves one campaign's guest records (shortlist, pitch, submissions, agreements, logistics, thread) to the platform creator. */
+async function swapGuestInCampaign(
+  tx: Prisma.TransactionClient,
+  { guestUser, platformUser }: SwapUsers,
+  campaignId: string,
+) {
+  const guestUserId = guestUser.id;
+  const platformUserId = platformUser.id;
+
+  // 1. Get guest creator's current data before swap (from shortlist or pitch)
+  const guestShortlist = await tx.shortListedCreator.findUnique({
+    where: {
+      userId_campaignId: {
+        userId: guestUserId,
+        campaignId,
+      },
+    },
+  });
+
+  const guestPitch = await tx.pitch.findFirst({
+    where: {
+      userId: guestUserId,
+      campaignId,
+    },
+  });
+
+  // Guest must exist in either shortlist or pitch table
+  if (!guestShortlist && !guestPitch) {
+    throw new Error('Guest creator is not shortlisted or pitched for this campaign.');
+  }
+
+  console.log(`[SWAP] Found guest shortlist:`, guestShortlist);
+  console.log(`[SWAP] Found guest pitch:`, guestPitch?.id);
+
+  // Fallback for tier snapshot when shortlist row hasn't been created yet
+  const guestCreator = await tx.creator.findUnique({
+    where: { userId: guestUserId },
+    include: { creditTier: true },
+  });
+
+  // Pitch.followerCount is free text; it holds the count the admin typed when sourcing.
+  const guestFollowerDigits = String(guestPitch?.followerCount ?? '').replace(/\D/g, '');
+  const parsedGuestFollowerCount = Number.parseInt(guestFollowerDigits, 10);
+  const guestFollowerCount =
+    Number.isFinite(parsedGuestFollowerCount) && parsedGuestFollowerCount > 0 ? parsedGuestFollowerCount : null;
+
+  // Store guest data to transfer - prioritize shortlist data, fallback to pitch data.
+  // selectedPlatform and followerCount are the admin's sourcing decision for this campaign;
+  // losing them here is what lets the agreement fall back to the creator's own media kit.
+  const transferData = {
+    ugcVideos: guestShortlist?.ugcVideos ?? guestPitch?.ugcCredits ?? null,
+    amount: guestShortlist?.amount ?? guestPitch?.amount ?? null,
+    currency: guestShortlist?.currency ?? null,
+    adminComments: guestShortlist?.adminComments ?? guestPitch?.adminComments ?? null,
+    isAgreementReady: guestShortlist?.isAgreementReady ?? false,
+    isCampaignDone: guestShortlist?.isCampaignDone ?? false,
+    isCreatorPaid: guestShortlist?.isCreatorPaid ?? false,
+    shortlisted_date: guestShortlist?.shortlisted_date ?? new Date(),
+    creditTierId: guestShortlist?.creditTierId ?? guestCreator?.creditTierId ?? null,
+    creditPerVideo: guestShortlist?.creditPerVideo ?? guestCreator?.creditTier?.creditsPerVideo ?? null,
+    selectedPlatform: guestShortlist?.selectedPlatform ?? guestPitch?.selectedPlatform ?? null,
+    followerCount: guestShortlist?.followerCount ?? guestFollowerCount,
+  };
+
+  // Transfer guest creator's profileLink to platform creator
+  if (guestUser.creator?.profileLink && platformUser.creator) {
+    await tx.creator.update({
+      where: { id: platformUser.creator.id },
+      data: {
+        profileLink: guestUser.creator.profileLink,
+      },
+    });
+    console.log(`[SWAP] Transferred guest profile link to platform creator: ${guestUser.creator.profileLink}`);
+  }
+
+  // Carry the follower count the admin sourced onto the platform creator. It is recorded
+  // per platform, so copy the platform-specific fields - the legacy manualFollowerCount is
+  // not what the guest shortlist writes.
+  if (platformUser.creator && guestCreator) {
+    const guestPlatform = guestShortlist?.selectedPlatform ?? guestPitch?.selectedPlatform;
+    const manualCount =
+      guestPlatform === 'tiktok' ? guestCreator.manualTiktokFollowerCount : guestCreator.manualInstagramFollowerCount;
+    const followerCountToCopy = (manualCount ?? 0) > 0 ? manualCount : guestFollowerCount;
+
+    if (followerCountToCopy != null && followerCountToCopy > 0) {
+      await tx.creator.update({
+        where: { id: platformUser.creator.id },
+        data:
+          guestPlatform === 'tiktok'
+            ? { manualTiktokFollowerCount: followerCountToCopy }
+            : { manualInstagramFollowerCount: followerCountToCopy },
+      });
+      console.log(
+        `[SWAP] Transferred sourced ${guestPlatform ?? 'instagram'} follower count (${followerCountToCopy}) to platform creator`,
+      );
+    }
+  }
+
+  // 2. Delete old shortlist entry for guest (if exists)
+  if (guestShortlist) {
+    await tx.shortListedCreator.delete({
+      where: {
+        userId_campaignId: {
+          userId: guestUserId,
+          campaignId,
+        },
+      },
+    });
+    console.log(`[SWAP] Deleted guest shortlist entry`);
+  } else {
+    console.log(`[SWAP] No guest shortlist entry to delete`);
+  }
+
+  // 3. Create new shortlist entry for platform creator with transferred data
+  await tx.shortListedCreator.create({
+    data: {
+      userId: platformUserId,
+      campaignId,
+      ...transferData,
+    },
+  });
+  console.log(`[SWAP] Created platform creator shortlist entry`);
+
+  // 4. Update or create pitch for platform creator (guestPitch already fetched above)
+  if (guestPitch) {
+    console.log(`[SWAP] Processing guest pitch:`, guestPitch.id);
+
+    // Check if platform creator already has a pitch for this campaign
+    const existingPlatformPitch = await tx.pitch.findFirst({
+      where: {
+        userId: platformUserId,
+        campaignId,
+      },
+    });
+
+    if (existingPlatformPitch) {
+      // Update existing platform pitch with guest pitch data
+      await tx.pitch.update({
+        where: { id: existingPlatformPitch.id },
+        data: {
+          status: guestPitch.status,
+          adminComments: guestPitch.adminComments,
+          adminCommentedBy: guestPitch.adminCommentedBy,
+          amount: guestPitch.amount,
+          ugcCredits: guestPitch.ugcCredits,
+          agreementTemplateId: guestPitch.agreementTemplateId,
+          followerCount: guestPitch.followerCount,
+          engagementRate: guestPitch.engagementRate,
+          selectedPlatform: guestPitch.selectedPlatform,
+        },
+      });
+      console.log(`[SWAP] Updated existing platform pitch with guest data`);
+    } else {
+      // Create new pitch for platform creator
+      await tx.pitch.create({
+        data: {
+          userId: platformUserId,
+          campaignId,
+          type: guestPitch.type,
+          status: guestPitch.status,
+          content: `Platform creator ${platformUser.name} has been assigned to replace guest creator.`,
+          adminComments: guestPitch.adminComments,
+          adminCommentedBy: guestPitch.adminCommentedBy,
+          amount: guestPitch.amount,
+          ugcCredits: guestPitch.ugcCredits,
+          agreementTemplateId: guestPitch.agreementTemplateId,
+          followerCount: guestPitch.followerCount,
+          engagementRate: guestPitch.engagementRate,
+          selectedPlatform: guestPitch.selectedPlatform,
+        },
+      });
+      console.log(`[SWAP] Created new platform pitch with guest data`);
+    }
+
+    // Delete guest pitch
+    await tx.pitch.delete({
+      where: { id: guestPitch.id },
+    });
+    console.log(`[SWAP] Deleted guest pitch`);
+  }
+
+  // 5. Update Submissions (if any)
+  const submissionUpdates = await tx.submission.updateMany({
+    where: {
+      userId: guestUserId,
+      campaignId,
+    },
+    data: {
+      userId: platformUserId,
+    },
+  });
+  console.log(`[SWAP] Updated ${submissionUpdates.count} submission(s)`);
+
+  // 5.1 Ensure platform creator has AGREEMENT_FORM submission
+  // Check if we need to create one (only if guest didn't have one that got transferred)
+  const existingAgreementSubmission = await tx.submission.findFirst({
+    where: {
+      userId: platformUserId,
+      campaignId,
+      submissionType: {
+        type: 'AGREEMENT_FORM',
+      },
+    },
+  });
+
+  if (!existingAgreementSubmission) {
+    console.log(`[SWAP] No AGREEMENT_FORM submission found after transfer, creating one for platform creator`);
+
+    // Get the AGREEMENT_FORM timeline from campaign
+    const agreementTimeline = await tx.campaignTimeline.findFirst({
+      where: {
+        campaignId,
+        for: 'creator',
+        submissionType: {
+          type: 'AGREEMENT_FORM',
+        },
+      },
+      include: {
+        submissionType: true,
+      },
+    });
+
+    if (agreementTimeline) {
+      // Get the platform creator's board to create task
+      const platformCreatorBoard = await tx.board.findUnique({
+        where: { userId: platformUserId },
+        include: { columns: true },
+      });
+
+      const inProgressColumn = platformCreatorBoard?.columns.find((c) => c.name.includes('In Progress'));
+
+      // Create the agreement submission (without complex dependencies for now)
+      await tx.submission.create({
+        data: {
+          campaignId,
+          userId: platformUserId,
+          submissionTypeId: agreementTimeline.submissionTypeId as string,
+          dueDate: agreementTimeline.endDate,
+          status: 'IN_PROGRESS',
+          contentOrder: 1, // round 1's AGREEMENT_FORM submission
+          ...(inProgressColumn && {
+            task: {
+              create: {
+                name: agreementTimeline.name,
+                position: 0,
+                columnId: inProgressColumn.id,
+                priority: '',
+                status: 'In Progress',
+              },
+            },
+          }),
+        },
+      });
+
+      console.log(`[SWAP] ✅ Created AGREEMENT_FORM submission for platform creator`);
+    } else {
+      console.log(`[SWAP] ⚠️ No AGREEMENT_FORM timeline found in campaign`);
+    }
+  } else {
+    console.log(`[SWAP] ✅ Platform creator already has AGREEMENT_FORM submission (transferred from guest)`);
+  }
+
+  // 6. Update CreatorAgreements (if any)
+  const agreementUpdates = await tx.creatorAgreement.updateMany({
+    where: {
+      userId: guestUserId,
+      campaignId,
+    },
+    data: {
+      userId: platformUserId,
+    },
+  });
+  console.log(`[SWAP] Updated ${agreementUpdates.count} creator agreement(s)`);
+
+  // 7. Update Logistics (if any)
+  const logisticUpdates = await tx.logistic.updateMany({
+    where: {
+      creatorId: guestUserId,
+      campaignId,
+    },
+    data: {
+      creatorId: platformUserId,
+    },
+  });
+  console.log(`[SWAP] Updated ${logisticUpdates.count} logistic record(s)`);
+
+  // 8. Update Tasks (if any)
+  const taskUpdates = await tx.task.updateMany({
+    where: {
+      submission: {
+        userId: guestUserId,
+        campaignId,
+      },
+    },
+    data: {
+      // Tasks are linked through submission, already updated
+    },
+  });
+
+  // 9. Update UserThread (campaign thread) - Remove guest, ensure platform creator is added
+  const campaignThread = await tx.thread.findUnique({
+    where: { campaignId },
+  });
+
+  if (campaignThread) {
+    // Delete guest from thread
+    await tx.userThread.deleteMany({
+      where: {
+        userId: guestUserId,
+        threadId: campaignThread.id,
+      },
+    });
+    console.log(`[SWAP] Removed guest from thread`);
+
+    // Add platform creator to thread (if not already)
+    const existingUserThread = await tx.userThread.findUnique({
+      where: {
+        userId_threadId: {
+          userId: platformUserId,
+          threadId: campaignThread.id,
+        },
+      },
+    });
+
+    if (!existingUserThread) {
+      await tx.userThread.create({
+        data: {
+          userId: platformUserId,
+          threadId: campaignThread.id,
+        },
+      });
+      console.log(`[SWAP] Added platform creator to thread`);
+    }
+  }
+
+  return transferData;
+}
+
+/** Deletes the guest user when no shortlist, pitch, or submission still points at it. */
+async function deleteGuestIfOrphaned(
+  tx: Prisma.TransactionClient,
+  guestUserId: string,
+  platformUserId: string,
+): Promise<boolean> {
+  // 10. Check if guest user has any other relationships
+  const otherShortlists = await tx.shortListedCreator.count({
+    where: { userId: guestUserId },
+  });
+
+  const otherPitches = await tx.pitch.count({
+    where: { userId: guestUserId },
+  });
+
+  const otherSubmissions = await tx.submission.count({
+    where: { userId: guestUserId },
+  });
+
+  console.log(
+    `[SWAP] Guest user other relationships: ${otherShortlists} shortlists, ${otherPitches} pitches, ${otherSubmissions} submissions`,
+  );
+
+  // 11. If guest user has no other relationships, delete guest user and creator
+  if (otherShortlists === 0 && otherPitches === 0 && otherSubmissions === 0) {
+    console.log(`[SWAP] Guest user has no other relationships, deleting...`);
+
+    // Saved scrapes cascade with the guest creator, so move them first.
+    await moveDiscoveryProfiles(tx, guestUserId, platformUserId);
+
+    const deletedNotifications = await tx.userNotification.deleteMany({
+      where: { userId: guestUserId },
+    });
+    console.log(`[SWAP] Deleted ${deletedNotifications.count} notification(s)`);
+
+    await tx.xpTransaction.deleteMany({
+      where: { userId: guestUserId },
+    });
+
+    // Delete guest creator (foreign key constraint)
+    await tx.creator.delete({
+      where: { userId: guestUserId },
+    });
+    console.log(`[SWAP] Deleted guest creator record`);
+
+    // Delete guest user
+    await tx.user.delete({
+      where: { id: guestUserId },
+    });
+    console.log(`[SWAP] Deleted guest user record`);
+    return true;
+  }
+
+  console.log(`[SWAP] Guest user has other relationships, keeping user record`);
+  return false;
+}
+
+/**
+ * Moves the guest's saved scrapes to the platform creator. When both have one
+ * for the same platform, the newer save wins.
+ */
+async function moveDiscoveryProfiles(tx: Prisma.TransactionClient, guestUserId: string, platformUserId: string) {
+  const guestProfiles = await tx.creatorDiscoveryProfile.findMany({ where: { userId: guestUserId } });
+  for (const profile of guestProfiles) {
+    const existing = await tx.creatorDiscoveryProfile.findUnique({
+      where: { userId_platform: { userId: platformUserId, platform: profile.platform } },
+    });
+    if (existing && existing.savedAt >= profile.savedAt) continue;
+    if (existing) await tx.creatorDiscoveryProfile.delete({ where: { id: existing.id } });
+    await tx.creatorDiscoveryProfile.update({ where: { id: profile.id }, data: { userId: platformUserId } });
+    console.log(`[SWAP] Moved saved ${profile.platform} scrape to platform creator`);
+  }
+}
+
 /**
  * Swap a guest creator with an existing platform creator
  *
@@ -42,43 +530,11 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
       return res.status(404).json({ message: 'Campaign not found.' });
     }
 
-    // Validate guest user exists and is actually a guest
-    const guestUser = await prisma.user.findUnique({
-      where: { id: guestUserId },
-      include: { creator: true },
-    });
-
-    if (!guestUser) {
-      return res.status(404).json({ message: 'Guest user not found.' });
+    const users = await loadSwapUsers(guestUserId, platformUserId);
+    if ('status' in users) {
+      return res.status(users.status).json({ message: users.message });
     }
-
-    if (guestUser.status !== 'guest' || !guestUser.creator?.isGuest) {
-      return res.status(400).json({
-        message: 'The specified user is not a guest creator.',
-      });
-    }
-
-    // Validate platform user exists and is active
-    const platformUser = await prisma.user.findUnique({
-      where: { id: platformUserId },
-      include: { creator: true },
-    });
-
-    if (!platformUser) {
-      return res.status(404).json({ message: 'Platform creator not found.' });
-    }
-
-    if (platformUser.status !== 'active') {
-      return res.status(400).json({
-        message: 'Platform creator must be active to be assigned to campaigns.',
-      });
-    }
-
-    if (!platformUser.creator || platformUser.creator.isGuest) {
-      return res.status(400).json({
-        message: 'The specified user is not a valid platform creator.',
-      });
-    }
+    const { guestUser, platformUser } = users;
 
     // Check if platform creator is already shortlisted for this campaign
     const existingShortlist = await prisma.shortListedCreator.findUnique({
@@ -102,384 +558,15 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         `[SWAP] Starting swap: Guest ${guestUserId} -> Platform ${platformUserId} for campaign ${campaignId}`,
       );
 
-      // 1. Get guest creator's current data before swap (from shortlist or pitch)
-      const guestShortlist = await tx.shortListedCreator.findUnique({
-        where: {
-          userId_campaignId: {
-            userId: guestUserId,
-            campaignId,
-          },
-        },
-      });
-
-      const guestPitch = await tx.pitch.findFirst({
-        where: {
-          userId: guestUserId,
-          campaignId,
-        },
-      });
-
-      // Guest must exist in either shortlist or pitch table
-      if (!guestShortlist && !guestPitch) {
-        throw new Error('Guest creator is not shortlisted or pitched for this campaign.');
-      }
-
-      console.log(`[SWAP] Found guest shortlist:`, guestShortlist);
-      console.log(`[SWAP] Found guest pitch:`, guestPitch?.id);
-
-      // Fallback for tier snapshot when shortlist row hasn't been created yet
-      const guestCreator = await tx.creator.findUnique({
-        where: { userId: guestUserId },
-        include: { creditTier: true },
-      });
-
-      // Pitch.followerCount is free text; it holds the count the admin typed when sourcing.
-      const guestFollowerDigits = String(guestPitch?.followerCount ?? '').replace(/\D/g, '');
-      const parsedGuestFollowerCount = Number.parseInt(guestFollowerDigits, 10);
-      const guestFollowerCount =
-        Number.isFinite(parsedGuestFollowerCount) && parsedGuestFollowerCount > 0 ? parsedGuestFollowerCount : null;
-
-      // Store guest data to transfer - prioritize shortlist data, fallback to pitch data.
-      // selectedPlatform and followerCount are the admin's sourcing decision for this campaign;
-      // losing them here is what lets the agreement fall back to the creator's own media kit.
-      const transferData = {
-        ugcVideos: guestShortlist?.ugcVideos ?? guestPitch?.ugcCredits ?? null,
-        amount: guestShortlist?.amount ?? guestPitch?.amount ?? null,
-        currency: guestShortlist?.currency ?? null,
-        adminComments: guestShortlist?.adminComments ?? guestPitch?.adminComments ?? null,
-        isAgreementReady: guestShortlist?.isAgreementReady ?? false,
-        isCampaignDone: guestShortlist?.isCampaignDone ?? false,
-        isCreatorPaid: guestShortlist?.isCreatorPaid ?? false,
-        shortlisted_date: guestShortlist?.shortlisted_date ?? new Date(),
-        creditTierId: guestShortlist?.creditTierId ?? guestCreator?.creditTierId ?? null,
-        creditPerVideo: guestShortlist?.creditPerVideo ?? guestCreator?.creditTier?.creditsPerVideo ?? null,
-        selectedPlatform: guestShortlist?.selectedPlatform ?? guestPitch?.selectedPlatform ?? null,
-        followerCount: guestShortlist?.followerCount ?? guestFollowerCount,
-      };
-
-      // Transfer guest creator's profileLink to platform creator
-      if (guestUser.creator?.profileLink && platformUser.creator) {
-        await tx.creator.update({
-          where: { id: platformUser.creator.id },
-          data: {
-            profileLink: guestUser.creator.profileLink,
-          },
-        });
-        console.log(`[SWAP] Transferred guest profile link to platform creator: ${guestUser.creator.profileLink}`);
-      }
-
-      // Carry the follower count the admin sourced onto the platform creator. It is recorded
-      // per platform, so copy the platform-specific fields - the legacy manualFollowerCount is
-      // not what the guest shortlist writes.
-      if (platformUser.creator && guestCreator) {
-        const guestPlatform = guestShortlist?.selectedPlatform ?? guestPitch?.selectedPlatform;
-        const manualCount =
-          guestPlatform === 'tiktok'
-            ? guestCreator.manualTiktokFollowerCount
-            : guestCreator.manualInstagramFollowerCount;
-        const followerCountToCopy = (manualCount ?? 0) > 0 ? manualCount : guestFollowerCount;
-
-        if (followerCountToCopy != null && followerCountToCopy > 0) {
-          await tx.creator.update({
-            where: { id: platformUser.creator.id },
-            data:
-              guestPlatform === 'tiktok'
-                ? { manualTiktokFollowerCount: followerCountToCopy }
-                : { manualInstagramFollowerCount: followerCountToCopy },
-          });
-          console.log(
-            `[SWAP] Transferred sourced ${guestPlatform ?? 'instagram'} follower count (${followerCountToCopy}) to platform creator`,
-          );
-        }
-      }
-
-      // 2. Delete old shortlist entry for guest (if exists)
-      if (guestShortlist) {
-        await tx.shortListedCreator.delete({
-          where: {
-            userId_campaignId: {
-              userId: guestUserId,
-              campaignId,
-            },
-          },
-        });
-        console.log(`[SWAP] Deleted guest shortlist entry`);
-      } else {
-        console.log(`[SWAP] No guest shortlist entry to delete`);
-      }
-
-      // 3. Create new shortlist entry for platform creator with transferred data
-      await tx.shortListedCreator.create({
-        data: {
-          userId: platformUserId,
-          campaignId,
-          ...transferData,
-        },
-      });
-      console.log(`[SWAP] Created platform creator shortlist entry`);
-
-      // 4. Update or create pitch for platform creator (guestPitch already fetched above)
-      if (guestPitch) {
-        console.log(`[SWAP] Processing guest pitch:`, guestPitch.id);
-
-        // Check if platform creator already has a pitch for this campaign
-        const existingPlatformPitch = await tx.pitch.findFirst({
-          where: {
-            userId: platformUserId,
-            campaignId,
-          },
-        });
-
-        if (existingPlatformPitch) {
-          // Update existing platform pitch with guest pitch data
-          await tx.pitch.update({
-            where: { id: existingPlatformPitch.id },
-            data: {
-              status: guestPitch.status,
-              adminComments: guestPitch.adminComments,
-              adminCommentedBy: guestPitch.adminCommentedBy,
-              amount: guestPitch.amount,
-              ugcCredits: guestPitch.ugcCredits,
-              agreementTemplateId: guestPitch.agreementTemplateId,
-              followerCount: guestPitch.followerCount,
-              engagementRate: guestPitch.engagementRate,
-              selectedPlatform: guestPitch.selectedPlatform,
-            },
-          });
-          console.log(`[SWAP] Updated existing platform pitch with guest data`);
-        } else {
-          // Create new pitch for platform creator
-          await tx.pitch.create({
-            data: {
-              userId: platformUserId,
-              campaignId,
-              type: guestPitch.type,
-              status: guestPitch.status,
-              content: `Platform creator ${platformUser.name} has been assigned to replace guest creator.`,
-              adminComments: guestPitch.adminComments,
-              adminCommentedBy: guestPitch.adminCommentedBy,
-              amount: guestPitch.amount,
-              ugcCredits: guestPitch.ugcCredits,
-              agreementTemplateId: guestPitch.agreementTemplateId,
-              followerCount: guestPitch.followerCount,
-              engagementRate: guestPitch.engagementRate,
-              selectedPlatform: guestPitch.selectedPlatform,
-            },
-          });
-          console.log(`[SWAP] Created new platform pitch with guest data`);
-        }
-
-        // Delete guest pitch
-        await tx.pitch.delete({
-          where: { id: guestPitch.id },
-        });
-        console.log(`[SWAP] Deleted guest pitch`);
-      }
-
-      // 5. Update Submissions (if any)
-      const submissionUpdates = await tx.submission.updateMany({
-        where: {
-          userId: guestUserId,
-          campaignId,
-        },
-        data: {
-          userId: platformUserId,
-        },
-      });
-      console.log(`[SWAP] Updated ${submissionUpdates.count} submission(s)`);
-
-      // 5.1 Ensure platform creator has AGREEMENT_FORM submission
-      // Check if we need to create one (only if guest didn't have one that got transferred)
-      const existingAgreementSubmission = await tx.submission.findFirst({
-        where: {
-          userId: platformUserId,
-          campaignId,
-          submissionType: {
-            type: 'AGREEMENT_FORM',
-          },
-        },
-      });
-
-      if (!existingAgreementSubmission) {
-        console.log(`[SWAP] No AGREEMENT_FORM submission found after transfer, creating one for platform creator`);
-
-        // Get the AGREEMENT_FORM timeline from campaign
-        const agreementTimeline = await tx.campaignTimeline.findFirst({
-          where: {
-            campaignId,
-            for: 'creator',
-            submissionType: {
-              type: 'AGREEMENT_FORM',
-            },
-          },
-          include: {
-            submissionType: true,
-          },
-        });
-
-        if (agreementTimeline) {
-          // Get the platform creator's board to create task
-          const platformCreatorBoard = await tx.board.findUnique({
-            where: { userId: platformUserId },
-            include: { columns: true },
-          });
-
-          const inProgressColumn = platformCreatorBoard?.columns.find((c) => c.name.includes('In Progress'));
-
-          // Create the agreement submission (without complex dependencies for now)
-          await tx.submission.create({
-            data: {
-              campaignId,
-              userId: platformUserId,
-              submissionTypeId: agreementTimeline.submissionTypeId as string,
-              dueDate: agreementTimeline.endDate,
-              status: 'IN_PROGRESS',
-              contentOrder: 1, // round 1's AGREEMENT_FORM submission
-              ...(inProgressColumn && {
-                task: {
-                  create: {
-                    name: agreementTimeline.name,
-                    position: 0,
-                    columnId: inProgressColumn.id,
-                    priority: '',
-                    status: 'In Progress',
-                  },
-                },
-              }),
-            },
-          });
-
-          console.log(`[SWAP] ✅ Created AGREEMENT_FORM submission for platform creator`);
-        } else {
-          console.log(`[SWAP] ⚠️ No AGREEMENT_FORM timeline found in campaign`);
-        }
-      } else {
-        console.log(`[SWAP] ✅ Platform creator already has AGREEMENT_FORM submission (transferred from guest)`);
-      }
-
-      // 6. Update CreatorAgreements (if any)
-      const agreementUpdates = await tx.creatorAgreement.updateMany({
-        where: {
-          userId: guestUserId,
-          campaignId,
-        },
-        data: {
-          userId: platformUserId,
-        },
-      });
-      console.log(`[SWAP] Updated ${agreementUpdates.count} creator agreement(s)`);
-
-      // 7. Update Logistics (if any)
-      const logisticUpdates = await tx.logistic.updateMany({
-        where: {
-          creatorId: guestUserId,
-          campaignId,
-        },
-        data: {
-          creatorId: platformUserId,
-        },
-      });
-      console.log(`[SWAP] Updated ${logisticUpdates.count} logistic record(s)`);
-
-      // 8. Update Tasks (if any)
-      const taskUpdates = await tx.task.updateMany({
-        where: {
-          submission: {
-            userId: guestUserId,
-            campaignId,
-          },
-        },
-        data: {
-          // Tasks are linked through submission, already updated
-        },
-      });
-
-      // 9. Update UserThread (campaign thread) - Remove guest, ensure platform creator is added
-      const campaignThread = await tx.thread.findUnique({
-        where: { campaignId },
-      });
-
-      if (campaignThread) {
-        // Delete guest from thread
-        await tx.userThread.deleteMany({
-          where: {
-            userId: guestUserId,
-            threadId: campaignThread.id,
-          },
-        });
-        console.log(`[SWAP] Removed guest from thread`);
-
-        // Add platform creator to thread (if not already)
-        const existingUserThread = await tx.userThread.findUnique({
-          where: {
-            userId_threadId: {
-              userId: platformUserId,
-              threadId: campaignThread.id,
-            },
-          },
-        });
-
-        if (!existingUserThread) {
-          await tx.userThread.create({
-            data: {
-              userId: platformUserId,
-              threadId: campaignThread.id,
-            },
-          });
-          console.log(`[SWAP] Added platform creator to thread`);
-        }
-      }
-
-      // 10. Check if guest user has any other relationships
-      const otherShortlists = await tx.shortListedCreator.count({
-        where: { userId: guestUserId },
-      });
-
-      const otherPitches = await tx.pitch.count({
-        where: { userId: guestUserId },
-      });
-
-      const otherSubmissions = await tx.submission.count({
-        where: { userId: guestUserId },
-      });
-
-      console.log(
-        `[SWAP] Guest user other relationships: ${otherShortlists} shortlists, ${otherPitches} pitches, ${otherSubmissions} submissions`,
-      );
-
-      // 11. If guest user has no other relationships, delete guest user and creator
-      if (otherShortlists === 0 && otherPitches === 0 && otherSubmissions === 0) {
-        console.log(`[SWAP] Guest user has no other relationships, deleting...`);
-
-        const deletedNotifications = await tx.userNotification.deleteMany({
-          where: { userId: guestUserId },
-        });
-        console.log(`[SWAP] Deleted ${deletedNotifications.count} notification(s)`);
-
-        await tx.xpTransaction.deleteMany({
-          where: { userId: guestUserId },
-        });
-
-        // Delete guest creator (foreign key constraint)
-        await tx.creator.delete({
-          where: { userId: guestUserId },
-        });
-        console.log(`[SWAP] Deleted guest creator record`);
-
-        // Delete guest user
-        await tx.user.delete({
-          where: { id: guestUserId },
-        });
-        console.log(`[SWAP] Deleted guest user record`);
-      } else {
-        console.log(`[SWAP] Guest user has other relationships, keeping user record`);
-      }
+      await copyGuestMetrics(tx, users);
+      const transferData = await swapGuestInCampaign(tx, users, campaignId);
+      const guestDeleted = await deleteGuestIfOrphaned(tx, guestUserId, platformUserId);
 
       return {
         guestUserId,
         platformUserId,
         transferredData: transferData,
-        guestDeleted: otherShortlists === 0 && otherPitches === 0 && otherSubmissions === 0,
+        guestDeleted,
       };
     });
 
@@ -496,6 +583,88 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
     return res.status(400).json({
       message: error instanceof Error ? error.message : 'Failed to swap creators',
       error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
+/**
+ * Link a guest creator to a platform creator in every campaign the guest is in.
+ * The Discovery Tool uses this, because it has no campaign context.
+ *
+ * POST /api/campaign/linkGuestCreator
+ * Body: { guestUserId, platformUserId }
+ */
+export const linkGuestAcrossCampaigns = async (req: Request, res: Response) => {
+  const { guestUserId, platformUserId } = req.body;
+  const adminId = req.userId;
+
+  if (!guestUserId || !platformUserId) {
+    return res.status(400).json({ message: 'Guest user ID and platform user ID are required.' });
+  }
+
+  if (guestUserId === platformUserId) {
+    return res.status(400).json({ message: 'Guest user and platform user cannot be the same.' });
+  }
+
+  try {
+    const users = await loadSwapUsers(guestUserId, platformUserId);
+    if ('status' in users) {
+      return res.status(users.status).json({ message: users.message });
+    }
+    const { guestUser, platformUser } = users;
+
+    const [pitches, shortlists] = await Promise.all([
+      prisma.pitch.findMany({ where: { userId: guestUserId }, select: { campaignId: true } }),
+      prisma.shortListedCreator.findMany({ where: { userId: guestUserId }, select: { campaignId: true } }),
+    ]);
+    const campaignIds = [
+      ...new Set([...pitches, ...shortlists].map((row) => row.campaignId).filter(Boolean)),
+    ] as string[];
+
+    // Same rule as the single-campaign swap: one shortlist row per creator per campaign.
+    const conflicts = await prisma.shortListedCreator.findMany({
+      where: { userId: platformUserId, campaignId: { in: campaignIds } },
+      select: { campaign: { select: { name: true } } },
+    });
+    if (conflicts.length > 0) {
+      const names = conflicts
+        .map((row) => row.campaign?.name)
+        .filter(Boolean)
+        .join(', ');
+      return res.status(400).json({
+        message: `This platform creator is already shortlisted in: ${names}. Remove one of the two creators from those campaigns first.`,
+      });
+    }
+
+    const result = await prisma.$transaction(
+      async (tx) => {
+        console.log(
+          `[LINK] Linking guest ${guestUserId} -> platform ${platformUserId} in ${campaignIds.length} campaign(s)`,
+        );
+        await copyGuestMetrics(tx, users);
+        for (const campaignId of campaignIds) {
+          await swapGuestInCampaign(tx, users, campaignId);
+        }
+        const guestDeleted = await deleteGuestIfOrphaned(tx, guestUserId, platformUserId);
+        return { guestUserId, platformUserId, campaignIds, guestDeleted };
+      },
+      { timeout: 60_000 },
+    );
+
+    logAdminChange(
+      `Linked guest creator ${guestUser.name} with platform creator ${platformUser.name} in ${campaignIds.length} campaign(s)`,
+      adminId,
+      req,
+    );
+
+    return res.status(200).json({
+      message: `Linked creator in ${campaignIds.length} campaign(s).`,
+      result,
+    });
+  } catch (error) {
+    console.error('[LINK] Error linking creators:', error);
+    return res.status(400).json({
+      message: error instanceof Error ? error.message : 'Failed to link creators',
     });
   }
 };

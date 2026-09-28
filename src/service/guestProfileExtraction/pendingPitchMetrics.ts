@@ -1,4 +1,6 @@
+import { createDiscoveryMetricAudit } from '@services/creatorDiscoveryProfileService';
 import { ReceiptAlreadyUsedError, claimReceiptNonce, usernameFromCanonicalKey } from './guestCreateService';
+import { classifyMetricProvenance } from './metricProvenance';
 import { ensureScrapedProfileLink } from './scrapedProfileLink';
 
 /**
@@ -9,12 +11,7 @@ import { ensureScrapedProfileLink } from './scrapedProfileLink';
  * pendingExtractionId no longer matches, is left alone.
  */
 
-export const PENDING_FAILURE_STATUSES = [
-  'INSUFFICIENT_DATA',
-  'FAILED',
-  'CANCELLED',
-  'STALE',
-] as const;
+export const PENDING_FAILURE_STATUSES = ['INSUFFICIENT_DATA', 'FAILED', 'CANCELLED', 'STALE'] as const;
 
 export interface PendingPitchApplyStore {
   guestProfileExtraction: {
@@ -75,11 +72,7 @@ async function assignCreditTier(
   });
 }
 
-async function applyReadyToPitch(
-  tx: PendingPitchApplyStore,
-  pitch: any,
-  extraction: any,
-): Promise<void> {
+async function applyReadyToPitch(tx: PendingPitchApplyStore, pitch: any, extraction: any): Promise<void> {
   const [fresh] = await tx.pitch.findMany({
     where: { id: pitch.id, pendingExtractionId: extraction.id },
     include: { user: true },
@@ -92,7 +85,6 @@ async function applyReadyToPitch(
   const placeholder = usernameFromCanonicalKey(extraction.canonicalProfileKey ?? '');
   const writeFollowers = isEmptyMetric(fresh.followerCount) && followerCount != null;
   const writeRate = isEmptyMetric(fresh.engagementRate) && Boolean(engagementRate);
-  const alreadyComplete = !isEmptyMetric(fresh.followerCount) && !isEmptyMetric(fresh.engagementRate);
 
   const updated = await tx.pitch.updateMany({
     where: { id: fresh.id, pendingExtractionId: extraction.id },
@@ -111,8 +103,6 @@ async function applyReadyToPitch(
     extraction.canonicalProfileUrl,
   );
 
-  if (alreadyComplete) return;
-
   if (writeFollowers && followerCount != null) {
     await assignCreditTier(tx, fresh.userId, followerCount, fresh.selectedPlatform);
     await tx.shortListedCreator.updateMany({
@@ -129,7 +119,16 @@ async function applyReadyToPitch(
     });
   }
 
-  await tx.guestCreatorMetricAudit.create({
+  const provenance = classifyMetricProvenance({
+    receiptVerified: true,
+    original: { name: extraction.resultName ?? null, followerCount, engagementRate },
+    final: {
+      name: resultName || currentName || null,
+      followerCount: writeFollowers ? followerCount : parseStoredFollowerCount(fresh.followerCount),
+      engagementRate: writeRate ? engagementRate : (fresh.engagementRate ?? null),
+    },
+  });
+  await createDiscoveryMetricAudit(tx, {
     data: {
       pitchId: fresh.id,
       extractionId: extraction.id,
@@ -141,9 +140,9 @@ async function applyReadyToPitch(
       originalEngagementRate: extraction.resultEngagementRate ?? null,
       finalName: resultName || currentName || null,
       finalFollowerCount: writeFollowers ? followerCount : parseStoredFollowerCount(fresh.followerCount),
-      finalEngagementRate: writeRate ? engagementRate : fresh.engagementRate ?? null,
-      source: 'automatic',
-      overrideReason: null,
+      finalEngagementRate: writeRate ? engagementRate : (fresh.engagementRate ?? null),
+      source: provenance.source,
+      overrideReason: provenance.overrideReason,
       actorId: extraction.actorId ?? null,
       actorBuild: extraction.actorBuild ?? null,
       actorRunId: extraction.actorRunId ?? null,
@@ -160,18 +159,14 @@ function parseStoredFollowerCount(value: unknown): number | null {
   return null;
 }
 
-async function applyFailureToPitch(
-  tx: PendingPitchApplyStore,
-  pitch: any,
-  extraction: any,
-): Promise<void> {
+async function applyFailureToPitch(tx: PendingPitchApplyStore, pitch: any, extraction: any): Promise<void> {
   const updated = await tx.pitch.updateMany({
     where: { id: pitch.id, pendingExtractionId: extraction.id },
     data: { pendingExtractionId: null },
   });
   if (updated.count === 0) return;
 
-  await tx.guestCreatorMetricAudit.create({
+  await createDiscoveryMetricAudit(tx, {
     data: {
       pitchId: pitch.id,
       extractionId: extraction.id,

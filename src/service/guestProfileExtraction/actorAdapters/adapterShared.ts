@@ -61,3 +61,14 @@ export function errorItemFailure(items: unknown[]): AdapterResult | null {
   }
   return null;
 }
+
+/** Optional image data must not make valid metric data fail parsing. */
+export const imageUrl = z.unknown().transform((value): string | null => {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+});

@@ -1,7 +1,17 @@
 import { z } from 'zod';
 
 import type { AdapterInput, AdapterResult, ExtractedProfile, PostCandidate } from '@/src/types/guestProfileExtraction';
-import { asArray, counter, errorItemFailure, fail, flag, normalizeHandle, runFailure, text } from './adapterShared';
+import {
+  asArray,
+  counter,
+  errorItemFailure,
+  fail,
+  flag,
+  normalizeHandle,
+  runFailure,
+  text,
+  imageUrl,
+} from './adapterShared';
 
 /**
  * Adapter for `apify/instagram-scraper`, across two runs.
@@ -23,6 +33,7 @@ const postSchema = z.object({
   id: z.string().min(1),
   type: text,
   url: text,
+  displayUrl: imageUrl.optional(),
   timestamp: text,
   likesCount: counter,
   commentsCount: counter,
@@ -56,6 +67,7 @@ const postSchema = z.object({
 const profileSchema = z.object({
   username: z.string().min(1),
   fullName: text,
+  biography: text,
   followersCount: counter,
   private: flag,
   latestPosts: z.array(z.unknown()).nullish(),
@@ -110,6 +122,7 @@ export function parseInstagramActorOutput(input: AdapterInput): AdapterResult {
       platform: 'instagram',
       postId: post.id,
       postUrl: post.url,
+      thumbnailUrl: post.displayUrl ?? null,
       ownerHandle: post.ownerUsername,
       publishedAt: post.timestamp,
       likes: post.likesCount,
@@ -144,6 +157,7 @@ export function parseInstagramActorOutput(input: AdapterInput): AdapterResult {
   const profile: ExtractedProfile = {
     platform: 'instagram',
     username: expected,
+    biography: profileRun.ok ? profileRun.profile.biography : null,
     displayName: profileRun.ok ? profileRun.profile.fullName : (fromPosts?.ownerFullName ?? null),
     // Null when the profile run failed. v2 does not divide by followers, so a
     // rate is still produced; the admin sees an empty Follower Count field.

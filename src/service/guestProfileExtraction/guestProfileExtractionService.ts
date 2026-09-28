@@ -53,6 +53,8 @@ export interface ExtractionDeps {
   now?(): Date;
   sleep?(ms: number): Promise<void>;
   log?(message: string, context?: Record<string, unknown>): void;
+  /** Returns a durable copy of a provider thumbnail, or null when the copy fails. */
+  cacheThumbnail?(sourceUrl: string, platform: string, postId: string): Promise<string | null>;
 }
 
 export const ACTIVE_STATUSES = ['QUEUED', 'RUNNING', 'POLLING'] as const;
@@ -218,6 +220,10 @@ export async function startExtraction(input: StartExtractionInput, deps: Extract
         actorRunId: cached.actorRunId,
         actorDatasetId: cached.actorDatasetId,
         resultName: cached.resultName,
+        resultBiography: cached.resultBiography,
+        profileActorRunId: cached.profileActorRunId,
+        profileActorDatasetId: cached.profileActorDatasetId,
+        candidatePosts: cached.candidatePosts,
         resultFollowerCount: cached.resultFollowerCount,
         resultEngagementRate: cached.resultEngagementRate,
         sampleSize: cached.sampleSize,
@@ -539,11 +545,12 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
       ...common,
       status: 'READY',
       resultName: baseline.name,
+      resultBiography: parsed.profile.biography ?? null,
       resultFollowerCount: baseline.followerCount,
       resultEngagementRate: baseline.engagementRate,
       sampleSize: rate.sampleSize,
       formulaVersion: rate.formulaId,
-      selectedPosts: rate.evidence,
+      selectedPosts: await cacheSelectedThumbnails(deps, record.platform, rate.evidence),
       candidatePosts: markSampleInCandidates(policy.evaluated, sample.posts),
       unverifiedFlags: policy.unverifiedFlags,
       ...receiptFields(
@@ -560,6 +567,31 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
     formulaVersion: rate.formulaId,
     savesReported: rate.savesReported,
   });
+}
+
+/**
+ * Provider thumbnail URLs expire and cannot be hotlinked, so the browser falls
+ * back to the provider embed. A failed copy keeps the original URL.
+ */
+async function cacheSelectedThumbnails<T extends { postId: string; thumbnailUrl?: string | null }>(
+  deps: ExtractionDeps,
+  platform: string,
+  posts: T[],
+): Promise<T[]> {
+  const { cacheThumbnail } = deps;
+  if (!cacheThumbnail) return posts;
+  return Promise.all(
+    posts.map(async (post) => {
+      if (!post.thumbnailUrl) return post;
+      try {
+        const cached = await cacheThumbnail(post.thumbnailUrl, platform, post.postId);
+        return cached ? { ...post, thumbnailUrl: cached } : post;
+      } catch (error) {
+        log(deps, 'thumbnail copy failed', { postId: post.postId, message: (error as Error)?.message });
+        return post;
+      }
+    }),
+  );
 }
 
 /* ---------------------------------------------------------- Reconciliation */
