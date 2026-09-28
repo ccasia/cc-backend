@@ -12,6 +12,7 @@ export const savedDiscoveryProfilesEnabled = () => process.env.DISCOVERY_SAVED_P
 export function buildDiscoverySelect(full = false, contentSearch = false, accessToken = false) {
   const select: any = buildConnectedSelect(accessToken);
   select.status = true;
+  select.createdAt = true;
   Object.assign(select.creator.select, {
     isGuest: true,
     profileLink: true,
@@ -29,6 +30,8 @@ export function buildDiscoverySelect(full = false, contentSearch = false, access
         engagementRateSource: true,
         savedAt: true,
         scrapedAt: true,
+        createdAt: true,
+        linkedAt: true,
         ...(full ? { scrapeDetails: true } : {}),
         ...(contentSearch ? { captions: true } : {}),
       },
@@ -156,6 +159,18 @@ function platformData(creator: any, platform: 'instagram' | 'tiktok') {
   };
 }
 
+/**
+ * When the row joined Discovery: account creation, the first save of its
+ * scrape, or a later Link Creator. A re-scrape does not move it.
+ */
+function addedAt(user: any, platform: 'instagram' | 'tiktok'): Date | null {
+  const saved = user.creator?.discoveryProfiles?.find((profile: any) => profile.platform === platform);
+  const times = [user.createdAt, saved?.createdAt, saved?.linkedAt]
+    .filter(Boolean)
+    .map((value) => new Date(value).getTime());
+  return times.length ? new Date(Math.max(...times)) : null;
+}
+
 export function mapDiscoveryRows(users: any[], platform: PlatformFilter): any[] {
   return users.flatMap((user) => {
     const creator = user.creator;
@@ -180,7 +195,7 @@ export function mapDiscoveryRows(users: any[], platform: PlatformFilter): any[] 
     };
     return platforms
       .filter((key) => (platform === 'all' || key === platform) && base[key].available)
-      .map((key) => ({ ...base, platform: key, rowId: `${user.id}-${key}` }));
+      .map((key) => ({ ...base, platform: key, rowId: `${user.id}-${key}`, addedAt: addedAt(user, key) }));
   });
 }
 

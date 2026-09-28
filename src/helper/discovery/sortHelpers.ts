@@ -1,15 +1,16 @@
 import { PlatformFilter } from '@helper/discovery/queryHelpers';
 
-export type DiscoverySortBy = 'name' | 'followers';
+export type DiscoverySortBy = 'name' | 'followers' | 'createdAt';
 export type DiscoverySortDirection = 'asc' | 'desc';
 
 export const normalizeDiscoverySort = (
   sortBy?: string,
   sortDirection?: string,
 ): { sortBy: DiscoverySortBy; sortDirection: DiscoverySortDirection } => {
-  const normalizedSortBy: DiscoverySortBy = sortBy === 'followers' ? 'followers' : 'name';
+  const normalizedSortBy: DiscoverySortBy = sortBy === 'followers' || sortBy === 'createdAt' ? sortBy : 'name';
 
-  if (normalizedSortBy === 'followers') {
+  // Followers and date added default to newest/largest first.
+  if (normalizedSortBy !== 'name') {
     return {
       sortBy: normalizedSortBy,
       sortDirection: sortDirection === 'asc' ? 'asc' : 'desc',
@@ -96,6 +97,14 @@ export const sortDiscoveryRows = (rows: any[], sortBy: DiscoverySortBy, sortDire
   const rowsCopy = [...(rows || [])];
 
   rowsCopy.sort((left, right) => {
+    if (sortBy === 'createdAt') {
+      const leftTime = new Date(left?.addedAt ?? 0).getTime();
+      const rightTime = new Date(right?.addedAt ?? 0).getTime();
+      if (leftTime !== rightTime) {
+        return sortDirection === 'asc' ? leftTime - rightTime : rightTime - leftTime;
+      }
+    }
+
     if (sortBy === 'followers') {
       const leftFollowers = getCreatorFollowersForSort(left);
       const rightFollowers = getCreatorFollowersForSort(right);

@@ -39,8 +39,8 @@ const parsePositiveInt = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const parseSortBy = (value: unknown): 'name' | 'followers' => {
-  return value === 'followers' ? 'followers' : 'name';
+const parseSortBy = (value: unknown): 'name' | 'followers' | 'createdAt' => {
+  return value === 'followers' || value === 'createdAt' ? value : 'name';
 };
 
 const parseSortDirection = (value: unknown): 'asc' | 'desc' => {

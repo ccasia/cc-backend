@@ -3345,6 +3345,10 @@ model CreatorDiscoveryProfile {
   engagementRateSavedAt DateTime?
   savedAt DateTime
   scrapedAt DateTime?
+  /// When this profile first joined Discovery. A re-scrape does not change it.
+  createdAt DateTime @default(now())
+  /// When Link Creator moved this scrape from a guest to a platform creator.
+  linkedAt DateTime?
   /// Durable, typed evidence. Independent of temporary extractions and manual values.
   scrapeDetails Json?
   /// Caption search without loading full post evidence for every candidate.
