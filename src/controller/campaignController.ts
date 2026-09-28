@@ -10801,7 +10801,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     }
 
     // Validate follower counts - max 10 billion (prevents 64-bit integer overflow)
-    const MAX_FOLLOWER_COUNT = 10_000_000_000;
+    // Same limit as guestCreateService: the INT columns cannot hold more.
+    const MAX_FOLLOWER_COUNT = 2_000_000_000;
     const manualFollowerCountByCreator = new Map<object, number>();
     const manualEngagementRateByCreator = new Map<object, string>();
     const manualProfileLinkByCreator = new Map<object, string>();
@@ -11030,6 +11031,16 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         // Present only for a row whose link passed receipt verification above.
         const verified = creator.profileLink ? verifiedByLink.get(creator.profileLink) : undefined;
 
+        // Whether the admin may type Followers and ER later. A confirmed
+        // fallback means the fetch already failed, so keep its reason. A new
+        // fetch, running or finished, owns the numbers again. `undefined`
+        // leaves the pitch as it is.
+        const metricsFailureCode: string | null | undefined = verified?.fallbackReason
+          ? verified.fallbackReason
+          : verified?.extraction
+            ? null
+            : undefined;
+
         // A scraped link names its own platform, and that reading beats the
         // dropdown: the link is what was actually measured. Without a link the
         // form still requires a choice, so this never falls back.
@@ -11172,6 +11183,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               // rows, connected data wins; otherwise use the parsed manual rate.
               ...(pitchEngagementRate !== undefined ? { engagementRate: pitchEngagementRate } : {}),
               ...(verified?.extraction?.kind === 'pending' ? { pendingExtractionId: verified.extraction.id } : {}),
+              ...(metricsFailureCode !== undefined ? { metricsFailureCode } : {}),
             },
           });
           savedPitchId = updatedPitch.id;
@@ -11206,6 +11218,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               // rows, connected data wins; otherwise use the parsed manual rate.
               ...(pitchEngagementRate !== undefined ? { engagementRate: pitchEngagementRate } : {}),
               ...(verified?.extraction?.kind === 'pending' ? { pendingExtractionId: verified.extraction.id } : {}),
+              ...(metricsFailureCode ? { metricsFailureCode } : {}),
               ...(hasComments ? { adminComments: creatorAdminComments, adminCommentedBy: userId } : {}),
             },
           });

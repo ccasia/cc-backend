@@ -49,6 +49,12 @@ const errorItemSchema = z.object({
 
 const NOT_FOUND = /not[_ -]?found|does not exist|USER_NOT_FOUND/i;
 
+/** The provider's "nothing to return" item: an empty tab, or a private account. */
+export const isNoItemsError = (item: unknown): boolean => {
+  const parsed = errorItemSchema.safeParse(item);
+  return parsed.success && parsed.data.error === 'no_items';
+};
+
 export function errorItemFailure(items: unknown[]): AdapterResult | null {
   for (const item of items) {
     const parsed = errorItemSchema.safeParse(item);
@@ -57,6 +63,9 @@ export function errorItemFailure(items: unknown[]): AdapterResult | null {
     const { error, errorDescription, errorMessage } = parsed.data;
     const detail = errorDescription ?? errorMessage ?? error;
     if (NOT_FOUND.test(error)) return fail('PROFILE_NOT_FOUND', detail);
+    if (error === 'no_items') {
+      return fail('PROVIDER_FAILURE', 'The provider returned no public posts for this account.');
+    }
     return fail('PROVIDER_FAILURE', `${error}: ${detail}`);
   }
   return null;

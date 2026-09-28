@@ -48,7 +48,7 @@ export interface PendingPitchApplyStore {
 const isEmptyMetric = (value: unknown): boolean =>
   value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
 
-async function assignCreditTier(
+export async function assignCreditTier(
   tx: PendingPitchApplyStore,
   userId: string,
   followerCount: number,
@@ -100,6 +100,7 @@ async function applyReadyToPitch(
       ...(writeFollowers ? { followerCount: String(followerCount) } : {}),
       ...(writeRate ? { engagementRate } : {}),
       pendingExtractionId: null,
+      metricsFailureCode: null,
     },
   });
   if (updated.count === 0) return;
@@ -165,11 +166,33 @@ async function applyFailureToPitch(
   pitch: any,
   extraction: any,
 ): Promise<void> {
+  // Too few posts for a rate, but the profile was read. Keep the follower
+  // count, so the admin only has to type the rate.
+  const fetchedFollowers: number | null =
+    extraction.status === 'INSUFFICIENT_DATA' && typeof extraction.resultFollowerCount === 'number'
+      ? extraction.resultFollowerCount
+      : null;
+  const writeFollowers = fetchedFollowers !== null && isEmptyMetric(pitch.followerCount);
+
   const updated = await tx.pitch.updateMany({
     where: { id: pitch.id, pendingExtractionId: extraction.id },
-    data: { pendingExtractionId: null },
+    data: {
+      pendingExtractionId: null,
+      // Kept on the pitch so the row can say why, and so an admin may type
+      // the numbers in. See updatePlatformCreatorMetrics.
+      metricsFailureCode: extraction.failureCode ?? extraction.status ?? 'FAILED',
+      ...(writeFollowers ? { followerCount: String(fetchedFollowers) } : {}),
+    },
   });
   if (updated.count === 0) return;
+
+  if (writeFollowers && fetchedFollowers !== null) {
+    await assignCreditTier(tx, pitch.userId, fetchedFollowers, pitch.selectedPlatform ?? extraction.platform);
+    await tx.shortListedCreator.updateMany({
+      where: { userId: pitch.userId, campaignId: pitch.campaignId },
+      data: { followerCount: fetchedFollowers },
+    });
+  }
 
   await tx.guestCreatorMetricAudit.create({
     data: {
@@ -179,10 +202,10 @@ async function applyFailureToPitch(
       canonicalProfileKey: extraction.canonicalProfileKey ?? null,
       platform: pitch.selectedPlatform ?? extraction.platform ?? null,
       originalName: null,
-      originalFollowerCount: null,
+      originalFollowerCount: fetchedFollowers,
       originalEngagementRate: null,
       finalName: pitch.user?.name ?? null,
-      finalFollowerCount: null,
+      finalFollowerCount: writeFollowers ? fetchedFollowers : parseStoredFollowerCount(pitch.followerCount),
       finalEngagementRate: null,
       source: 'unavailable',
       overrideReason: extraction.failureCode
@@ -246,10 +269,13 @@ export async function applyExtractionToPendingPitches(
   return false;
 }
 
-/** Prisma Client was generated before Pitch.pendingExtractionId existed. */
+/** Prisma Client was generated before Pitch.pendingExtractionId or metricsFailureCode existed. */
 export function isStalePendingExtractionClient(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes('Unknown argument `pendingExtractionId`');
+  return (
+    message.includes('Unknown argument `pendingExtractionId`') ||
+    message.includes('Unknown argument `metricsFailureCode`')
+  );
 }
 
 /**

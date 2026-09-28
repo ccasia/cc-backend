@@ -503,12 +503,20 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
       data: {
         ...common,
         status: 'INSUFFICIENT_DATA',
+        // The profile was read even though the posts were not enough. The
+        // admin still gets the name and follower count, and types the rate.
+        resultName: parsed.profile.displayName ?? parsed.profile.username,
+        resultFollowerCount: parsed.profile.followerCount,
         sampleSize: sample.validCount,
         unverifiedFlags: policy.unverifiedFlags,
         // Kept on purpose. This is the evidence for why ten were not found.
         candidatePosts: policy.evaluated,
         failureCode: 'INSUFFICIENT_DATA',
-        failureMessage: `Only ${sample.validCount} of the required ${sample.required} valid posts were found.`,
+        // The per-post reasons are in candidatePosts[].rejectedReason.
+        failureMessage:
+          record.platform === 'instagram'
+            ? `Only ${sample.validCount} of the ${sample.required} usable Reels needed were found. A Reel is left out when its likes are hidden, or when it is a paid partnership, pinned, or a collab posted by another account.`
+            : `Only ${sample.validCount} of the ${sample.required} usable videos needed were found. A video is left out when its likes are hidden, or when it is an ad, pinned, or a repost.`,
       },
     });
     return;
