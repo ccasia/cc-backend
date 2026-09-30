@@ -41,11 +41,6 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
   const daysElapsed = Math.max(0, daysBetween(startDate, now > endDate ? endDate : now));
   const daysRemaining = Math.max(0, daysBetween(now, endDate));
 
-  // DB fallback: aggregate InsightSnapshots
-  const snapshots = await prisma.insightSnapshot.findMany({
-    where: { campaignId },
-  });
-
   const dailyPostSnapshots = await prisma.dailyPostEngagementSnapshot.findMany({
     where: { campaignId },
     orderBy: {
@@ -71,15 +66,6 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
     ? +(consolidatedData.reduce((s, r) => s + r.engagementRate, 0) / consolidatedData.length).toFixed(2)
     : null;
 
-  // const dbViews = snapshots.reduce((s, r) => s + r.totalViews, 0);
-  // const dbLikes = snapshots.reduce((s, r) => s + r.totalLikes, 0);
-  // const dbComments = snapshots.reduce((s, r) => s + r.totalComments, 0);
-  // const dbShares = snapshots.reduce((s, r) => s + r.totalShares, 0);
-  // const dbEngagements = dbLikes + dbComments + dbShares;
-  // const dbEngRate = snapshots.length
-  //   ? +(snapshots.reduce((s, r) => s + r.averageEngagementRate, 0) / snapshots.length).toFixed(2)
-  //   : null;
-
   const postCount = await prisma.submissionPostingUrl.count({ where: { campaignId } });
 
   // Merge: external overrides DB when present
@@ -90,15 +76,6 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
   const shares = dbShares;
   const likes = dbLikes;
   const comments = dbComments;
-
-  // const totalEngagements = ext?.totalEngagements ?? dbEngagements;
-  // const engagementRate = ext?.engagementRate ?? dbEngRate;
-  // const reach = ext?.reach ?? null;
-  // const impressions = ext?.impressions ?? null;
-  // const roas = ext?.roas ?? null;
-  // const shares = ext?.totalShares ?? dbShares;
-  // const likes = ext?.totalLikes ?? dbLikes;
-  // const comments = ext?.totalComments ?? dbComments;
 
   return {
     // Meta
@@ -147,11 +124,7 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
 // ── Section 2: Engagement & Interactions ─────────────────────────────────────
 
 async function collectEngagementData(campaignId: string, ext?: ExternalMetrics['engagement']) {
-  const [snapshots, brief, shortlisted, postUrls] = await Promise.all([
-    prisma.insightSnapshot.findMany({
-      where: { campaignId },
-      orderBy: { snapshotDate: 'asc' },
-    }),
+  const [brief, shortlisted, dailySnapshots, manualEntries] = await Promise.all([
     prisma.campaignBrief.findUnique({
       where: { campaignId },
       select: { postingStartDate: true, postingEndDate: true },
@@ -170,172 +143,326 @@ async function collectEngagementData(campaignId: string, ext?: ExternalMetrics['
         },
       },
     }),
-    prisma.submissionPostingUrl.findMany({
+    prisma.dailyPostEngagementSnapshot.findMany({
       where: { campaignId },
-      select: { platform: true },
+      select: {
+        engagementRate: true,
+        userId: true,
+        snapshotDate: true,
+        platform: true,
+      },
+      orderBy: {
+        snapshotDate: 'desc',
+      },
+      distinct: ['userId'],
+    }),
+    prisma.manualCreatorEntry.findMany({
+      where: {
+        campaignId: campaignId,
+      },
     }),
   ]);
 
-  // Build weekly engagement — prefer external weekly data if provided
-  const dbWeekly = snapshots.map((s, i) => ({
-    week: `Week ${i + 1}`,
-    date: fmt(s.snapshotDate),
-    views: s.totalViews,
-    likes: s.totalLikes,
-    comments: s.totalComments,
-    shares: s.totalShares,
-    engagement: s.totalLikes + s.totalComments + s.totalShares,
-    engRate: +s.averageEngagementRate.toFixed(2),
-  }));
+  const consolidatedData = [...dailySnapshots, ...manualEntries];
 
-  // Normalise both sources to a consistent shape
-  interface WeeklyEngagementEntry {
-    week: string;
-    date: string;
-    views: number;
-    likes: number;
-    comments: number;
-    shares: number;
-    engagement: number;
-    engRate: number;
-  }
-
-  const weeklyEngagement: WeeklyEngagementEntry[] = ext?.weeklyEngagement
-    ? ext.weeklyEngagement.map((w) => ({
-        week: w.week,
-        date: w.week,
-        views: w.views,
-        likes: 0,
-        comments: 0,
-        shares: 0,
-        engagement: w.engagement,
-        engRate: 0,
-      }))
-    : dbWeekly;
-
-  // Total engagement
-  const dbTotal = dbWeekly.reduce((s, w) => s + w.engagement, 0);
-  const totalEngagement = ext?.totalEngagement ?? dbTotal;
-
-  // Peak period
-  const peakEntry = dbWeekly.length
-    ? dbWeekly.reduce((best, w) => (w.engagement > best.engagement ? w : best), dbWeekly[0])
+  const dbEngRate = consolidatedData.length
+    ? +(consolidatedData.reduce((s, r) => s + r.engagementRate, 0) / consolidatedData.length).toFixed(2)
     : null;
-  const peakPeriod = ext?.peakWeek ?? peakEntry?.week ?? 'N/A';
-  const peakEngagement = ext?.peakEngagement ?? peakEntry?.engagement ?? 0;
 
-  // Platform breakdown — merge DB post counts with external engagement
-  const dbPlatformMap: Record<string, number> = {};
-  for (const p of postUrls) {
-    dbPlatformMap[p.platform] = (dbPlatformMap[p.platform] ?? 0) + 1;
-  }
-
-  const platformBreakdown =
-    ext?.platformBreakdown ??
-    Object.entries(dbPlatformMap).map(([platform, posts]) => ({
-      platform,
-      posts,
-      engagement: 0,
-    }));
-
-  // Top creators — merge DB social stats with external per-creator metrics
-  const extCreatorMap = new Map((ext?.creatorMetrics ?? []).map((c) => [c.userId, c]));
-
-  const topCreators = shortlisted
-    .map((s) => {
-      const userId = s.user?.id ?? '';
-      const extData = extCreatorMap.get(userId);
-      const tiktok = s.user?.creator?.tiktokUser;
-      const instagram = s.user?.creator?.instagramUser;
-      const platform = extData?.platform ?? (tiktok ? 'TikTok' : instagram ? 'Instagram' : 'Unknown');
+  const creatorEngagementLeaderboard = dailySnapshots
+    .map((snapshot) => {
+      const user = shortlisted.find((s) => s.userId === snapshot.userId);
+      const platform = snapshot.platform;
+      const userName =
+        platform === 'tiktok'
+          ? user?.user?.creator?.tiktokUser?.username
+          : user?.user?.creator?.instagramUser?.username;
 
       return {
-        name: s.user?.name ?? 'Unknown',
-        platform,
-        engagementRate: extData?.engagementRate ?? tiktok?.engagement_rate ?? instagram?.engagement_rate ?? null,
-        followers: extData?.followers ?? tiktok?.follower_count ?? instagram?.followers_count ?? null,
-        views: extData?.views ?? 0,
-        likes: extData?.likes ?? tiktok?.totalLikes ?? instagram?.totalLikes ?? 0,
-        comments: extData?.comments ?? tiktok?.totalComments ?? instagram?.totalComments ?? 0,
-        ugcVideos: s.ugcVideos ?? null,
-        _source: extData ? 'external' : 'db',
+        userId: snapshot.userId,
+        // name: shortlisted.find((s) => s.userId === snapshot.userId)?.user?.name ?? 'Unknown',
+        engagementRate: +snapshot.engagementRate.toFixed(2),
+        platform: shortlisted.find((s) => s.userId === snapshot.userId)?.selectedPlatform,
+        userName: userName ?? 'Unknown',
+        snapshotDate: fmt(snapshot.snapshotDate),
       };
     })
-    .sort((a, b) => (b.engagementRate ?? 0) - (a.engagementRate ?? 0))
-    .slice(0, 5);
+    .sort((a, b) => b.engagementRate - a.engagementRate)
+    .map((entry, index) => ({ rank: index + 1, ...entry }));
 
   return {
-    totalEngagement,
-    peakPeriod,
-    peakEngagement,
     postingStartDate: fmt(brief?.postingStartDate),
     postingEndDate: fmt(brief?.postingEndDate),
-    platformBreakdown,
-    topCreators,
-    weeklyEngagement,
+    creatorEngagementLeaderboard,
+    engagementRate: dbEngRate,
   };
 }
 
 // ── Section 3: Views Analysis ─────────────────────────────────────────────────
 
+// How many creators to list in each Views Analysis leaderboard.
+const TOP_VIEWS_COUNT = 5;
+
 async function collectViewsData(campaignId: string, ext?: ExternalMetrics['views']) {
-  const snapshots = await prisma.insightSnapshot.findMany({
-    where: { campaignId },
-    orderBy: { snapshotDate: 'asc' },
-  });
+  const [brief, shortlisted, dailySnapshots, manualEntries, day2Snapshots] = await Promise.all([
+    prisma.campaignBrief.findUnique({
+      where: { campaignId },
+      select: { postingStartDate: true, postingEndDate: true },
+    }),
+    prisma.shortListedCreator.findMany({
+      where: { campaignId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            creator: {
+              include: { tiktokUser: true, instagramUser: true },
+            },
+          },
+        },
+      },
+    }),
+    prisma.dailyPostEngagementSnapshot.findMany({
+      where: { campaignId },
+      select: {
+        engagementRate: true,
+        userId: true,
+        snapshotDate: true,
+        platform: true,
+        likes: true,
+        comments: true,
+        saved: true,
+        shares: true,
+        views: true,
+      },
+      orderBy: {
+        snapshotDate: 'desc',
+      },
+      distinct: ['userId'],
+    }),
+    prisma.manualCreatorEntry.findMany({
+      where: {
+        campaignId: campaignId,
+      },
+    }),
+    // The 48h-after-posting reading: daysSincePost is whole days since that post's own postDate,
+    // so daysSincePost: 2 is each post's day-2 snapshot regardless of when it was actually posted.
+    // Manual entries have no such series (one static number, not a dated snapshot) so they're
+    // excluded from this ranking — only the "current views" one below includes them.
+    prisma.dailyPostEngagementSnapshot.findMany({
+      where: { campaignId, daysSincePost: 2 },
+      select: { userId: true, views: true, platform: true },
+      orderBy: { views: 'desc' },
+      distinct: ['userId'],
+    }),
+  ]);
 
-  const dbWeekly = snapshots.map((s, i) => ({
-    label: `Week ${i + 1}`,
-    date: fmt(s.snapshotDate),
-    views: s.totalViews,
-  }));
+  const shortlistedByUserId = new Map(shortlisted.map((s) => [s.userId, s]));
 
-  // Normalise both sources to { label, date, views } so the type is always consistent
-  interface WeeklyViewEntry {
-    label: string;
-    date: string;
-    views: number;
-  }
+  // Single source of truth for creator name/username so the day-2 ranking below can't drift
+  // from structedJoinedData's platform-casing handling ('TikTok'/'Instagram', not lowercase).
+  const resolveCreatorDisplay = (userId: string, platform: string) => {
+    const creator = shortlistedByUserId.get(userId);
+    return {
+      name: creator?.user?.name ?? 'Unknown',
+      username:
+        (platform === 'TikTok'
+          ? creator?.user?.creator?.tiktokUser?.username
+          : creator?.user?.creator?.instagramUser?.username) ?? null,
+    };
+  };
 
-  const weeklyViews: WeeklyViewEntry[] = ext?.weeklyViews
-    ? ext.weeklyViews.map((w) => ({ label: w.week, date: w.week, views: w.views }))
-    : dbWeekly;
+  const structedJoinedData = [
+    ...dailySnapshots.map((item) => ({
+      userId: item.userId as string | undefined,
+      likes: item.likes,
+      comments: item.comments,
+      shares: item.shares,
+      saved: item.saved,
+      views: item.views,
+      platform: item.platform,
+      snapshotDate: item.snapshotDate,
+      ...resolveCreatorDisplay(item.userId, item.platform),
+    })),
+    // Manual entries have no userId (there's no real creator account behind them), so they never
+    // match a day-2 row below — matches how they're already excluded from topViews48hCreators.
+    ...manualEntries.map((item) => ({
+      userId: undefined as string | undefined,
+      likes: item.likes,
+      comments: item.comments,
+      shares: item.shares,
+      saved: item.saved,
+      views: item.views,
+      platform: item.platform,
+      name: item.creatorName,
+      snapshotDate: item.createdAt,
+      username: item.creatorUsername,
+    })),
+  ];
 
-  const allViews = weeklyViews.map((w) => w.views);
-  const totalViews = ext?.totalViews ?? allViews.reduce((s, v) => s + v, 0);
-  const peakViews = ext?.peakViews ?? Math.max(...(allViews.length ? allViews : [0]));
-  const lowestViews = Math.min(...(allViews.length ? allViews : [0]));
+  // Top creators by current (most recently captured) views.
+  const topViewsCreators = [...structedJoinedData].sort((a, b) => b.views - a.views).slice(0, TOP_VIEWS_COUNT);
 
-  // Find peak week label
-  const peakIdx = allViews.indexOf(peakViews);
-  const peakWeek = ext?.peakWeek ?? (peakIdx >= 0 ? weeklyViews[peakIdx]?.label : 'N/A');
+  // Top creators by views specifically at the 48h mark, not their latest/current views.
+  const topViews48hCreators = day2Snapshots
+    .sort((a, b) => b.views - a.views)
+    .slice(0, TOP_VIEWS_COUNT)
+    .map(({ userId, views, platform }) => ({
+      views,
+      platform,
+      ...resolveCreatorDisplay(userId, platform),
+    }));
 
-  // Growth trend
-  let growthTrend = 'stable';
-  if (weeklyViews.length >= 4) {
-    const mid = Math.floor(weeklyViews.length / 2);
-    const firstHalf = allViews.slice(0, mid).reduce((s, v) => s + v, 0) / mid;
-    const secondHalf = allViews.slice(mid).reduce((s, v) => s + v, 0) / (weeklyViews.length - mid);
-    const diff = ((secondHalf - firstHalf) / (firstHalf || 1)) * 100;
+  // What share of the top creators' own views had already landed within 48h of posting — each
+  // top creator's day-2 reading matched to THEM by userId, not the (possibly different) set of
+  // creators in topViews48hCreators above, which is its own independent ranking.
+  const day2ViewsByUserId = new Map(day2Snapshots.map((s) => [s.userId, s.views]));
+  const topViewsTotal = topViewsCreators.reduce((sum, c) => sum + c.views, 0);
+  const topViewsEarly48hTotal = topViewsCreators.reduce(
+    (sum, c) => sum + (c.userId ? (day2ViewsByUserId.get(c.userId) ?? 0) : 0),
+    0,
+  );
+  const earlyViewsPercent = topViewsTotal ? +((topViewsEarly48hTotal / topViewsTotal) * 100).toFixed(1) : null;
 
-    if (peakIdx > 0 && peakIdx < weeklyViews.length - 1) growthTrend = 'peaked_mid_campaign';
-    else if (diff > 10) growthTrend = 'increasing';
-    else if (diff < -10) growthTrend = 'decreasing';
-  }
+  // Campaign-wide view totals per platform (not just the top creators), to say which platform
+  // is actually carrying the campaign's reach.
+  const viewsByPlatform = Object.entries(
+    structedJoinedData.reduce<Record<string, number>>((acc, item) => {
+      acc[item.platform] = (acc[item.platform] ?? 0) + item.views;
+      return acc;
+    }, {}),
+  ).map(([platform, views]) => ({ platform, views }));
+  const totalViewsAllPlatforms = viewsByPlatform.reduce((sum, p) => sum + p.views, 0);
+  const viewsByPlatformRanked = viewsByPlatform
+    .map((p) => ({
+      ...p,
+      viewShare: totalViewsAllPlatforms ? +((p.views / totalViewsAllPlatforms) * 100).toFixed(1) : 0,
+    }))
+    .sort((a, b) => b.views - a.views);
 
   return {
-    totalViews,
-    peakWeek,
-    peakViews,
-    lowestViews,
-    viewRange: `${(lowestViews / 1000).toFixed(0)}K – ${(peakViews / 1000).toFixed(0)}K`,
-    growthTrend,
-    weeklyViews,
-    _source: ext?.totalViews != null ? 'external' : 'db',
+    postingStartDate: fmt(brief?.postingStartDate),
+    postingEndDate: fmt(brief?.postingEndDate),
+    topViewsCreators,
+    topViews48hCreators,
+    earlyViewsPercent,
+    viewsByPlatform: viewsByPlatformRanked,
   };
 }
 
-// ── Section 4: Audience Sentiment ────────────────────────────────────────────
+// ── Section 4: Platform Breakdown ────────────────────────────────────────────
+
+async function collectPlatformBreakdownData(campaignId: string, ext?: ExternalMetrics['engagement']) {
+  const [brief, shortlisted, dailySnapshots, manualEntries] = await Promise.all([
+    prisma.campaignBrief.findUnique({
+      where: { campaignId },
+      select: { postingStartDate: true, postingEndDate: true },
+    }),
+    prisma.shortListedCreator.findMany({
+      where: { campaignId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            creator: {
+              include: { tiktokUser: true, instagramUser: true },
+            },
+          },
+        },
+      },
+    }),
+    prisma.dailyPostEngagementSnapshot.findMany({
+      where: { campaignId },
+      select: {
+        engagementRate: true,
+        userId: true,
+        snapshotDate: true,
+        platform: true,
+        likes: true,
+        comments: true,
+        saved: true,
+        shares: true,
+        views: true,
+      },
+      orderBy: {
+        snapshotDate: 'desc',
+      },
+      distinct: ['userId'],
+    }),
+    prisma.manualCreatorEntry.findMany({
+      where: {
+        campaignId: campaignId,
+      },
+    }),
+  ]);
+
+  const shortlistedByUserId = new Map(shortlisted.map((s) => [s.userId, s]));
+
+  const structedJoinedData = [
+    ...dailySnapshots.map((item) => {
+      const creator = shortlistedByUserId.get(item.userId);
+      const username =
+        item.platform === 'TikTok'
+          ? creator?.user?.creator?.tiktokUser?.username
+          : creator?.user?.creator?.instagramUser?.username;
+
+      return {
+        likes: item.likes,
+        comments: item.comments,
+        shares: item.shares,
+        saved: item.saved,
+        views: item.views,
+        platform: item.platform,
+        name: creator?.user?.name,
+        username,
+      };
+    }),
+    ...manualEntries.map((item) => ({
+      likes: item.likes,
+      comments: item.comments,
+      shares: item.shares,
+      saved: item.saved,
+      views: item.views,
+      platform: item.platform,
+      name: item.creatorName,
+      username: item.creatorUsername,
+    })),
+  ];
+
+  const totalInteractions = structedJoinedData.reduce(
+    (a, s) => a + s.comments + s.likes + (s.saved ?? 0) + s.shares,
+    0,
+  );
+
+  const platformsInteraction = structedJoinedData.reduce<Record<string, number>>((a, s) => {
+    const platform = s.platform;
+
+    a[platform] = (a[platform] ?? 0) + s.likes + s.comments + (s.saved ?? 0) + s.shares;
+
+    return a;
+  }, {});
+
+  const getTopUser = (type: 'likes' | 'shares') =>
+    structedJoinedData.length
+      ? structedJoinedData.reduce((best, entry) => (entry[type] > best[type] ? entry : best))
+      : null;
+
+  const topLikes = getTopUser('likes');
+  const topShares = getTopUser('shares');
+
+  return {
+    postingStartDate: fmt(brief?.postingStartDate),
+    postingEndDate: fmt(brief?.postingEndDate),
+    totalInteractions,
+    platformsInteraction,
+    topLikes,
+    topShares,
+  };
+}
+
+// ── Section 5: Audience Sentiment ────────────────────────────────────────────
 
 async function collectSentimentData(campaignId: string, ext?: ExternalMetrics['sentiment']) {
   const submissions = await prisma.submission.findMany({
@@ -413,7 +540,7 @@ async function collectSentimentData(campaignId: string, ext?: ExternalMetrics['s
   };
 }
 
-// ── Section 5: Top Creator Personas ──────────────────────────────────────────
+// ── Section 6: Top Creator Personas ──────────────────────────────────────────
 
 async function collectTopCreatorPersonas(campaignId: string, ext?: ExternalMetrics['creators']) {
   const shortlisted = await prisma.shortListedCreator.findMany({
@@ -519,7 +646,7 @@ async function collectTopCreatorPersonas(campaignId: string, ext?: ExternalMetri
   return { consolidatedData };
 }
 
-// ── Section 6: Recommendations ────────────────────────────────────────────────
+// ── Section 7: Recommendations ────────────────────────────────────────────────
 // No additional collection — receives all other sections as context
 
 async function collectRecommendationsContext(allSectionData: Record<string, unknown>) {
@@ -543,6 +670,8 @@ export async function collectSectionData(
       return collectEngagementData(campaignId, ext?.engagement);
     case 'views_analysis':
       return collectViewsData(campaignId, ext?.views);
+    case 'platform_breakdown':
+      return collectPlatformBreakdownData(campaignId, ext?.engagement);
     case 'audience_sentiment':
       return collectSentimentData(campaignId, ext?.sentiment);
     case 'top_creator_personas':
@@ -553,3 +682,11 @@ export async function collectSectionData(
       throw new Error(`Unknown section: ${section}`);
   }
 }
+
+async function main() {
+  const res = await collectViewsData('cmjcdy6k203tnp301pqw0rqq2');
+
+  // console.log(res);
+}
+
+// main().then(() => console.log('DONE ✨'));

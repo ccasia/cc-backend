@@ -405,7 +405,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    //console.log('Client disconnected:', socket.id);
     clients.forEach((value, key) => {
       if (value === socket.id) {
         clients.delete(key);
@@ -436,21 +435,16 @@ queueEvents.on('progress', ({ data }) => {
     etaSeconds: number;
   };
 
-  // getIo()
-  //   .to(`upload:${uploadSessionId}`)
-  //   .emit('compression:progress', { submissionId, progress, uploadSessionId, etaSeconds });
-
   getIo().emit('compression:progress', { submissionId, progress, uploadSessionId, etaSeconds });
 });
 
 queueEvents.on('completed', ({ returnvalue }) => {
+  console.log(returnvalue);
   const { submissionId, uploadSessionId, video } = returnvalue as unknown as {
     submissionId: string;
     uploadSessionId: string;
     video: Video;
   };
-
-  // getIo().to(`upload:${uploadSessionId}`).emit('status', { status: 'completed', submissionId, progress: 100, video });
 
   getIo().emit('status', { submissionId, progress: 100, video });
 });

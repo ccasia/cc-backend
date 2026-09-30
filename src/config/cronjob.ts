@@ -73,7 +73,6 @@ new CronJob(
 
     // Remind creator about due date
     const submissions = await prisma.submission.findMany({ include: { submissionType: true, campaign: true } });
-    const dueDatesObject: any = notifications.level2.medium.find((item) => item.key === 'dueDates');
 
     submissions.map(async (submission) => {
       const startTrigger = dayjs(submission.dueDate).subtract(2, 'day');
@@ -273,20 +272,6 @@ new CronJob(
   true, // start
   'Asia/Kuala_Lumpur',
 );
-
-// new CronJob(
-//   '0 2 * * *', // 02:00 AM daily
-//   async function () {
-//     try {
-//       await runCreditDriftCheck();
-//     } catch (error) {
-//       console.error('[Cronjob] Credit drift check failed:', error);
-//     }
-//   },
-//   null, // onComplete
-//   true, // start
-//   'Asia/Kuala_Lumpur',
-// );
 
 new CronJob(
   '30 0 1 * *',

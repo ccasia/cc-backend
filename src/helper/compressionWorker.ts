@@ -87,7 +87,7 @@ const worker = new Worker(
       //   submissionType: submission.submissionType?.type,
       // });
 
-      return uploadSessionId;
+      // return uploadSessionId;
       return { uploadSessionId, progress: 100, submissionId, video: video, caption: newSubmission.caption };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -96,6 +96,53 @@ export const createNewSpreadSheet = async ({ title }: { title: string }) => {
   }
 };
 
+/**
+ * Creates a brand-new spreadsheet with one sheet already titled, headered and filled —
+ * for a one-off export where there's no existing spreadsheet to write into.
+ * Returns both the URL (to hand back to whoever ran the export) and the raw ID (to write more
+ * rows into it later without creating another spreadsheet).
+ */
+export const createSpreadSheetWithData = async ({
+  title,
+  sheetTitle,
+  headerRow,
+  rows,
+  shareWithEmail = 'afiq@cultcreative.asia',
+}: {
+  title: string;
+  sheetTitle: string;
+  headerRow: string[];
+  rows: (string | number)[][];
+  shareWithEmail?: string;
+}) => {
+  try {
+    const { GoogleSpreadsheet } = await import('google-spreadsheet');
+    const serviceAccountAuth = new JWT({
+      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      key: process.env.GOOGLE_PRIVATE_KEY,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'],
+    });
+
+    const doc = await GoogleSpreadsheet.createNewSpreadsheetDocument(serviceAccountAuth, { title: title || 'Default' });
+
+    // Rename the sheet google-spreadsheet creates by default, rather than leaving a "Sheet1"
+    // tab alongside a second one we add — one sheet, already named and populated.
+    const sheet = doc.sheetsByIndex[0];
+    await sheet.updateProperties({ title: sheetTitle });
+    await sheet.setHeaderRow(headerRow);
+    if (rows.length) await sheet.addRows(rows as any);
+
+    await doc.share(shareWithEmail);
+
+    return {
+      url: `https://docs.google.com/spreadsheets/d/${doc.spreadsheetId}/`,
+      spreadSheetId: doc.spreadsheetId,
+    };
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+
 export const createNewBugRowData = async ({
   spreadSheetId,
   sheetByTitle,
