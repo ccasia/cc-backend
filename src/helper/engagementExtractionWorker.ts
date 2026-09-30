@@ -10,7 +10,7 @@ import { Worker } from 'bullmq';
 
 import connection from '@configs/redis';
 import { loadExtractionConfig } from '@configs/guestProfileExtractionConfig';
-import { createApifyGateway } from '@services/guestProfileExtraction/apifyGateway';
+import { createBrightDataGateway } from '@services/guestProfileExtraction/brightDataGateway';
 import {
   cleanupExpiredExtractions,
   getExtractionHealth,
@@ -30,7 +30,8 @@ import { prisma } from '@/src/prisma/prisma';
  *   yarn run-engagement-worker
  *
  * It is deliberately separate from the invoice worker and runs at low
- * concurrency, because every job here can spend money.
+ * concurrency, because every job here can spend money. Each extraction holds a
+ * slot for up to BRIGHTDATA_POLL_TIMEOUT_SECONDS while Bright Data works.
  */
 
 const RECONCILE_INTERVAL_MS = 5 * 60_000;
@@ -40,7 +41,7 @@ const config = loadExtractionConfig();
 
 const deps: ExtractionDeps = {
   store: prisma as never,
-  gateway: createApifyGateway(config),
+  gateway: createBrightDataGateway(config),
   config,
   // One durable work record, one job. A finished job under the same ID is
   // cleared first, or reconciliation could never requeue anything.
@@ -73,20 +74,34 @@ worker.on('failed', (job, error) => {
 });
 
 worker.on('ready', () => {
-  // The resolved actors are logged because they are the one setting that can
-  // be silently wrong: Docker bakes `env_file` at container creation, so a
-  // restarted container can hold an actor ID the code no longer speaks to,
-  // and the run then fails on input validation rather than on the actor name.
+  // The datasets and contract versions are logged so a stale container is
+  // easy to spot: Docker bakes `env_file` at container creation, so a
+  // restarted (not recreated) container can run an older build. Never the token.
+  const describe = (platform: 'instagram' | 'tiktok') => {
+    const { posts, profile, contractVersion } = config.scrapers[platform];
+    return `${contractVersion} posts=${posts.datasetId}${posts.discoverBy ? `(${posts.discoverBy})` : ''} profile=${profile.datasetId}`;
+  };
   console.log(`[engagement-worker] ready, concurrency ${config.workerConcurrency}`, {
-    instagram: `${config.actors.instagram.actorId}@${config.actors.instagram.build}`,
-    tiktok: `${config.actors.tiktok.actorId}@${config.actors.tiktok.build}`,
+    instagram: describe('instagram'),
+    tiktok: describe('tiktok'),
+    pollTimeoutSeconds: config.pollTimeoutSeconds,
+    maxPostsPerProfile: config.maxPostsPerProfile,
   });
 });
 
 /** Recover work the previous process left behind. */
+let reconciling = false;
+
 async function reconcileNow(): Promise<void> {
+  // A slow pass must never overlap the next one: two passes would double the
+  // requests to Bright Data and could match the same row twice.
+  if (reconciling) return;
+  reconciling = true;
   try {
     const report = await reconcileExtractions(deps);
+    if (report.rateLimited) {
+      console.error('[engagement-worker] ALERT Bright Data answered 429 during reconciliation; paused until next pass');
+    }
     if (report.exhausted.length > 0) {
       console.error('[engagement-worker] ALERT reconciliation gave up on:', report.exhausted.join(', '));
       for (const extractionId of report.exhausted) {
@@ -105,6 +120,8 @@ async function reconcileNow(): Promise<void> {
     }
   } catch (error) {
     console.error('[engagement-worker] ALERT reconciliation failed:', (error as Error)?.message);
+  } finally {
+    reconciling = false;
   }
 }
 

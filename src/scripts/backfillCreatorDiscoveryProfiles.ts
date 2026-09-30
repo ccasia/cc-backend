@@ -3,7 +3,7 @@ import { Creator } from '@prisma/client';
 import { prisma } from '../prisma/prisma';
 import { saveDiscoveryProfile } from '../service/creatorDiscoveryProfileService';
 
-/** Repeatable. Reads saved audits and platform-specific manual fields; never calls Apify. */
+/** Repeatable. Reads saved audits and platform-specific manual fields; never calls a scraper. */
 export async function backfillCreatorDiscoveryProfiles() {
   let cursor: string | undefined;
   let auditCount = 0;

@@ -10861,7 +10861,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     /**
      * Verify anything that claims to have been scraped.
      *
-     * A row carrying a profile link went through an Apify run, so its metrics
+     * A row carrying a profile link went through a Bright Data scrape, so its metrics
      * must be provable rather than merely typed. They run through the same
      * single-use receipt check the guest flow uses, so one standard covers
      * both. A row with no link never enters this block, which keeps the

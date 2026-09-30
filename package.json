@@ -28,9 +28,9 @@
     "seed-gamification": "npx tsx prisma/seedGamification.ts",
     "seed-leaderboard": "npx tsx src/scripts/snapshotLeaderboard.ts",
     "backfill-guest-keys": "npx tsx src/scripts/backfillGuestProfileKeys.ts",
+    "certify-brightdata": "npx tsx src/scripts/certifyBrightData.ts",
     "run-engagement-worker": "npx tsx src/helper/engagementExtractionWorker",
     "backfill-discovery-profiles": "ts-node -r tsconfig-paths/register src/scripts/backfillCreatorDiscoveryProfiles.ts",
-    "backfill-discovery-media": "ts-node -r tsconfig-paths/register src/scripts/backfillDiscoveryMedia.ts",
     "verify-discovery-profiles": "ts-node -r tsconfig-paths/register src/scripts/verifyDiscoveryProfileLifecycle.ts",
     "check-discovery-samples": "ts-node -r tsconfig-paths/register src/scripts/checkDiscoveryProfiles.ts"
   },
@@ -49,7 +49,6 @@
     "@socket.io/redis-emitter": "^5.1.0",
     "@types/bcryptjs": "^2.4.6",
     "amqplib": "^0.10.4",
-    "apify-client": "^2.25.0",
     "apple-signin-auth": "^2.0.0",
     "axios": "^1.7.7",
     "bcrypt": "^5.1.1",

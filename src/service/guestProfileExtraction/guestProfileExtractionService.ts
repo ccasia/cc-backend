@@ -1,18 +1,23 @@
 import crypto from 'crypto';
 
-import { buildActorInput, needsProfileRun, type ExtractionConfig } from '@configs/guestProfileExtractionConfig';
+import {
+  buildJobInput,
+  buildTopUpInput,
+  topUpBatchSize,
+  type ExtractionConfig,
+} from '@configs/guestProfileExtractionConfig';
 import type {
   AdapterResult,
   CanonicalProfile,
   MetricBaseline,
   SupportedPlatform,
 } from '@/src/types/guestProfileExtraction';
-import { parseInstagramActorOutput } from './actorAdapters/instagramActorAdapter';
-import { parseTiktokActorOutput } from './actorAdapters/tiktokActorAdapter';
-import type { ApifyGateway, RunSnapshot } from './apifyGateway';
+import { RateLimitedError, type JobSnapshot, type ScraperGateway } from './brightDataGateway';
 import { computeEngagementRate, formatEngagementRatePercent } from './engagementRateCalculator';
 import { createReceiptNonce, digestResult } from './extractionReceiptService';
 import { normalizeProfileUrl } from './profileUrlNormalizer';
+import { parseInstagramOutput } from './scraperAdapters/instagramAdapter';
+import { parseTiktokOutput } from './scraperAdapters/tiktokAdapter';
 import { applyValidPostPolicy, markSampleInCandidates, selectSample } from './validPostPolicy';
 
 /**
@@ -21,12 +26,11 @@ import { applyValidPostPolicy, markSampleInCandidates, selectSample } from './va
  * The order is fixed and the tests hold it in place:
  *  1. Persist the extraction row.
  *  2. Enqueue the job.
- *  3. Persist the Apify run ID.
- *  4. Poll.
+ *  3. Persist the Bright Data snapshot ID (posts job, then profile job).
+ *  4. Poll, until `pollTimeoutSeconds`; a job past the deadline is canceled.
  *
  * An ambiguous start becomes REQUIRES_RECONCILIATION. It never starts a second
- * paid run. Strict one-run behaviour is not claimed until actor certification
- * proves it.
+ * paid job. A 429 is a definite failure and is never retried automatically.
  */
 
 /** Only the delegates this service uses, so a test can supply a small fake. */
@@ -47,7 +51,7 @@ export interface ExtractionStore {
 
 export interface ExtractionDeps {
   store: ExtractionStore;
-  gateway: ApifyGateway;
+  gateway: ScraperGateway;
   config: ExtractionConfig;
   enqueue(extractionId: string): Promise<void>;
   now?(): Date;
@@ -60,10 +64,17 @@ export interface ExtractionDeps {
 export const ACTIVE_STATUSES = ['QUEUED', 'RUNNING', 'POLLING'] as const;
 export const TERMINAL_STATUSES = ['READY', 'INSUFFICIENT_DATA', 'FAILED', 'CANCELLED', 'STALE'] as const;
 
-const MAX_POLL_ATTEMPTS = 12;
-const BASE_POLL_DELAY_MS = 1_000;
-const MAX_POLL_DELAY_MS = 8_000;
+/** Discovery jobs take 1-7 minutes, so the delay grows to 15 seconds. */
+const BASE_POLL_DELAY_MS = 2_000;
+const MAX_POLL_DELAY_MS = 15_000;
+/** A job the progress endpoint never knows is missing after this many reads. */
+const MAX_NOT_FOUND_READS = 3;
 const MAX_RECONCILE_ATTEMPTS = 5;
+/**
+ * Provider lookups per reconciliation pass, at most. Each lookup is up to 11
+ * requests; the rest wait for the next pass, 5 minutes later.
+ */
+const MAX_RECONCILE_LOOKUPS_PER_PASS = 5;
 
 const now = (deps: ExtractionDeps): Date => (deps.now ? deps.now() : new Date());
 const sleep = (deps: ExtractionDeps, ms: number): Promise<void> =>
@@ -76,14 +87,20 @@ const log = (deps: ExtractionDeps, message: string, context?: Record<string, unk
 export function workFingerprint(input: {
   canonicalProfileKey: string;
   platform: SupportedPlatform;
-  actorId: string;
-  actorBuild: string;
-  maxDatasetItems: number;
+  datasetId: string;
+  contractVersion: string;
+  maxPostsPerProfile: number;
 }): string {
   return crypto
     .createHash('sha256')
     .update(
-      [input.canonicalProfileKey, input.platform, input.actorId, input.actorBuild, input.maxDatasetItems].join('|'),
+      [
+        input.canonicalProfileKey,
+        input.platform,
+        input.datasetId,
+        input.contractVersion,
+        input.maxPostsPerProfile,
+      ].join('|'),
     )
     .digest('hex');
 }
@@ -134,13 +151,13 @@ export async function startExtraction(input: StartExtractionInput, deps: Extract
     };
   }
 
-  const actor = config.actors[profile.platform];
+  const scrapers = config.scrapers[profile.platform];
   const fingerprint = workFingerprint({
     canonicalProfileKey: profile.canonicalKey,
     platform: profile.platform,
-    actorId: actor.actorId,
-    actorBuild: actor.build,
-    maxDatasetItems: config.maxDatasetItems,
+    datasetId: scrapers.posts.datasetId,
+    contractVersion: scrapers.contractVersion,
+    maxPostsPerProfile: config.maxPostsPerProfile,
   });
 
   // Start idempotency. Same key and same work returns the saved record.
@@ -179,15 +196,16 @@ export async function startExtraction(input: StartExtractionInput, deps: Extract
 
   const at = now(deps);
 
-  // Cache reuse. A completed result for the same work, on the same pinned
-  // build, inside the window, saves a paid run.
+  // Cache reuse. A completed result for the same work, on the same adapter
+  // contract, inside the window, saves a paid job. A row from the previous provider carries a
+  // different `actorBuild` and is never reused.
   const cached =
     config.cacheTtlMs > 0
       ? await store.guestProfileExtraction.findFirst({
           where: {
             canonicalProfileKey: profile.canonicalKey,
             platform: profile.platform,
-            actorBuild: actor.build,
+            actorBuild: scrapers.contractVersion,
             status: 'READY',
             completedAt: { gte: new Date(at.getTime() - config.cacheTtlMs) },
           },
@@ -201,8 +219,10 @@ export async function startExtraction(input: StartExtractionInput, deps: Extract
     canonicalProfileKey: profile.canonicalKey,
     canonicalProfileUrl: profile.canonicalUrl,
     platform: profile.platform,
-    actorId: actor.actorId,
-    actorBuild: actor.build,
+    // Column names predate Bright Data: `actorId` holds the posts dataset ID
+    // and `actorBuild` the adapter contract version.
+    actorId: scrapers.posts.datasetId,
+    actorBuild: scrapers.contractVersion,
     idempotencyKey: input.idempotencyKey,
     requestFingerprint: fingerprint,
     unverifiedFlags: [] as string[],
@@ -233,7 +253,7 @@ export async function startExtraction(input: StartExtractionInput, deps: Extract
         startedAt: at,
         completedAt: at,
         expiresAt: new Date(at.getTime() + config.retentionMs),
-        // No paid run happened here. The cost stays on the row that paid.
+        // No paid job happened here. The cost stays on the row that paid.
         reusedFromExtractionId: cached.id,
         ...receiptFields(
           deps,
@@ -286,6 +306,50 @@ function receiptFields(
 
 const pollDelay = (attempt: number): number => Math.min(BASE_POLL_DELAY_MS * 2 ** attempt, MAX_POLL_DELAY_MS);
 
+/** Bright Data `error_message` values that mean the profile had nothing to collect. */
+const NO_DATA = /no data found in discovery|snapshot is empty/i;
+
+type PollOutcome =
+  | { kind: 'done'; snapshot: JobSnapshot }
+  | { kind: 'not_found' }
+  | { kind: 'timeout'; snapshot: JobSnapshot };
+
+/**
+ * Poll one job until it leaves RUNNING, or until `pollTimeoutSeconds` of
+ * waiting has passed.
+ *
+ * The deadline counts time slept, not the wall clock, so a test with a fake
+ * `sleep` finishes and a slow network call cannot shorten the window. A job
+ * the progress endpoint does not know yet is read a few times before it is
+ * called missing: a just-triggered job can lag behind.
+ */
+async function pollJob(deps: ExtractionDeps, jobId: string): Promise<PollOutcome> {
+  const budgetMs = deps.config.pollTimeoutSeconds * 1000;
+  let waitedMs = 0;
+  let misses = 0;
+  let last: JobSnapshot | null = null;
+
+  for (let attempt = 0; ; attempt += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const snapshot = await deps.gateway.getJob(jobId);
+    if (snapshot) {
+      last = snapshot;
+      if (snapshot.state !== 'RUNNING') return { kind: 'done', snapshot };
+    } else {
+      misses += 1;
+      if (misses >= MAX_NOT_FOUND_READS) return { kind: 'not_found' };
+    }
+
+    if (waitedMs >= budgetMs) {
+      return last ? { kind: 'timeout', snapshot: last } : { kind: 'not_found' };
+    }
+    const delay = pollDelay(attempt);
+    waitedMs += delay;
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(deps, delay);
+  }
+}
+
 async function markFailed(deps: ExtractionDeps, id: string, code: string, message: string): Promise<void> {
   const at = now(deps);
   await deps.store.guestProfileExtraction.update({
@@ -299,48 +363,42 @@ function runAdapter(
   platform: SupportedPlatform,
   items: unknown[],
   expectedUsername: string,
-  config: ExtractionConfig,
   profileItems: unknown[] | null,
 ): AdapterResult {
   return platform === 'instagram'
-    ? parseInstagramActorOutput({ items, profileItems, expectedUsername })
-    : parseTiktokActorOutput({ items, expectedUsername });
+    ? parseInstagramOutput({ items, profileItems, expectedUsername })
+    : parseTiktokOutput({ items, profileItems, expectedUsername });
 }
 
 /**
- * Read the secondary profile run, where one was started.
+ * Read the profile job, where one was started.
  *
  * Best effort by design. The follower count is not part of the v2 formula, so
- * a profile run that fails must not cost the admin the whole rate. The run ID
- * was persisted at start, so the charge is recorded either way.
+ * a profile job that fails must not cost the admin the whole rate. The job ID
+ * was persisted at start, so the charge is traceable either way. A job still
+ * running at the deadline is canceled, which stops billing.
  */
-async function readProfileRun(
+async function readProfileJob(
   deps: ExtractionDeps,
   record: { profileActorRunId?: string | null },
-): Promise<{ items: unknown[] | null; costUsd: number | null }> {
-  const runId = record.profileActorRunId;
-  if (!runId) return { items: null, costUsd: null };
+): Promise<unknown[] | null> {
+  const jobId = record.profileActorRunId;
+  if (!jobId) return null;
 
   try {
-    let snapshot: RunSnapshot | null = null;
-    for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt += 1) {
-      // eslint-disable-next-line no-await-in-loop
-      snapshot = await deps.gateway.getRun(runId);
-      if (snapshot && !['READY', 'RUNNING', 'ABORTING', 'TIMING-OUT'].includes(snapshot.state)) break;
-      // eslint-disable-next-line no-await-in-loop
-      await sleep(deps, pollDelay(attempt));
+    const outcome = await pollJob(deps, jobId);
+    if (outcome.kind === 'timeout') await deps.gateway.cancelJob(jobId);
+    if (outcome.kind !== 'done' || outcome.snapshot.state !== 'SUCCEEDED') {
+      log(deps, 'profile job gave no profile', {
+        jobId,
+        state: outcome.kind === 'not_found' ? 'unreadable' : outcome.snapshot.state,
+      });
+      return null;
     }
-
-    if (!snapshot || snapshot.state !== 'SUCCEEDED' || !snapshot.defaultDatasetId) {
-      log(deps, 'profile run gave no follower count', { runId, state: snapshot?.state ?? 'unreadable' });
-      return { items: null, costUsd: snapshot?.costUsd ?? null };
-    }
-
-    const items = await deps.gateway.listDatasetItems(snapshot.defaultDatasetId, 5);
-    return { items, costUsd: snapshot.costUsd };
+    return await deps.gateway.listItems(jobId);
   } catch (error) {
-    log(deps, 'profile run could not be read', { runId, message: (error as Error)?.message });
-    return { items: null, costUsd: null };
+    log(deps, 'profile job could not be read', { jobId, message: (error as Error)?.message });
+    return null;
   }
 }
 
@@ -348,7 +406,7 @@ async function readProfileRun(
  * Run one extraction to a terminal state.
  *
  * Safe to call again. A record that already finished is left alone, and a
- * record that already has a run ID resumes polling instead of starting again.
+ * record that already has a job ID resumes polling instead of starting again.
  */
 export async function processExtraction(extractionId: string, deps: ExtractionDeps): Promise<void> {
   const { store, config } = deps;
@@ -357,20 +415,19 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
   if ((TERMINAL_STATUSES as readonly string[]).includes(record.status)) return;
   if (record.status === 'REQUIRES_RECONCILIATION') return;
 
-  const actor = config.actors[record.platform as SupportedPlatform];
+  const platform = record.platform as SupportedPlatform;
+  const scrapers = config.scrapers[platform];
   let runId: string | null = record.actorRunId ?? null;
 
   if (!runId) {
-    const started = await deps.gateway.startRun({
-      actorId: actor.actorId,
-      build: actor.build,
-      input: buildActorInput(record.platform, record.canonicalProfileUrl, config),
-      timeoutSecs: config.runTimeoutSeconds,
-      maxItems: config.maxDatasetItems,
+    const started = await deps.gateway.startJob({
+      datasetId: scrapers.posts.datasetId,
+      discoverBy: scrapers.posts.discoverBy,
+      input: buildJobInput(platform, record.canonicalProfileUrl, config, 'posts'),
     });
 
     if (!started.ok && started.ambiguous) {
-      // The call may have started a paid run. Reconciliation looks for it.
+      // The call may have started a paid job. Reconciliation looks for it.
       await store.guestProfileExtraction.update({
         where: { id: extractionId },
         data: { status: 'REQUIRES_RECONCILIATION', failureMessage: started.message, updatedAt: now(deps) },
@@ -383,40 +440,47 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
       return;
     }
 
-    // Persist the run ID before any polling, so a restart can resume it.
+    // Persist the job ID before any polling, so a restart can resume it.
+    // Provenance is rewritten too: a row queued under an older provider or
+    // contract is scraped by this one, and audits copy these two columns.
     runId = started.runId;
     await store.guestProfileExtraction.update({
       where: { id: extractionId },
-      data: { actorRunId: runId, status: 'RUNNING', startedAt: now(deps), updatedAt: now(deps) },
+      data: {
+        actorRunId: runId,
+        actorId: scrapers.posts.datasetId,
+        actorBuild: scrapers.contractVersion,
+        status: 'RUNNING',
+        startedAt: now(deps),
+        updatedAt: now(deps),
+      },
     });
   }
 
-  // Instagram only, and only once. The follower count run is cheap and
-  // short, and the rate does not depend on it, so nothing in here may fail
-  // the extraction. The catch covers the store as well as the provider: a
-  // worker running an older Prisma Client would otherwise throw on the new
-  // column and lose a run that had already been paid for.
-  if (needsProfileRun(record.platform as SupportedPlatform) && !record.profileActorRunId) {
+  // Both platforms, and only once. The profile job supplies followers and the
+  // private flag, and the rate does not depend on it, so nothing in here may
+  // fail the extraction. The catch covers the store as well as the provider:
+  // a worker running an older Prisma Client would otherwise throw on the
+  // column and lose a job that had already been paid for.
+  if (!record.profileActorRunId) {
     try {
-      const profileRun = await deps.gateway.startRun({
-        actorId: actor.actorId,
-        build: actor.build,
-        input: buildActorInput(record.platform, record.canonicalProfileUrl, config, 'profile'),
-        timeoutSecs: config.runTimeoutSeconds,
-        maxItems: 5,
+      const profileJob = await deps.gateway.startJob({
+        datasetId: scrapers.profile.datasetId,
+        discoverBy: scrapers.profile.discoverBy,
+        input: buildJobInput(platform, record.canonicalProfileUrl, config, 'profile'),
       });
 
-      if (!profileRun.ok) {
-        log(deps, 'profile run did not start', { id: extractionId, message: profileRun.message });
+      if (!profileJob.ok) {
+        log(deps, 'profile job did not start', { id: extractionId, message: profileJob.message });
       } else {
         await store.guestProfileExtraction.update({
           where: { id: extractionId },
-          data: { profileActorRunId: profileRun.runId, updatedAt: now(deps) },
+          data: { profileActorRunId: profileJob.runId, updatedAt: now(deps) },
         });
-        record.profileActorRunId = profileRun.runId;
+        record.profileActorRunId = profileJob.runId;
       }
     } catch (error) {
-      log(deps, 'profile run could not be recorded', {
+      log(deps, 'profile job could not be recorded', {
         id: extractionId,
         message: (error as Error)?.message,
       });
@@ -428,66 +492,54 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
     data: { status: 'POLLING', updatedAt: now(deps) },
   });
 
-  let snapshot: RunSnapshot | null = null;
-  for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt += 1) {
-    // eslint-disable-next-line no-await-in-loop
-    snapshot = await deps.gateway.getRun(runId);
-    if (snapshot && !['READY', 'RUNNING', 'ABORTING', 'TIMING-OUT'].includes(snapshot.state)) break;
-    // eslint-disable-next-line no-await-in-loop
-    await sleep(deps, pollDelay(attempt));
-  }
+  const outcome = await pollJob(deps, runId);
 
-  if (!snapshot) {
-    await markFailed(deps, extractionId, 'RUN_NOT_FOUND', `Run ${runId} could not be read.`);
+  if (outcome.kind === 'not_found') {
+    await markFailed(deps, extractionId, 'RUN_NOT_FOUND', `Job ${runId} could not be read.`);
     return;
   }
-  if (['READY', 'RUNNING', 'ABORTING', 'TIMING-OUT'].includes(snapshot.state)) {
-    await markFailed(deps, extractionId, 'POLL_TIMEOUT', 'The run did not finish inside the polling window.');
-    return;
-  }
-  if (snapshot.state !== 'SUCCEEDED') {
-    await markFailed(deps, extractionId, snapshot.state.replace('-', '_'), `The provider run ended ${snapshot.state}.`);
-    return;
-  }
-  if (snapshot.buildNumber && snapshot.buildNumber !== actor.build) {
+  if (outcome.kind === 'timeout') {
+    // Cancel both: a canceled job stops billing and delivers nothing.
+    await deps.gateway.cancelJob(runId);
+    if (record.profileActorRunId) await deps.gateway.cancelJob(record.profileActorRunId);
     await markFailed(
       deps,
       extractionId,
-      'BUILD_MISMATCH',
-      `Expected build ${actor.build} but the run used ${snapshot.buildNumber}.`,
+      'POLL_TIMEOUT',
+      `The job did not finish inside ${config.pollTimeoutSeconds} seconds and was canceled.`,
     );
     return;
   }
-  if (config.maxCostUsdPerRun !== null && snapshot.costUsd !== null && snapshot.costUsd > config.maxCostUsdPerRun) {
-    await store.guestProfileExtraction.update({
-      where: { id: extractionId },
-      data: {
-        status: 'FAILED',
-        failureCode: 'COST_LIMIT',
-        failureMessage: `The run charged ${snapshot.costUsd} USD, above the ${config.maxCostUsdPerRun} USD cap.`,
-        costUsd: snapshot.costUsd,
-        completedAt: now(deps),
-        updatedAt: now(deps),
-      },
-    });
-    return;
-  }
-  if (!snapshot.defaultDatasetId) {
-    await markFailed(deps, extractionId, 'NO_DATASET', 'The run produced no dataset.');
+
+  const { snapshot } = outcome;
+  const noData = snapshot.state === 'FAILED' && NO_DATA.test(snapshot.errorMessage ?? '');
+  if (snapshot.state !== 'SUCCEEDED' && !noData) {
+    await markFailed(
+      deps,
+      extractionId,
+      snapshot.state,
+      snapshot.errorMessage ?? `The provider job ended ${snapshot.state}.`,
+    );
     return;
   }
 
-  const items = await deps.gateway.listDatasetItems(snapshot.defaultDatasetId, config.maxDatasetItems);
-  const profileRun = await readProfileRun(deps, record);
+  // "No data found" is a failed job with nothing to download. The profile job
+  // tells a private account, a public account with no posts
+  // (INSUFFICIENT_DATA), and a missing account apart; the adapter decides
+  // from empty items plus the profile.
+  const items = noData ? [] : await deps.gateway.listItems(runId);
+  const profileItems = await readProfileJob(deps, record);
   const username = record.canonicalProfileKey.split(':')[1] ?? '';
-  const parsed = runAdapter(record.platform, items, username, config, profileRun.items);
+  const parsed = runAdapter(platform, items, username, profileItems);
 
   const at = now(deps);
   const common = {
-    actorDatasetId: snapshot.defaultDatasetId,
-    // Measured, never estimated. Release gate 2 reads this.
-    costUsd: snapshot.costUsd,
-    profileCostUsd: profileRun.costUsd,
+    // A Bright Data snapshot is both the job and its data.
+    actorDatasetId: runId,
+    profileActorDatasetId: record.profileActorRunId ?? null,
+    // Bright Data reports no per-job cost. Spend is checked in its dashboard.
+    costUsd: null,
+    profileCostUsd: null,
     completedAt: at,
     updatedAt: at,
   };
@@ -500,8 +552,22 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
     return;
   }
 
-  const policy = applyValidPostPolicy(parsed.candidates, { ownerHandle: username, now: at });
-  const sample = selectSample(policy.valid);
+  let policy = applyValidPostPolicy(parsed.candidates, { ownerHandle: username, now: at });
+  let sample = selectSample(policy.valid);
+
+  // Too few usable posts in the first batch: fetch one more batch, then judge
+  // both together. Never more than two batches (PM, 2026-09-30). If the second
+  // batch cannot be read, the first batch's result stands.
+  if (!sample.ok) {
+    const extraItems = await fetchSecondBatch(deps, extractionId, record, items);
+    if (extraItems.length > 0) {
+      const merged = runAdapter(platform, [...items, ...extraItems], username, profileItems);
+      if (merged.ok) {
+        policy = applyValidPostPolicy(uniqueByPostId(merged.candidates), { ownerHandle: username, now: at });
+        sample = selectSample(policy.valid);
+      }
+    }
+  }
 
   if (!sample.ok) {
     await store.guestProfileExtraction.update({
@@ -521,7 +587,7 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
         // The per-post reasons are in candidatePosts[].rejectedReason.
         failureMessage:
           record.platform === 'instagram'
-            ? `Only ${sample.validCount} of the ${sample.required} usable Reels needed were found. A Reel is left out when its likes are hidden, or when it is a paid partnership, pinned, or a collab posted by another account.`
+            ? `Only ${sample.validCount} of the ${sample.required} usable Reels needed were found. A Reel is left out when its likes are hidden, or when it is a paid partnership, pinned, or a collab with another account.`
             : `Only ${sample.validCount} of the ${sample.required} usable videos needed were found. A video is left out when its likes are hidden, or when it is an ad, pinned, or a repost.`,
       },
     });
@@ -577,6 +643,88 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
   });
 }
 
+/** Raw provider post IDs, for the second batch's exclude list. */
+function rawPostIds(items: unknown[]): string[] {
+  return items
+    .map((item) => (item && typeof item === 'object' ? (item as { post_id?: unknown }).post_id : null))
+    .filter((id): id is string | number => typeof id === 'string' || typeof id === 'number')
+    .map(String);
+}
+
+/**
+ * Keeps the first copy of each post. A second batch may repeat the first.
+ * A post with no ID cannot be matched, so it is kept.
+ */
+function uniqueByPostId<T extends { postId: string | null }>(candidates: T[]): T[] {
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    if (!candidate.postId) return true;
+    if (seen.has(candidate.postId)) return false;
+    seen.add(candidate.postId);
+    return true;
+  });
+}
+
+/**
+ * Fetch the second posts batch, or nothing.
+ *
+ * Runs only when the first batch came back full: a short first batch means the
+ * profile has no more posts. The job ID is saved before polling, so a restart
+ * resumes the same paid job instead of starting another. Every failure here
+ * returns nothing and leaves the first batch's result in place.
+ */
+async function fetchSecondBatch(
+  deps: ExtractionDeps,
+  extractionId: string,
+  record: { platform: string; canonicalProfileUrl: string; topUpRunId?: string | null },
+  firstItems: unknown[],
+): Promise<unknown[]> {
+  const { config, store } = deps;
+  const platform = record.platform as SupportedPlatform;
+  let jobId = record.topUpRunId ?? null;
+
+  if (!jobId) {
+    if (topUpBatchSize(config) <= 0 || firstItems.length < config.maxPostsPerProfile) return [];
+
+    const scrapers = config.scrapers[platform];
+    const started = await deps.gateway.startJob({
+      datasetId: scrapers.posts.datasetId,
+      discoverBy: scrapers.posts.discoverBy,
+      input: buildTopUpInput(platform, record.canonicalProfileUrl, config, rawPostIds(firstItems)),
+    });
+    if (!started.ok) {
+      log(deps, 'second batch did not start', {
+        id: extractionId,
+        ambiguous: started.ambiguous,
+        message: started.message,
+      });
+      return [];
+    }
+    jobId = started.runId;
+    await store.guestProfileExtraction.update({
+      where: { id: extractionId },
+      data: { topUpRunId: jobId, updatedAt: now(deps) },
+    });
+  }
+
+  try {
+    const outcome = await pollJob(deps, jobId);
+    if (outcome.kind === 'timeout') await deps.gateway.cancelJob(jobId);
+    if (outcome.kind !== 'done' || outcome.snapshot.state !== 'SUCCEEDED') {
+      log(deps, 'second batch gave no posts', {
+        id: extractionId,
+        jobId,
+        state: outcome.kind === 'done' ? outcome.snapshot.state : outcome.kind,
+      });
+      return [];
+    }
+    return await deps.gateway.listItems(jobId);
+  } catch (error) {
+    log(deps, 'second batch could not be read', { id: extractionId, jobId, message: (error as Error)?.message });
+    return [];
+  }
+}
+
 /**
  * Provider thumbnail URLs expire and cannot be hotlinked, so the browser falls
  * back to the provider embed. A failed copy keeps the original URL.
@@ -608,13 +756,19 @@ export interface ReconcileReport {
   requeued: string[];
   resumed: string[];
   exhausted: string[];
+  /** Not looked up this pass: the pass limit was reached, or Bright Data answered 429. */
+  deferred: string[];
+  /** Lookups that threw. Each is retried next pass without using up an attempt. */
+  errored: string[];
+  rateLimited: boolean;
 }
 
 /**
  * Recover work after a restart.
  *
  * A queued or polling record is re-enqueued. An ambiguous start is matched
- * against the actor's recent runs. Nothing here ever starts a new run.
+ * against the posts dataset's recent jobs, by the profile URL in each job's
+ * input. Nothing here ever starts a new job.
  */
 export async function reconcileExtractions(
   deps: ExtractionDeps,
@@ -624,7 +778,15 @@ export async function reconcileExtractions(
   const at = now(deps);
   const staleBefore = new Date(at.getTime() - (options.staleAfterMs ?? 60_000));
 
-  const report: ReconcileReport = { requeued: [], resumed: [], exhausted: [] };
+  const report: ReconcileReport = {
+    requeued: [],
+    resumed: [],
+    exhausted: [],
+    deferred: [],
+    errored: [],
+    rateLimited: false,
+  };
+  let lookups = 0;
 
   const recoverable = await store.guestProfileExtraction.findMany({
     where: {
@@ -647,38 +809,88 @@ export async function reconcileExtractions(
         deps,
         record.id,
         'RECONCILIATION_FAILED',
-        'The ambiguous run could not be matched. No second run was started.',
+        'The ambiguous job could not be matched. No second job was started.',
       );
       report.exhausted.push(record.id);
       continue;
     }
 
-    const actor = config.actors[record.platform as SupportedPlatform];
-    // eslint-disable-next-line no-await-in-loop
-    const candidates = await deps.gateway.findRecentRun(actor.actorId, new Date(record.createdAt));
-    const match = candidates.find((run) => run.buildNumber === null || run.buildNumber === actor.build);
+    // Bounded, so one pass can never burst toward Bright Data's 429
+    // blacklist. After a 429, nothing else is sent until the next pass.
+    if (report.rateLimited || lookups >= MAX_RECONCILE_LOOKUPS_PER_PASS) {
+      report.deferred.push(record.id);
+      continue;
+    }
+    lookups += 1;
 
-    if (match) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const match = await findOwnJob(deps, record);
+
+      if (match) {
+        // eslint-disable-next-line no-await-in-loop
+        await store.guestProfileExtraction.update({
+          where: { id: record.id },
+          data: { actorRunId: match.jobId, status: 'POLLING', updatedAt: at },
+        });
+        // eslint-disable-next-line no-await-in-loop
+        await deps.enqueue(record.id);
+        report.resumed.push(record.id);
+        continue;
+      }
+
       // eslint-disable-next-line no-await-in-loop
       await store.guestProfileExtraction.update({
         where: { id: record.id },
-        data: { actorRunId: match.runId, status: 'POLLING', updatedAt: at },
+        data: { reconcileAttempts: record.reconcileAttempts + 1, lastReconciledAt: at, updatedAt: at },
       });
-      // eslint-disable-next-line no-await-in-loop
-      await deps.enqueue(record.id);
-      report.resumed.push(record.id);
-      continue;
+    } catch (error) {
+      // A failed lookup says nothing about whether the job exists, so it does
+      // not use up an attempt. One row's error never stops the other rows.
+      if (error instanceof RateLimitedError) {
+        report.rateLimited = true;
+        report.deferred.push(record.id);
+      } else {
+        report.errored.push(record.id);
+      }
+      log(deps, 'reconciliation lookup failed', { id: record.id, message: (error as Error)?.message });
     }
-
-    // eslint-disable-next-line no-await-in-loop
-    await store.guestProfileExtraction.update({
-      where: { id: record.id },
-      data: { reconcileAttempts: record.reconcileAttempts + 1, lastReconciledAt: at, updatedAt: at },
-    });
   }
 
   log(deps, 'reconciliation finished', { ...report });
   return report;
+}
+
+/**
+ * Find the job an ambiguous start created, if any.
+ *
+ * Job IDs other rows already own are excluded, so two rows never share one
+ * job: another admin may have fetched the same profile in the same window.
+ * The gateway ranks a running or ready job above a failed or canceled one.
+ */
+async function findOwnJob(deps: ExtractionDeps, record: any): Promise<JobSnapshot | null> {
+  const scrapers = deps.config.scrapers[record.platform as SupportedPlatform];
+  const since = new Date(record.createdAt);
+
+  // A second-batch job runs the same posts dataset on the same profile URL,
+  // so it is owned too. Adopting one as a first batch would rate old posts.
+  const others = await deps.store.guestProfileExtraction.findMany({
+    where: {
+      canonicalProfileKey: record.canonicalProfileKey,
+      OR: [{ actorRunId: { not: null } }, { topUpRunId: { not: null } }],
+      id: { not: record.id },
+      createdAt: { gte: new Date(since.getTime() - 86_400_000) },
+    },
+  });
+  const excludeJobIds = others
+    .filter((row) => row.id !== record.id)
+    .flatMap((row) => [row.actorRunId, row.topUpRunId])
+    .filter((jobId): jobId is string => typeof jobId === 'string');
+
+  const matches = await deps.gateway.findRecentJobs(scrapers.posts.datasetId, since, record.canonicalProfileUrl, {
+    excludeJobIds,
+  });
+  return matches[0] ?? null;
 }
 
 /* -------------------------------------------------------- Cleanup and health */
@@ -687,7 +899,7 @@ export async function reconcileExtractions(
  * Remove expired extraction rows.
  *
  * `GuestCreatorMetricAudit.extractionId` is `ON DELETE SET NULL`, so an audit
- * keeps its actor build, run ID, formula version, and both value sets.
+ * keeps its dataset ID, contract version, job ID, formula version, and both value sets.
  */
 export async function cleanupExpiredExtractions(deps: ExtractionDeps): Promise<{ deleted: number }> {
   const result = await deps.store.guestProfileExtraction.deleteMany({
@@ -716,7 +928,7 @@ export async function getExtractionHealth(
   const at = now(deps);
   const stuckBefore = new Date(at.getTime() - (options.stuckAfterMs ?? 10 * 60_000));
 
-  const [active, stuck, requiresReconciliation, schemaChanges, costLimits] = await Promise.all([
+  const [active, stuck, requiresReconciliation, schemaChanges] = await Promise.all([
     store.guestProfileExtraction.count({ where: { status: { in: [...ACTIVE_STATUSES] } } }),
     store.guestProfileExtraction.count({
       where: { status: { in: [...ACTIVE_STATUSES] }, updatedAt: { lte: stuckBefore } },
@@ -725,16 +937,12 @@ export async function getExtractionHealth(
     store.guestProfileExtraction.count({
       where: { failureCode: 'PROVIDER_SCHEMA_CHANGED', updatedAt: { gte: new Date(at.getTime() - 86_400_000) } },
     }),
-    store.guestProfileExtraction.count({
-      where: { failureCode: 'COST_LIMIT', updatedAt: { gte: new Date(at.getTime() - 86_400_000) } },
-    }),
   ]);
 
   const alerts: string[] = [];
   if (stuck > 0) alerts.push(`${stuck} extraction(s) have not moved for 10 minutes.`);
   if (requiresReconciliation > 0) alerts.push(`${requiresReconciliation} extraction(s) need reconciliation.`);
   if (schemaChanges > 0) alerts.push(`${schemaChanges} provider schema change(s) in the last day.`);
-  if (costLimits > 0) alerts.push(`${costLimits} run(s) hit the cost cap in the last day.`);
 
   return { healthy: alerts.length === 0, active, stuck, requiresReconciliation, alerts };
 }

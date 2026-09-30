@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { prisma } from '@/src/prisma/prisma';
 import { loadExtractionConfig } from '@configs/guestProfileExtractionConfig';
-import { createApifyGateway } from '@services/guestProfileExtraction/apifyGateway';
+import { createBrightDataGateway } from '@services/guestProfileExtraction/brightDataGateway';
 import { authorizeGuestProfileAction } from '@services/guestProfileExtraction/authorizeGuestProfileAction';
 import { isInternalSuperAdmin } from '@services/guestProfileExtraction/campaignCreatorPolicy';
 import { decideGuestProfileMetrics, loadFeatureFlags } from '@services/guestProfileExtraction/featureDecision';
@@ -35,7 +35,7 @@ function buildDeps(): ExtractionDeps {
   const config = loadExtractionConfig();
   return {
     store: prisma as never,
-    gateway: createApifyGateway(config),
+    gateway: createBrightDataGateway(config),
     config,
     enqueue: (extractionId: string) => enqueueExtraction(extractionId),
   };
@@ -123,7 +123,7 @@ export const startGuestProfileExtraction = async (req: Request, res: Response) =
 /**
  * Shape a record for the browser.
  *
- * It never returns raw provider data, a token, an actor ID, or a build.
+ * It never returns raw provider data, a token, a dataset ID, or a contract version.
  */
 function presentExtraction(record: any, receipt: string | null) {
   return {

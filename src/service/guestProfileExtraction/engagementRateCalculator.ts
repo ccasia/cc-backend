@@ -91,7 +91,8 @@ function medianViewRate(
     postId: post.postId,
     postUrl: post.postUrl,
     thumbnailUrl: post.thumbnailUrl ?? null,
-    publishedAt: post.publishedAt.toISOString(),
+    // Null for an undated Reel. The breakdown shows a dash.
+    publishedAt: post.publishedAt ? post.publishedAt.toISOString() : null,
     likes: post.likes,
     comments: post.comments,
     shares: post.shares,
