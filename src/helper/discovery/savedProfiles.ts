@@ -13,6 +13,7 @@ export function buildDiscoverySelect(full = false, contentSearch = false, access
   const select: any = buildConnectedSelect(accessToken);
   select.status = true;
   select.createdAt = true;
+  select.photoURL = true;
   Object.assign(select.creator.select, {
     isGuest: true,
     profileLink: true,
@@ -55,7 +56,11 @@ export function recordedAverage(posts: any[], field: string): number | null {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
 
-function platformData(creator: any, platform: 'instagram' | 'tiktok') {
+/**
+ * `photoURL` is the fallback picture: a guest's scraped picture, or a platform
+ * creator's own photo once Link Creator has replaced the guest.
+ */
+function platformData(creator: any, platform: 'instagram' | 'tiktok', photoURL: string | null = null) {
   const connected = Boolean(
     creator?.[platform === 'instagram' ? 'isFacebookConnected' : 'isTiktokConnected'] && creator?.[`${platform}User`],
   );
@@ -141,7 +146,7 @@ function platformData(creator: any, platform: 'instagram' | 'tiktok') {
     savedAt: saved?.savedAt ?? null,
     scrapedAt: saved?.scrapedAt ?? null,
     scrapeDetails: saved?.scrapeDetails ?? null,
-    profilePictureUrl: account?.profile_picture_url ?? account?.avatar_url ?? null,
+    profilePictureUrl: account?.profile_picture_url ?? account?.avatar_url ?? photoURL ?? null,
     biography: account?.biography?.trim() || saved?.biography || null,
     insightData: account?.insightData ?? null,
     totalLikes: metricNumber(account?.totalLikes),
@@ -174,8 +179,8 @@ function addedAt(user: any, platform: 'instagram' | 'tiktok'): Date | null {
 export function mapDiscoveryRows(users: any[], platform: PlatformFilter): any[] {
   return users.flatMap((user) => {
     const creator = user.creator;
-    const instagram = platformData(creator, 'instagram');
-    const tiktok = platformData(creator, 'tiktok');
+    const instagram = platformData(creator, 'instagram', user.photoURL ?? null);
+    const tiktok = platformData(creator, 'tiktok', user.photoURL ?? null);
     const base = {
       type: creator?.isGuest || user.status === 'guest' ? 'non-platform' : 'connected',
       isGuest: Boolean(creator?.isGuest || user.status === 'guest'),

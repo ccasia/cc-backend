@@ -90,6 +90,8 @@ const profileSchema = z.object({
   signature: text,
   followers: profileCount,
   is_private: flag,
+  profile_pic_url_hd: imageUrl.optional(),
+  profile_pic_url: imageUrl.optional(),
 });
 
 export function parseTiktokOutput(input: AdapterInput): AdapterResult {
@@ -176,6 +178,7 @@ function toProfile(expected: string, profile: z.infer<typeof profileSchema> | nu
     username: expected,
     biography: profile?.biography ?? profile?.signature ?? null,
     displayName: profile?.nickname ?? null,
+    profilePictureUrl: profile?.profile_pic_url_hd ?? profile?.profile_pic_url ?? null,
     // Null when the profile job failed. v2 does not divide by followers.
     followerCount: profile?.followers ?? null,
     isPrivate: false,

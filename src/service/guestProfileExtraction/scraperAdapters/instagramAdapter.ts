@@ -125,6 +125,7 @@ const profileSchema = z.object({
   biography: text,
   followers: profileCount,
   is_private: flag,
+  profile_image_link: imageUrl.optional(),
   posts: z.array(z.unknown()).nullish(),
 });
 
@@ -257,6 +258,7 @@ function toProfile(expected: string, profileJob: ProfileRead, fallbackFollowers:
     username: expected,
     biography: profileJob.ok ? profileJob.profile.biography : null,
     displayName: profileJob.ok ? profileJob.profile.full_name : null,
+    profilePictureUrl: (profileJob.ok ? profileJob.profile.profile_image_link : null) ?? null,
     // Null when neither job reported it. v2 does not divide by followers, so a
     // rate is still produced; the admin sees an empty Follower Count field.
     followerCount: (profileJob.ok ? profileJob.profile.followers : null) ?? fallbackFollowers,

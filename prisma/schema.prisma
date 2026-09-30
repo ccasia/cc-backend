@@ -3271,20 +3271,24 @@ model GuestProfileExtraction {
   status GuestProfileExtractionStatus @default(QUEUED)
 
   /// Typed result. Present only for READY.
-  resultBiography      String?
-  resultName           String?  @db.VarChar(255)
-  resultFollowerCount  Int?
+  resultBiography         String?
+  /// Profile picture copied to our storage. Provider CDN links expire. Set on
+  /// READY and INSUFFICIENT_DATA, because the profile job worked on both.
+  resultProfilePictureUrl String?
+  resultName              String?  @db.VarChar(255)
+  resultFollowerCount     Int?
   /// Percentage without the sign. `"4.27"` means 4.27%.
-  resultEngagementRate String?  @db.VarChar(24)
-  sampleSize           Int?
-  formulaVersion       String?  @db.VarChar(60)
+  resultEngagementRate    String?  @db.VarChar(24)
+  sampleSize              Int?
+  formulaVersion          String?  @db.VarChar(60)
   /// Selected-post evidence built by this backend. Not provider JSON.
-  selectedPosts        Json?
-  /// Every candidate the actor returned, with the verdict the policy gave it.
+  selectedPosts           Json?
+  /// Every candidate the provider returned, with the verdict the policy gave it.
   /// Counters, IDs and timestamps only. No caption, media URL, avatar or bio.
-  candidatePosts       Json?
-  /// Policy flags the pinned actor build did not report.
-  unverifiedFlags      String[]
+  candidatePosts          Json?
+  /// Policy flags the provider did not report, plus `publishedAt` when an
+  /// undated Instagram Reel was ordered by provider list order.
+  unverifiedFlags         String[]
 
   failureCode    String? @db.VarChar(60)
   failureMessage String?
@@ -3340,29 +3344,29 @@ model GuestProfileExtraction {
 /// Denormalized on purpose. It must stay readable after the extraction row is
 /// cleaned up, so the extraction link is optional and set to null on delete.
 model CreatorDiscoveryProfile {
-  biography String?
-  id String @id @default(cuid())
-  userId String
-  creator Creator @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  platform SocialPlatform
-  profileUrl String?
-  handle String?
-  followers Int?
-  engagementRate Float?
-  followersSource GuestMetricSource?
-  engagementRateSource GuestMetricSource?
-  followersSavedAt DateTime?
+  biography             String?
+  id                    String             @id @default(cuid())
+  userId                String
+  creator               Creator            @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  platform              SocialPlatform
+  profileUrl            String?
+  handle                String?
+  followers             Int?
+  engagementRate        Float?
+  followersSource       GuestMetricSource?
+  engagementRateSource  GuestMetricSource?
+  followersSavedAt      DateTime?
   engagementRateSavedAt DateTime?
-  savedAt DateTime
-  scrapedAt DateTime?
+  savedAt               DateTime
+  scrapedAt             DateTime?
   /// When this profile first joined Discovery. A re-scrape does not change it.
-  createdAt DateTime @default(now())
+  createdAt             DateTime           @default(now())
   /// When Link Creator moved this scrape from a guest to a platform creator.
-  linkedAt DateTime?
+  linkedAt              DateTime?
   /// Durable, typed evidence. Independent of temporary extractions and manual values.
-  scrapeDetails Json?
+  scrapeDetails         Json?
   /// Caption search without loading full post evidence for every candidate.
-  captions String @default("")
+  captions              String             @default("")
 
   @@unique([userId, platform])
   @@index([platform])

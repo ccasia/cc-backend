@@ -241,6 +241,7 @@ export async function startExtraction(input: StartExtractionInput, deps: Extract
         actorDatasetId: cached.actorDatasetId,
         resultName: cached.resultName,
         resultBiography: cached.resultBiography,
+        resultProfilePictureUrl: cached.resultProfilePictureUrl,
         profileActorRunId: cached.profileActorRunId,
         profileActorDatasetId: cached.profileActorDatasetId,
         candidatePosts: cached.candidatePosts,
@@ -569,6 +570,13 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
     }
   }
 
+  const resultProfilePictureUrl = await cacheProfilePicture(
+    deps,
+    record.platform,
+    extractionId,
+    parsed.profile.profilePictureUrl,
+  );
+
   if (!sample.ok) {
     await store.guestProfileExtraction.update({
       where: { id: extractionId },
@@ -579,6 +587,7 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
         // admin still gets the name and follower count, and types the rate.
         resultName: parsed.profile.displayName ?? parsed.profile.username,
         resultFollowerCount: parsed.profile.followerCount,
+        resultProfilePictureUrl,
         sampleSize: sample.validCount,
         unverifiedFlags: policy.unverifiedFlags,
         // Kept on purpose. This is the evidence for why ten were not found.
@@ -620,6 +629,7 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
       status: 'READY',
       resultName: baseline.name,
       resultBiography: parsed.profile.biography ?? null,
+      resultProfilePictureUrl,
       resultFollowerCount: baseline.followerCount,
       resultEngagementRate: baseline.engagementRate,
       sampleSize: rate.sampleSize,
@@ -729,6 +739,25 @@ async function fetchSecondBatch(
  * Provider thumbnail URLs expire and cannot be hotlinked, so the browser falls
  * back to the provider embed. A failed copy keeps the original URL.
  */
+/**
+ * Copies the profile picture to our storage. The provider link expires, so
+ * without a copy there is nothing to save. A failed copy is only logged.
+ */
+async function cacheProfilePicture(
+  deps: ExtractionDeps,
+  platform: string,
+  extractionId: string,
+  sourceUrl: string | null | undefined,
+): Promise<string | null> {
+  if (!sourceUrl || !deps.cacheThumbnail) return null;
+  try {
+    return await deps.cacheThumbnail(sourceUrl, platform, `avatar-${extractionId}`);
+  } catch (error) {
+    log(deps, 'profile picture copy failed', { id: extractionId, message: (error as Error)?.message });
+    return null;
+  }
+}
+
 async function cacheSelectedThumbnails<T extends { postId: string; thumbnailUrl?: string | null }>(
   deps: ExtractionDeps,
   platform: string,

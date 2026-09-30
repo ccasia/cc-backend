@@ -62,6 +62,15 @@ export function discoveryProfileUpdate(audit: any, extraction?: any) {
 
 /** Called only after an audited Master List save, within the same transaction. */
 export async function saveDiscoveryProfile(tx: any, audit: any, extraction?: any, fallbackOnly = false) {
+  // A guest has no photo of its own, so it shows the scraped one. This runs
+  // even with no metrics yet (a scrape with too few posts). Link Creator swaps
+  // the guest for the platform user, whose own photo then shows.
+  const picture = extraction?.resultProfilePictureUrl;
+  if (!fallbackOnly && audit.guestUserId && typeof picture === 'string' && picture.length <= 255)
+    await tx.user.updateMany({
+      where: { id: audit.guestUserId, status: 'guest', creator: { isGuest: true } },
+      data: { photoURL: picture },
+    });
   const update = discoveryProfileUpdate(audit, extraction);
   if (!update) return;
   const { userId, platform, savedAt, followers, engagementRate, source, scrapeDetails } = update;

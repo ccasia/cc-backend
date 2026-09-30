@@ -213,7 +213,9 @@ export interface ExtractedProfile {
   /** Lowercased handle as the provider reported it. */
   username: string;
   displayName: string | null;
-  /** Null when the actor mode does not report it. */
+  /** Provider CDN link. It expires, so the service copies it before saving. */
+  profilePictureUrl?: string | null;
+  /** Null when the profile job failed or did not report it. */
   followerCount: number | null;
   isPrivate: boolean;
 }
