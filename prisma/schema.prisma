@@ -3474,6 +3474,7 @@ model GuestProfileIdentityConflict {
 enum ReleaseNoteStatus {
   DRAFT
   PUBLISHED
+  SCHEDULED
 }
 
 enum ReleaseNoteItemType {
