@@ -271,24 +271,6 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
     0,
   );
 
-  // Latest snapshot totals per platform
-  // const snapIgTotals = {
-  //   views: snapshotIg?.totalViews ?? 0,
-  //   likes: snapshotIg?.totalLikes ?? 0,
-  //   comments: snapshotIg?.totalComments ?? 0,
-  //   shares: snapshotIg?.totalShares ?? 0,
-  //   reach: snapshotIg?.totalReach ?? 0,
-  // };
-
-  // const snapTtTotals = {
-  //   views: snapshotTt?.totalViews ?? 0,
-  //   likes: snapshotTt?.totalLikes ?? 0,
-  //   comments: snapshotTt?.totalComments ?? 0,
-  //   shares: snapshotTt?.totalShares ?? 0,
-  //   reach: snapshotTt?.totalReach ?? 0,
-  // };
-
-  // Combined totals: API + Manual + Snapshot
   const totalViews = ig.totalViews + tt.totalViews + manualIgTotals.views + manualTtTotals.views;
 
   const totalLikes = ig.totalLikes + tt.totalLikes + manualIgTotals.likes + manualTtTotals.likes;
@@ -304,13 +286,7 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
   const totalImpressions = ig.totalImpressions + tt.totalImpressions;
 
   const totalFollowers = [...igResults, ...ttResults].reduce((s, c) => s + c.followers, 0);
-  const engagementRate = Math.max(
-    +((totalEngagements / totalViews) * 100).toFixed(2),
-    // +((totalEngagements / totalFollowers) * 100).toFixed(2),
-  );
-  // totalFollowers > 0
-  //   ? +((totalEngagements / totalFollowers) * 100).toFixed(2)
-  //   : +((totalEngagements / totalViews) * 100).toFixed(2);
+  const engagementRate = Math.max(+((totalEngagements / totalViews) * 100).toFixed(2));
 
   if (totalViews === 0 && totalEngagements === 0) return {};
 

@@ -290,6 +290,7 @@ export async function fetchInsightsForAllCampaigns(): Promise<{
         distinct: ['campaignId'],
       }),
     ]);
+
     const campaignIds = [
       ...new Set([...postingUrlCampaigns, ...submissionCampaigns].map(({ campaignId }) => campaignId)),
     ];

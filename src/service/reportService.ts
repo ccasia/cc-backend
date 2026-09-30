@@ -19,8 +19,7 @@ import {
 import { prisma } from '@/src/prisma/prisma';
 
 import { getLatestCampaignPostEngagement } from './postEngagementSnapshotService';
-
-
+import { HumanMessage, SystemMessage } from 'langchain';
 
 // ── Shared format rule ─────────────────────────────────────────────────────────
 
@@ -45,12 +44,20 @@ Example style: "The campaign reached **180K users**, generating **19K engagement
   engagement_interactions: `You are an influencer marketing analyst writing the Engagement & Interactions section of a post-campaign report.
 ${FORMAT_RULE}
 
-Cover: total engagement, when engagement peaked and what drove it, the posting window, platform breakdown (TikTok vs Instagram posts and engagement), and name the top 3 creators by engagement rate with their rates.`,
+Cover: total engagement, when engagement peaked and what drove it, the posting window, and name the top 3 creators by engagement rate with their rates. Platform breakdown is covered in its own section — don't repeat it here.`,
 
   views_analysis: `You are an influencer marketing analyst writing the Views Analysis section of a post-campaign report.
 ${FORMAT_RULE}
 
-Cover: total cumulative views, the peak week and its view count, lowest week, the overall view range, and the growth trend. Explain what likely drove the peak (e.g. multiple creators posting, trending content).`,
+Write exactly two short paragraphs:
+1. Early view velocity: state earlyViewsPercent — the share of the top creators' views that landed within the first 48 hours of posting — and what that implies (e.g. hooks/content that trigger the algorithm immediately).
+2. Platform scale: state which platform in viewsByPlatform drove the most views and its share, then name the single top creator from topViewsCreators by username with their view count as a concrete example.
+Example style: "Over **98% of views** across the top creators landed within the first **48 hours** of posting, showing how fast-hook content triggers the algorithm. **TikTok** drove the majority of views (**@aisrdzn** alone brought in **86K views**), confirming it as the dominant platform for reach."`,
+
+  platform_breakdown: `You are an influencer marketing analyst writing the Platform Breakdown section of a post-campaign report.
+${FORMAT_RULE}
+
+Cover: how posts, views and engagement split across TikTok vs Instagram, which platform carried more of the campaign's total views (as a share of total), and which platform had the stronger engagement rate. Note if one platform is under-represented in post count relative to its performance. List who has the highest likes and shares in bold`,
 
   audience_sentiment: `You are an influencer marketing analyst writing the Audience Sentiment section.
 ${FORMAT_RULE}
@@ -71,6 +78,7 @@ Based on the full campaign data, give exactly 3 specific, data-backed recommenda
 const HUMAN_TEMPLATES: Record<ReportSection, string> = {
   campaign_summary: 'Campaign data:\n\n{data}\n\nWrite the campaign summary now:',
   engagement_interactions: 'Engagement data:\n\n{data}\n\nWrite the Engagement & Interactions paragraph now:',
+  platform_breakdown: 'Platform breakdown data:\n\n{data}\n\nWrite the Platform Breakdown paragraph now:',
   views_analysis: 'Views data:\n\n{data}\n\nWrite the Views Analysis paragraph now:',
   audience_sentiment: 'Sentiment data:\n\n{data}\n\nWrite the Audience Sentiment paragraph now:',
   top_creator_personas: 'Creator data:\n\n{data}\n\nWrite the Top Performing Creator Personas paragraph now:',
@@ -78,20 +86,19 @@ const HUMAN_TEMPLATES: Record<ReportSection, string> = {
 };
 
 // ── Chain runner ──────────────────────────────────────────────────────────────
-
 async function runSectionChain(section: ReportSection, data: Record<string, unknown>, userId: string): Promise<string> {
   const result = await prisma.aiModel.findFirst({ where: { userId } });
 
   const dbSections = result?.systemPrompt as unknown as Record<ReportSection, string> | undefined;
-  console.log('ASDASD', dbSections);
+
   const systemPrompt = dbSections?.[section] || SECTION_PROMPTS[section];
 
-  console.log(systemPrompt);
-
   const prompt = ChatPromptTemplate.fromMessages([
-    ['system', systemPrompt],
+    new SystemMessage(systemPrompt),
+
     ['human', HUMAN_TEMPLATES[section]],
   ]);
+
   const chain = RunnableSequence.from([prompt, await createGemini(result ?? undefined), new StringOutputParser()]);
 
   return chain.invoke({ data: JSON.stringify(data, null, 2) });

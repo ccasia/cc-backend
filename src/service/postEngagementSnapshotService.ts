@@ -9,7 +9,6 @@ import { prisma } from '@/src/prisma/prisma';
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-
 // Snapshot days from campaign start
 const SNAPSHOT_DAYS = [7, 15, 30];
 
