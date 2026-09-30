@@ -2657,6 +2657,9 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
         await tx.pitch.update({ where: { id: pitchId }, data: pitchUpdateData });
       }
 
+      // No metrics sent (a scrape still owns them): no metric change to audit.
+      if (followerCount === undefined && engagementRate === undefined) return;
+
       // An update has no receipt, so its provenance is manual or unavailable.
       const provenance = classifyMetricProvenance({
         receiptVerified: false,
