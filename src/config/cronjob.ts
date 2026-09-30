@@ -337,10 +337,8 @@ new CronJob(
   'Asia/Kuala_Lumpur',
 );
 
-// Hourly (not just midnight) so releases still go live within the hour if the server was down
-// at 00:00. The publish is an atomic updateMany, so repeated/concurrent runs are harmless.
 new CronJob(
-  '0 * * * *', // top of every hour
+  '0 0,8,16 * * *', // 00:00, 08:00, 16:00 MYT
   async function () {
     try {
       const result = await publishDueReleaseNotes();
