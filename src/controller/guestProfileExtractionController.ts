@@ -142,6 +142,9 @@ function presentExtraction(record: any, receipt: string | null) {
     fetchedAt: record.completedAt ?? null,
     failureCode: record.failureCode ?? null,
     failureMessage: record.failureMessage ?? null,
+    // For the loader's status line. The second-batch job ID is not sent.
+    startedAt: record.createdAt ?? null,
+    checkingMore: Boolean(record.topUpRunId),
     completionReceipt: receipt,
   };
 }

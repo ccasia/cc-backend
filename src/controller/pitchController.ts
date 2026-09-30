@@ -33,6 +33,10 @@ const LATEST_SCRAPE_EVIDENCE = {
       },
     },
   },
+  // Drives the loader's status line while the scrape runs.
+  pendingExtraction: {
+    select: { status: true, createdAt: true, topUpRunId: true },
+  },
 };
 
 const emitCreatorCampaignMembershipUpdated = ({
