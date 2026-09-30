@@ -90,3 +90,18 @@ export const isBdOrSuperadmin = async (req: Request, res: Response, next: NextFu
     return res.status(500).json({ message: 'Internal server error checking permissions' });
   }
 };
+
+export const isAnyAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  if (!req.userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  try {
+    const user = await getUser(req.userId);
+    if (user?.role !== 'admin' && user?.role !== 'superadmin') {
+      return res.status(403).json({ message: 'Access denied. Admin role required.' });
+    }
+  } catch (error) {
+    return res.status(400).json({ message: error });
+  }
+
+  return next();
+};
