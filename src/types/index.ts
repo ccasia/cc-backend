@@ -6,6 +6,7 @@ export type ReportSection =
   | 'campaign_summary'
   | 'engagement_interactions'
   | 'views_analysis'
+  | 'platform_breakdown'
   | 'audience_sentiment'
   | 'top_creator_personas'
   | 'campaign_recommendations';
@@ -14,6 +15,7 @@ export const ALL_SECTIONS: ReportSection[] = [
   'campaign_summary',
   'engagement_interactions',
   'views_analysis',
+  'platform_breakdown',
   'audience_sentiment',
   'top_creator_personas',
   'campaign_recommendations',
@@ -43,6 +45,7 @@ export interface ExternalMetrics {
     peakWeek?: string; // "Week 3"
     peakEngagement?: number;
     weeklyEngagement?: { week: string; engagement: number; views: number }[];
+    // Reused as the Platform Breakdown section's external override too — see platform_breakdown.
     platformBreakdown?: { platform: string; posts: number; engagement: number }[];
     creatorMetrics?: {
       userId: string; // matched to your DB userId
