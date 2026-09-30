@@ -8631,67 +8631,10 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
         console.log('Error deleting invoice:', error);
       }
 
-      // If this is a guest creator, delete the creator and user from the database
-      const isGuestUser = user.status === 'guest';
-      const isGuestCreator = user.creator?.isGuest === true;
-
-      if (isGuestUser && isGuestCreator) {
-        console.log(`Deleting guest user ${user.name} (${user.id}) from database`);
-
-        // For guest users, we need to delete ALL records referencing this user
-        // (not just for this campaign) to avoid foreign key constraint violations
-
-        // Delete all remaining pitches for this user (from any campaign)
-        const deletedAllPitches = await tx.pitch.deleteMany({
-          where: { userId: user.id },
-        });
-        console.log(`Deleted ${deletedAllPitches.count} total pitches for guest user`);
-
-        // Delete all remaining submissions for this user (from any campaign)
-        const deletedAllSubmissions = await tx.submission.deleteMany({
-          where: { userId: user.id },
-        });
-        console.log(`Deleted ${deletedAllSubmissions.count} total submissions for guest user`);
-
-        // Delete all shortlisted records for this user
-        const deletedAllShortlisted = await tx.shortListedCreator.deleteMany({
-          where: { userId: user.id },
-        });
-        console.log(`Deleted ${deletedAllShortlisted.count} total shortlisted records for guest user`);
-
-        // Delete all creator agreements for this user
-        const deletedAllAgreements = await tx.creatorAgreement.deleteMany({
-          where: { userId: user.id },
-        });
-        console.log(`Deleted ${deletedAllAgreements.count} total agreements for guest user`);
-
-        // Delete all notifications for this user
-        const deletedAllNotifications = await tx.userNotification.deleteMany({
-          where: { userId: user.id },
-        });
-        console.log(`Deleted ${deletedAllNotifications.count} total notifications for guest user`);
-
-        const deletedXp = await tx.xpTransaction.deleteMany({
-          where: { userId: user.id },
-        });
-        console.log(`Deleted ${deletedXp.count} XP transactions for guest user`);
-
-        if (user.creator) {
-          await tx.creator.delete({
-            where: {
-              id: user.creator.id,
-            },
-          });
-          console.log(`Deleted Creator record`);
-        }
-
-        await tx.user.delete({
-          where: {
-            id: user.id,
-          },
-        });
-        console.log(`Successfully deleted guest user from User table`);
-      }
+      // A guest (non-platform) creator is kept. Removing them from one campaign
+      // must not delete the person: their Discovery entry, saved scrape, and
+      // their pitches in other campaigns all hang off this User and Creator.
+      // Only this campaign's records are removed above, as for any creator.
     });
 
     const adminLogMessage = `Withdrew Creator "${user.name}" From - ${campaign.name} `;
@@ -10883,7 +10826,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     /**
      * Verify anything that claims to have been scraped.
      *
-     * A row carrying a profile link went through an Apify run, so its metrics
+     * A row carrying a profile link went through a Bright Data scrape, so its metrics
      * must be provable rather than merely typed. They run through the same
      * single-use receipt check the guest flow uses, so one standard covers
      * both. A row with no link never enters this block, which keeps the
