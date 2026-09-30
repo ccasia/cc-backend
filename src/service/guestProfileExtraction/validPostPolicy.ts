@@ -14,7 +14,9 @@ import type {
  *
  * A candidate must be creator-owned, public, unique by stable post ID, dated
  * with a valid publication time, and supplied with safe non-negative integer
- * counters for its platform. A pinned, ad, sponsored, or repost item is never
+ * counters for its platform. The one exception to the date rule is an
+ * Instagram Reel whose provider exposed no date: it is kept, ordered by its
+ * list position, and the row records `publishedAt` as unverified. A pinned, ad, sponsored, or repost item is never
  * a candidate. A missing counter is never read as zero.
  */
 
@@ -31,11 +33,11 @@ const FUTURE_SKEW_MS = 5 * 60 * 1000;
  * Views are the denominator on both platforms, so both must supply one.
  *
  * This is what restricts the Instagram sample to Reels and video posts. The
- * actor reports `videoPlayCount` on those and nothing on a photo or a
+ * provider reports `video_play_count` on those and nothing on a photo or a
  * carousel, so a photo is dropped as a missing counter.
  *
  * Saves are never required. No public Instagram source reports them, and the
- * TikTok actor may omit them.
+ * TikTok scraper may omit them.
  */
 const REQUIRED_COUNTERS: Record<SupportedPlatform, readonly ('likes' | 'comments' | 'shares' | 'views')[]> = {
   instagram: ['likes', 'comments', 'views'],
@@ -47,6 +49,7 @@ const FLAGS: readonly { field: UnverifiableFlag; code: RejectedPost['code'] }[] 
   { field: 'isAd', code: 'AD' },
   { field: 'isSponsored', code: 'SPONSORED' },
   { field: 'isRepost', code: 'REPOST' },
+  { field: 'isCollab', code: 'COLLAB' },
 ];
 
 const isSafeCount = (value: unknown): value is number =>
@@ -88,6 +91,7 @@ export function applyValidPostPolicy(
     const record: EvaluatedCandidate = {
       postId: id || null,
       postUrl: candidate.postUrl,
+      thumbnailUrl: candidate.thumbnailUrl ?? null,
       publishedAt: candidate.publishedAt,
       likes: candidate.likes,
       comments: candidate.comments,
@@ -138,8 +142,12 @@ export function applyValidPostPolicy(
       if (candidate[field] === null) unverified.add(field);
     });
 
+    // A date that is present but wrong (unparsable, future, before 2010) is
+    // always dropped. Only a missing date may fall back to list order, and
+    // only where the adapter says that order is trustworthy.
+    const hasRawDate = typeof candidate.publishedAt === 'string' && candidate.publishedAt.trim() !== '';
     const publishedAt = parsePublishedAt(candidate.publishedAt, now);
-    if (!publishedAt) {
+    if (!publishedAt && (hasRawDate || !candidate.undatedOrderTrusted)) {
       drop('INVALID_TIMESTAMP', `Publication time ${String(candidate.publishedAt)} is missing or not usable.`);
       return;
     }
@@ -161,16 +169,20 @@ export function applyValidPostPolicy(
     }
 
     record.accepted = true;
+    if (!publishedAt) unverified.add('publishedAt');
     valid.push({
       platform: candidate.platform,
       postId: id,
       postUrl: candidate.postUrl,
+      thumbnailUrl: candidate.thumbnailUrl ?? null,
       publishedAt,
+      sourceRank: candidate.sourceRank,
       likes: candidate.likes as number,
       comments: candidate.comments as number,
       shares: candidate.platform === 'tiktok' ? (candidate.shares as number) : null,
       // Optional, so it is carried as reported rather than required above.
-      saves: typeof candidate.saves === 'number' ? candidate.saves : null,
+      // Optional. An unreadable save count (NaN) counts as not reported.
+      saves: isSafeCount(candidate.saves) ? candidate.saves : null,
       views: candidate.views as number,
       postType: candidate.postType,
       caption: typeof candidate.caption === 'string' && candidate.caption.trim() ? candidate.caption.trim() : null,
@@ -180,13 +192,6 @@ export function applyValidPostPolicy(
   return { valid, rejected, evaluated, unverifiedFlags: Array.from(unverified).sort() };
 }
 
-/**
- * Take the ten most recent valid posts among the actor candidates.
- *
- * Certification has not proved complete newest-first coverage for either
- * actor, so selection sorts by publication time here rather than trusting the
- * order the provider returned.
- */
 /** Mark the candidates the formula used, so the stored record shows them. */
 export function markSampleInCandidates(
   evaluated: EvaluatedCandidate[],
@@ -199,16 +204,27 @@ export function markSampleInCandidates(
   return evaluated;
 }
 
+/**
+ * Take the ten most recent valid posts.
+ *
+ * When every post is dated, selection sorts by publication time rather than
+ * trusting the provider's order. When any post is undated, time cannot order
+ * the whole list, so the provider's list order (`sourceRank`) is the only total
+ * order and is used instead. The row already records `publishedAt` unverified.
+ */
 export function selectSample(valid: readonly ValidPost[]): SampleSelectionResult {
   if (valid.length < SAMPLE_SIZE) {
     return { ok: false, code: 'INSUFFICIENT_DATA', validCount: valid.length, required: SAMPLE_SIZE };
   }
 
+  const allDated = valid.every((post) => post.publishedAt !== null);
   const posts = [...valid]
     .sort((a, b) => {
-      const byTime = b.publishedAt.getTime() - a.publishedAt.getTime();
+      const primary = allDated
+        ? (b.publishedAt as Date).getTime() - (a.publishedAt as Date).getTime()
+        : a.sourceRank - b.sourceRank;
       // A stable tie-break keeps the sample deterministic.
-      return byTime !== 0 ? byTime : a.postId.localeCompare(b.postId);
+      return primary !== 0 ? primary : a.postId.localeCompare(b.postId);
     })
     .slice(0, SAMPLE_SIZE);
 

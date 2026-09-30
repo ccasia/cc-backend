@@ -190,9 +190,14 @@ export function checkCostAgainstBudget(
 ): { ok: boolean; problems: string[] } {
   const problems: string[] = [];
 
-  if (budget.maxUsdPerRun === null) {
-    problems.push('APIFY_MAX_COST_USD_PER_RUN is not set. Measure one run and set it before release.');
-  } else if (metrics.cost.maxUsdPerRun !== null && metrics.cost.maxUsdPerRun > budget.maxUsdPerRun) {
+  // Bright Data reports no per-job cost, so rows written since the migration
+  // carry no charge and a missing cap is not a problem. Spend is checked in the
+  // Bright Data dashboard. Rows from the previous provider still count here.
+  if (
+    budget.maxUsdPerRun !== null &&
+    metrics.cost.maxUsdPerRun !== null &&
+    metrics.cost.maxUsdPerRun > budget.maxUsdPerRun
+  ) {
     problems.push(`A run charged ${metrics.cost.maxUsdPerRun} USD, above the ${budget.maxUsdPerRun} USD cap.`);
   }
 
@@ -202,10 +207,6 @@ export function checkCostAgainstBudget(
     metrics.cost.totalUsd > budget.maxUsdPerWindow
   ) {
     problems.push(`The window charged ${metrics.cost.totalUsd} USD, above the ${budget.maxUsdPerWindow} USD budget.`);
-  }
-
-  if (metrics.cost.paidRuns === 0) {
-    problems.push('No measured charge recorded yet. Release gate 2 needs at least one real run.');
   }
 
   return { ok: problems.length === 0, problems };

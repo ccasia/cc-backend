@@ -130,6 +130,9 @@ model User {
 
   campaignCreationDrafts            CampaignCreationDraft[]
   campaignCreationDraftUploadLeases CampaignCreationDraftUploadLease[]
+
+  lastSeenReleaseNoteAt DateTime?
+  releaseNotesCreated   ReleaseNote[] @relation("ReleaseNoteCreatedBy")
 }
 
 model CampaignCreationDraft {
@@ -412,12 +415,14 @@ model Creator {
   manualTiktokFollowerCount    Int? @default(0) // Platform-specific manual TikTok followers
 
   /// Engagement rate for a creator with no connected account, as a percentage
-  /// ("4.27" is 4.27%). Written by an Apify scrape or by an admin override in
+  /// ("4.27" is 4.27%). Written by a Bright Data scrape or by an admin override in
   /// the Add Platform Creators modal. `Float?` matches
   /// InstagramUser.engagement_rate and TiktokUser.engagement_rate, so every
   /// read site sees one type. Null means never measured; it is not zero.
   manualInstagramEngagementRate Float?
   manualTiktokEngagementRate    Float?
+
+  discoveryProfiles CreatorDiscoveryProfile[]
 
   creditTierId  String?
   creditTier    CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
@@ -1288,9 +1293,12 @@ model Pitch {
   approvalRequestCreators  ApprovalRequestCreator[]
   guestCreatorMetricAudits GuestCreatorMetricAudit[]
 
-  /// Set while an Apify run still owns Followers and ER for this pitch.
+  /// Set while a scrape job still owns Followers and ER for this pitch.
   pendingExtractionId String?                 @unique
   pendingExtraction   GuestProfileExtraction? @relation("PendingPitchExtraction", fields: [pendingExtractionId], references: [id], onDelete: SetNull)
+  /// Why that run gave no metrics, e.g. INSUFFICIENT_DATA. While set, an admin
+  /// may enter Followers and ER by hand.
+  metricsFailureCode  String?
 
   @@unique([userId, campaignId])
 }
@@ -3241,34 +3249,49 @@ model GuestProfileExtraction {
   canonicalProfileUrl String         @db.VarChar(255)
   platform            SocialPlatform
 
+  /// Column names predate the Bright Data migration (2026-09). Apify-era rows
+  /// keep their Apify values.
+  /// Bright Data posts dataset ID, for example `gd_lyclm20il4r5helnj`.
   actorId        String  @db.VarChar(120)
-  /// Exact pinned build. Never `latest`.
+  /// Adapter contract version, for example `brightdata-ig-2026-09`. Keys the
+  /// cache and the work fingerprint. Bright Data has no build pinning.
   actorBuild     String  @db.VarChar(40)
+  /// Posts job `snapshot_id` (`sd_...`). Both columns hold the same value.
   actorRunId     String? @db.VarChar(60)
   actorDatasetId String? @db.VarChar(60)
 
-  /// Instagram only. The actor caps `details` mode at 12 posts, so the metrics
-  /// come from a `posts` run and the follower count from a second `details`
-  /// run. Recorded before polling, so a paid run is never untracked.
+  /// Profile job `snapshot_id`, on both platforms. It supplies followers and
+  /// the private flag, and on Instagram the pinned flag and fallback dates.
+  /// Recorded before polling, so a paid job is never untracked.
   profileActorRunId     String? @db.VarChar(60)
   profileActorDatasetId String? @db.VarChar(60)
+
+  /// Second posts job (`snapshot_id`), started only when the first batch had
+  /// too few usable posts. Recorded before polling, so a paid job is never
+  /// untracked. Null when one batch was enough.
+  topUpRunId String? @db.VarChar(60)
 
   status GuestProfileExtractionStatus @default(QUEUED)
 
   /// Typed result. Present only for READY.
-  resultName           String?  @db.VarChar(255)
-  resultFollowerCount  Int?
+  resultBiography         String?
+  /// Profile picture copied to our storage. Provider CDN links expire. Set on
+  /// READY and INSUFFICIENT_DATA, because the profile job worked on both.
+  resultProfilePictureUrl String?
+  resultName              String?  @db.VarChar(255)
+  resultFollowerCount     Int?
   /// Percentage without the sign. `"4.27"` means 4.27%.
-  resultEngagementRate String?  @db.VarChar(24)
-  sampleSize           Int?
-  formulaVersion       String?  @db.VarChar(60)
+  resultEngagementRate    String?  @db.VarChar(24)
+  sampleSize              Int?
+  formulaVersion          String?  @db.VarChar(60)
   /// Selected-post evidence built by this backend. Not provider JSON.
-  selectedPosts        Json?
-  /// Every candidate the actor returned, with the verdict the policy gave it.
+  selectedPosts           Json?
+  /// Every candidate the provider returned, with the verdict the policy gave it.
   /// Counters, IDs and timestamps only. No caption, media URL, avatar or bio.
-  candidatePosts       Json?
-  /// Policy flags the pinned actor build did not report.
-  unverifiedFlags      String[]
+  candidatePosts          Json?
+  /// Policy flags the provider did not report, plus `publishedAt` when an
+  /// undated Instagram Reel was ordered by provider list order.
+  unverifiedFlags         String[]
 
   failureCode    String? @db.VarChar(60)
   failureMessage String?
@@ -3283,11 +3306,11 @@ model GuestProfileExtraction {
   receiptExpiresAt  DateTime?
   receiptConsumedAt DateTime?
 
-  /// Measured charge for this run, from the provider. Null until a run
-  /// finishes. Release gate 2 needs this recorded, not estimated.
+  /// Measured charge from the provider. Apify-era rows only: Bright Data
+  /// reports no per-job cost, so it stays null. Spend is in its dashboard.
   costUsd Decimal? @db.Decimal(10, 6)
 
-  /// Measured charge for the secondary profile run, where one was needed.
+  /// Measured charge for the profile run. Apify-era rows only.
   profileCostUsd Decimal? @db.Decimal(10, 6)
 
   /// Set when this row copied a completed result instead of paying again.
@@ -3323,6 +3346,35 @@ model GuestProfileExtraction {
 ///
 /// Denormalized on purpose. It must stay readable after the extraction row is
 /// cleaned up, so the extraction link is optional and set to null on delete.
+model CreatorDiscoveryProfile {
+  biography             String?
+  id                    String             @id @default(cuid())
+  userId                String
+  creator               Creator            @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  platform              SocialPlatform
+  profileUrl            String?
+  handle                String?
+  followers             Int?
+  engagementRate        Float?
+  followersSource       GuestMetricSource?
+  engagementRateSource  GuestMetricSource?
+  followersSavedAt      DateTime?
+  engagementRateSavedAt DateTime?
+  savedAt               DateTime
+  scrapedAt             DateTime?
+  /// When this profile first joined Discovery. A re-scrape does not change it.
+  createdAt             DateTime           @default(now())
+  /// When Link Creator moved this scrape from a guest to a platform creator.
+  linkedAt              DateTime?
+  /// Durable, typed evidence. Independent of temporary extractions and manual values.
+  scrapeDetails         Json?
+  /// Caption search without loading full post evidence for every candidate.
+  captions              String             @default("")
+
+  @@unique([userId, platform])
+  @@index([platform])
+}
+
 model GuestCreatorMetricAudit {
   id String @id @default(cuid())
 
@@ -3429,4 +3481,44 @@ model GuestProfileIdentityConflict {
   resolutionNote   String?
 
   @@index([status])
+}
+
+// ─────────────────────────── Release Notes ────────────────────────────
+
+enum ReleaseNoteStatus {
+  DRAFT
+  PUBLISHED
+  SCHEDULED
+}
+
+enum ReleaseNoteItemType {
+  NEW
+  IMPROVED
+  FIXED
+}
+
+model ReleaseNote {
+  id          String            @id @default(cuid())
+  releaseDate DateTime
+  status      ReleaseNoteStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdById String?
+  createdBy   User?             @relation("ReleaseNoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items       ReleaseNoteItem[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([status, publishedAt])
+}
+
+model ReleaseNoteItem {
+  id            String              @id @default(cuid())
+  releaseNoteId String
+  releaseNote   ReleaseNote         @relation(fields: [releaseNoteId], references: [id], onDelete: Cascade)
+  type          ReleaseNoteItemType
+  title         String              @db.VarChar(255)
+  description   String              @db.Text
+  order         Int                 @default(0)
+
+  @@index([releaseNoteId])
 }

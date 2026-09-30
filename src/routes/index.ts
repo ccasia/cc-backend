@@ -50,6 +50,7 @@ import campaignCreationDraftRoute from './campaignCreationDraftRoute';
 
 import treasureHuntAdminRoute from './treasureHuntAdminRoute';
 import treasureHuntRoute from './treasureHuntRoute';
+import { releaseNoteRoute } from '@modules/release-note';
 
 export const router = express.Router();
 
@@ -105,3 +106,5 @@ router.use('/video-of-the-month', videoOfTheMonthRoute);
 router.use('/finance', financeRoute);
 router.use('/upload-sessions', uploadRoute);
 router.use('/hunts', treasureHuntRoute);
+
+router.use('/release-notes', releaseNoteRoute);

@@ -90,7 +90,9 @@ function medianViewRate(
   const evidence: SelectedPostEvidence[] = posts.map((post) => ({
     postId: post.postId,
     postUrl: post.postUrl,
-    publishedAt: post.publishedAt.toISOString(),
+    thumbnailUrl: post.thumbnailUrl ?? null,
+    // Null for an undated Reel. The breakdown shows a dash.
+    publishedAt: post.publishedAt ? post.publishedAt.toISOString() : null,
     likes: post.likes,
     comments: post.comments,
     shares: post.shares,

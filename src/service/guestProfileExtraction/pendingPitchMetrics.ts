@@ -1,4 +1,6 @@
+import { createDiscoveryMetricAudit } from '@services/creatorDiscoveryProfileService';
 import { ReceiptAlreadyUsedError, claimReceiptNonce, usernameFromCanonicalKey } from './guestCreateService';
+import { classifyMetricProvenance } from './metricProvenance';
 import { ensureScrapedProfileLink } from './scrapedProfileLink';
 
 /**
@@ -9,12 +11,7 @@ import { ensureScrapedProfileLink } from './scrapedProfileLink';
  * pendingExtractionId no longer matches, is left alone.
  */
 
-export const PENDING_FAILURE_STATUSES = [
-  'INSUFFICIENT_DATA',
-  'FAILED',
-  'CANCELLED',
-  'STALE',
-] as const;
+export const PENDING_FAILURE_STATUSES = ['INSUFFICIENT_DATA', 'FAILED', 'CANCELLED', 'STALE'] as const;
 
 export interface PendingPitchApplyStore {
   guestProfileExtraction: {
@@ -48,7 +45,7 @@ export interface PendingPitchApplyStore {
 const isEmptyMetric = (value: unknown): boolean =>
   value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
 
-async function assignCreditTier(
+export async function assignCreditTier(
   tx: PendingPitchApplyStore,
   userId: string,
   followerCount: number,
@@ -75,11 +72,7 @@ async function assignCreditTier(
   });
 }
 
-async function applyReadyToPitch(
-  tx: PendingPitchApplyStore,
-  pitch: any,
-  extraction: any,
-): Promise<void> {
+async function applyReadyToPitch(tx: PendingPitchApplyStore, pitch: any, extraction: any): Promise<void> {
   const [fresh] = await tx.pitch.findMany({
     where: { id: pitch.id, pendingExtractionId: extraction.id },
     include: { user: true },
@@ -92,7 +85,6 @@ async function applyReadyToPitch(
   const placeholder = usernameFromCanonicalKey(extraction.canonicalProfileKey ?? '');
   const writeFollowers = isEmptyMetric(fresh.followerCount) && followerCount != null;
   const writeRate = isEmptyMetric(fresh.engagementRate) && Boolean(engagementRate);
-  const alreadyComplete = !isEmptyMetric(fresh.followerCount) && !isEmptyMetric(fresh.engagementRate);
 
   const updated = await tx.pitch.updateMany({
     where: { id: fresh.id, pendingExtractionId: extraction.id },
@@ -100,6 +92,7 @@ async function applyReadyToPitch(
       ...(writeFollowers ? { followerCount: String(followerCount) } : {}),
       ...(writeRate ? { engagementRate } : {}),
       pendingExtractionId: null,
+      metricsFailureCode: null,
     },
   });
   if (updated.count === 0) return;
@@ -110,8 +103,6 @@ async function applyReadyToPitch(
     fresh.selectedPlatform ?? extraction.platform,
     extraction.canonicalProfileUrl,
   );
-
-  if (alreadyComplete) return;
 
   if (writeFollowers && followerCount != null) {
     await assignCreditTier(tx, fresh.userId, followerCount, fresh.selectedPlatform);
@@ -129,7 +120,16 @@ async function applyReadyToPitch(
     });
   }
 
-  await tx.guestCreatorMetricAudit.create({
+  const provenance = classifyMetricProvenance({
+    receiptVerified: true,
+    original: { name: extraction.resultName ?? null, followerCount, engagementRate },
+    final: {
+      name: resultName || currentName || null,
+      followerCount: writeFollowers ? followerCount : parseStoredFollowerCount(fresh.followerCount),
+      engagementRate: writeRate ? engagementRate : (fresh.engagementRate ?? null),
+    },
+  });
+  await createDiscoveryMetricAudit(tx, {
     data: {
       pitchId: fresh.id,
       extractionId: extraction.id,
@@ -141,9 +141,9 @@ async function applyReadyToPitch(
       originalEngagementRate: extraction.resultEngagementRate ?? null,
       finalName: resultName || currentName || null,
       finalFollowerCount: writeFollowers ? followerCount : parseStoredFollowerCount(fresh.followerCount),
-      finalEngagementRate: writeRate ? engagementRate : fresh.engagementRate ?? null,
-      source: 'automatic',
-      overrideReason: null,
+      finalEngagementRate: writeRate ? engagementRate : (fresh.engagementRate ?? null),
+      source: provenance.source,
+      overrideReason: provenance.overrideReason,
       actorId: extraction.actorId ?? null,
       actorBuild: extraction.actorBuild ?? null,
       actorRunId: extraction.actorRunId ?? null,
@@ -160,18 +160,36 @@ function parseStoredFollowerCount(value: unknown): number | null {
   return null;
 }
 
-async function applyFailureToPitch(
-  tx: PendingPitchApplyStore,
-  pitch: any,
-  extraction: any,
-): Promise<void> {
+async function applyFailureToPitch(tx: PendingPitchApplyStore, pitch: any, extraction: any): Promise<void> {
+  // Too few posts for a rate, but the profile was read. Keep the follower
+  // count, so the admin only has to type the rate.
+  const fetchedFollowers: number | null =
+    extraction.status === 'INSUFFICIENT_DATA' && typeof extraction.resultFollowerCount === 'number'
+      ? extraction.resultFollowerCount
+      : null;
+  const writeFollowers = fetchedFollowers !== null && isEmptyMetric(pitch.followerCount);
+
   const updated = await tx.pitch.updateMany({
     where: { id: pitch.id, pendingExtractionId: extraction.id },
-    data: { pendingExtractionId: null },
+    data: {
+      pendingExtractionId: null,
+      // Kept on the pitch so the row can say why, and so an admin may type
+      // the numbers in. See updatePlatformCreatorMetrics.
+      metricsFailureCode: extraction.failureCode ?? extraction.status ?? 'FAILED',
+      ...(writeFollowers ? { followerCount: String(fetchedFollowers) } : {}),
+    },
   });
   if (updated.count === 0) return;
 
-  await tx.guestCreatorMetricAudit.create({
+  if (writeFollowers && fetchedFollowers !== null) {
+    await assignCreditTier(tx, pitch.userId, fetchedFollowers, pitch.selectedPlatform ?? extraction.platform);
+    await tx.shortListedCreator.updateMany({
+      where: { userId: pitch.userId, campaignId: pitch.campaignId },
+      data: { followerCount: fetchedFollowers },
+    });
+  }
+
+  await createDiscoveryMetricAudit(tx, {
     data: {
       pitchId: pitch.id,
       extractionId: extraction.id,
@@ -179,10 +197,10 @@ async function applyFailureToPitch(
       canonicalProfileKey: extraction.canonicalProfileKey ?? null,
       platform: pitch.selectedPlatform ?? extraction.platform ?? null,
       originalName: null,
-      originalFollowerCount: null,
+      originalFollowerCount: fetchedFollowers,
       originalEngagementRate: null,
       finalName: pitch.user?.name ?? null,
-      finalFollowerCount: null,
+      finalFollowerCount: writeFollowers ? fetchedFollowers : parseStoredFollowerCount(pitch.followerCount),
       finalEngagementRate: null,
       source: 'unavailable',
       overrideReason: extraction.failureCode
@@ -246,10 +264,13 @@ export async function applyExtractionToPendingPitches(
   return false;
 }
 
-/** Prisma Client was generated before Pitch.pendingExtractionId existed. */
+/** Prisma Client was generated before Pitch.pendingExtractionId or metricsFailureCode existed. */
 export function isStalePendingExtractionClient(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes('Unknown argument `pendingExtractionId`');
+  return (
+    message.includes('Unknown argument `pendingExtractionId`') ||
+    message.includes('Unknown argument `metricsFailureCode`')
+  );
 }
 
 /**
