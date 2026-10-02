@@ -19,6 +19,7 @@ import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
 import { clients, getIo } from './socket';
 import { snapshotLeaderboard } from '../modules/gamification';
+import { publishDueReleaseNotes } from '@modules/release-note';
 import { reconcileStuckLogistics } from '../service/logisticsService';
 
 const prisma = new PrismaClient();
@@ -314,6 +315,27 @@ new CronJob(
       });
     } catch (error) {
       console.error('[Cronjob] Logistics reconciliation failed:', error);
+    }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur',
+);
+
+new CronJob(
+  '0 0,8,16 * * *', // 00:00, 08:00, 16:00 MYT
+  async function () {
+    try {
+      const result = await publishDueReleaseNotes();
+
+      if (result.published > 0) {
+        console.log('[Cronjob] Published scheduled release notes:', {
+          published: result.published,
+          timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+        });
+      }
+    } catch (error) {
+      console.error('[Cronjob] Scheduled release note publish failed:', error);
     }
   },
   null, // onComplete

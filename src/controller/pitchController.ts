@@ -33,6 +33,10 @@ const LATEST_SCRAPE_EVIDENCE = {
       },
     },
   },
+  // Drives the loader's status line while the scrape runs.
+  pendingExtraction: {
+    select: { status: true, createdAt: true, topUpRunId: true },
+  },
 };
 
 const emitCreatorCampaignMembershipUpdated = ({
@@ -2656,6 +2660,9 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
       if (Object.keys(pitchUpdateData).length > 0) {
         await tx.pitch.update({ where: { id: pitchId }, data: pitchUpdateData });
       }
+
+      // No metrics sent (a scrape still owns them): no metric change to audit.
+      if (followerCount === undefined && engagementRate === undefined) return;
 
       // An update has no receipt, so its provenance is manual or unavailable.
       const provenance = classifyMetricProvenance({

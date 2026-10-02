@@ -1,7 +1,7 @@
 /**
  * Shared domain types for guest profile extraction.
  *
- * Provider JSON never reaches these types directly. An actor adapter converts
+ * Provider JSON never reaches these types directly. A scraper adapter converts
  * `unknown` into a `PostCandidate`, and only then does the valid-post policy
  * and the formula registry see it.
  */
@@ -50,15 +50,19 @@ export interface PostCandidate {
   thumbnailUrl?: string | null;
   /** Author handle as the provider reported it. Compared case-insensitively. */
   ownerHandle: string | null;
-  /** Raw publication time from the provider, before parsing. */
+  /**
+   * Raw publication time from the provider, before parsing. Null when the
+   * provider did not expose one: Bright Data's Instagram Reels listing often
+   * has no `date_posted`, and the profile grid covers only twelve posts.
+   */
   publishedAt: string | null;
   likes: number | null;
   comments: number | null;
-  /** TikTok only. The Instagram actor reports no share count. */
+  /** TikTok only. No Instagram source reports a share count. */
   shares: number | null;
   /**
-   * TikTok `collectCount`. Never required: no public Instagram source reports
-   * saves, and the TikTok actor may omit the field. Absent counts as zero and
+   * TikTok `collect_count`. Never required: no public Instagram source reports
+   * saves, and the TikTok scraper may omit the field. Absent counts as zero and
    * the result records that saves were not reported.
    */
   saves: number | null;
@@ -68,6 +72,12 @@ export interface PostCandidate {
   isAd: boolean | null;
   isSponsored: boolean | null;
   isRepost: boolean | null;
+  /**
+   * Instagram: the post has a co-author (a collab), whoever posted it. Product
+   * decision 2026-09-30: collabs never count, because the engagement belongs
+   * to both accounts. Null where the provider reports no co-authors (TikTok).
+   */
+  isCollab: boolean | null;
   /** Post-level visibility, where the provider reports it. */
   isPublic: boolean | null;
   /** Provider post type, for example `Video`, `Sidecar`, `photo`. */
@@ -77,6 +87,17 @@ export interface PostCandidate {
    * post. Shown in the engagement breakdown so an admin can recognise the post.
    */
   caption: string | null;
+  /** Position in the provider's list, from 0. The only order an undated post has. */
+  sourceRank: number;
+  /**
+   * True when the provider's list order may stand in for a missing date.
+   *
+   * Instagram only. Bright Data lists Reels newest first but often omits the
+   * publish date, so an undated Reel is kept and ordered by `sourceRank`, and
+   * the row records `publishedAt` as unverified. TikTok always has a date, so
+   * an undated TikTok post is still dropped.
+   */
+  undatedOrderTrusted: boolean;
 }
 
 /** A candidate that passed every rule. Counters are safe integers. */
@@ -86,12 +107,15 @@ export interface ValidPost {
   postUrl: string | null;
   /** Image URL supplied by the saved provider result; absent on older records. */
   thumbnailUrl?: string | null;
-  publishedAt: Date;
+  /** Null only for an Instagram Reel accepted on trusted list order. */
+  publishedAt: Date | null;
+  /** Position in the provider's list. Orders the sample when any date is missing. */
+  sourceRank: number;
   likes: number;
   comments: number;
   /** TikTok only. */
   shares: number | null;
-  /** TikTok only, and only when the actor reported it. */
+  /** TikTok only, and only when the scraper reported it. */
   saves: number | null;
   /** The formula denominator. Always above zero. */
   views: number | null;
@@ -112,7 +136,8 @@ export type PostRejectionCode =
   | 'PINNED'
   | 'AD'
   | 'SPONSORED'
-  | 'REPOST';
+  | 'REPOST'
+  | 'COLLAB';
 
 export interface RejectedPost {
   postId: string | null;
@@ -123,15 +148,24 @@ export interface RejectedPost {
 /**
  * Flags the provider did not report for a post that was otherwise accepted.
  *
- * An unreported flag cannot be checked. Certification (04-apify-setup.md
- * section 4) must record which flags each pinned actor build reports.
+ * An unreported flag cannot be checked. Certification
+ * (cc-backend/docs/brightdata-setup.md) records which flags each Bright Data
+ * dataset reports. `publishedAt` means at least one sampled post had no
+ * publish date and was ordered by the provider's list order instead.
  */
-export type UnverifiableFlag = 'isPinned' | 'isAd' | 'isSponsored' | 'isRepost' | 'isPublic';
+export type UnverifiableFlag =
+  | 'isPinned'
+  | 'isAd'
+  | 'isSponsored'
+  | 'isRepost'
+  | 'isCollab'
+  | 'isPublic'
+  | 'publishedAt';
 
 /**
  * One candidate with the verdict the policy gave it.
  *
- * Kept for every candidate the actor returned, so an admin can see why a post
+ * Kept for every candidate the provider returned, so an admin can see why a post
  * was left out and so a future rule change can be checked against real data.
  * Counters, IDs and an optional thumbnail URL. No avatar or bio.
  */
@@ -157,7 +191,7 @@ export interface ValidPostPolicyResult {
   valid: ValidPost[];
   rejected: RejectedPost[];
   unverifiedFlags: UnverifiableFlag[];
-  /** Every candidate, in the order the actor returned them. */
+  /** Every candidate, in the order the provider returned them. */
   evaluated: EvaluatedCandidate[];
 }
 
@@ -165,7 +199,7 @@ export type SampleSelectionResult =
   | { ok: true; posts: ValidPost[] }
   | { ok: false; code: 'INSUFFICIENT_DATA'; validCount: number; required: number };
 
-/* ----------------------------------------------------------- Actor adapters */
+/* --------------------------------------------------------- Scraper adapters */
 
 export type AdapterFailureCode =
   | 'PROVIDER_SCHEMA_CHANGED'
@@ -179,7 +213,9 @@ export interface ExtractedProfile {
   /** Lowercased handle as the provider reported it. */
   username: string;
   displayName: string | null;
-  /** Null when the actor mode does not report it. */
+  /** Provider CDN link. It expires, so the service copies it before saving. */
+  profilePictureUrl?: string | null;
+  /** Null when the profile job failed or did not report it. */
   followerCount: number | null;
   isPrivate: boolean;
 }
@@ -192,12 +228,13 @@ export type AdapterResult =
 export interface AdapterInput {
   items: unknown;
   /**
-   * Instagram only. Items from the second, `details` run, which supplies the
-   * follower count and the private flag. Absent when that run failed: the
-   * rate is still produced, without a follower count.
+   * Items from the profile job, which supplies the follower count and the
+   * private flag on both platforms, and on Instagram the pinned flag and the
+   * fallback date for the twelve newest grid posts. Absent when that job
+   * failed: the rate is still produced, without a follower count.
    */
   profileItems?: unknown;
-  /** Set when the run itself failed. */
+  /** Set when the job itself failed. */
   error?: { code?: unknown; message?: unknown } | null;
   /** Canonical handle that was requested. */
   expectedUsername: string;
@@ -230,7 +267,8 @@ export interface SelectedPostEvidence {
   postUrl: string | null;
   /** Image URL supplied by the saved provider result; absent on older records. */
   thumbnailUrl?: string | null;
-  publishedAt: string;
+  /** ISO time. Null for an undated Instagram Reel ordered by provider rank. */
+  publishedAt: string | null;
   likes: number;
   comments: number;
   shares: number | null;
@@ -238,7 +276,7 @@ export interface SelectedPostEvidence {
   views: number | null;
   /**
    * Public caption or post text when the provider reported one. Null when the
-   * actor omitted it, or when an older stored row pre-dates this field.
+   * provider omitted it, or when an older stored row pre-dates this field.
    */
   caption: string | null;
   /**
