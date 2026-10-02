@@ -419,6 +419,8 @@ model Creator {
   manualInstagramEngagementRate Float?
   manualTiktokEngagementRate    Float?
 
+  discoveryProfiles CreatorDiscoveryProfile[]
+
   creditTierId  String?
   creditTier    CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
   tierUpdatedAt DateTime? // Last time tier was calculated
@@ -3259,6 +3261,7 @@ model GuestProfileExtraction {
   status GuestProfileExtractionStatus @default(QUEUED)
 
   /// Typed result. Present only for READY.
+  resultBiography      String?
   resultName           String?  @db.VarChar(255)
   resultFollowerCount  Int?
   /// Percentage without the sign. `"4.27"` means 4.27%.
@@ -3326,6 +3329,35 @@ model GuestProfileExtraction {
 ///
 /// Denormalized on purpose. It must stay readable after the extraction row is
 /// cleaned up, so the extraction link is optional and set to null on delete.
+model CreatorDiscoveryProfile {
+  biography String?
+  id String @id @default(cuid())
+  userId String
+  creator Creator @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  platform SocialPlatform
+  profileUrl String?
+  handle String?
+  followers Int?
+  engagementRate Float?
+  followersSource GuestMetricSource?
+  engagementRateSource GuestMetricSource?
+  followersSavedAt DateTime?
+  engagementRateSavedAt DateTime?
+  savedAt DateTime
+  scrapedAt DateTime?
+  /// When this profile first joined Discovery. A re-scrape does not change it.
+  createdAt DateTime @default(now())
+  /// When Link Creator moved this scrape from a guest to a platform creator.
+  linkedAt DateTime?
+  /// Durable, typed evidence. Independent of temporary extractions and manual values.
+  scrapeDetails Json?
+  /// Caption search without loading full post evidence for every candidate.
+  captions String @default("")
+
+  @@unique([userId, platform])
+  @@index([platform])
+}
+
 model GuestCreatorMetricAudit {
   id String @id @default(cuid())
 

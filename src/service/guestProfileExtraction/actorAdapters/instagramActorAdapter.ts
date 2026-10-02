@@ -11,6 +11,7 @@ import {
   normalizeHandle,
   runFailure,
   text,
+  imageUrl,
 } from './adapterShared';
 
 /**
@@ -33,6 +34,7 @@ const postSchema = z.object({
   id: z.string().min(1),
   type: text,
   url: text,
+  displayUrl: imageUrl.optional(),
   timestamp: text,
   likesCount: counter,
   commentsCount: counter,
@@ -66,6 +68,7 @@ const postSchema = z.object({
 const profileSchema = z.object({
   username: z.string().min(1),
   fullName: text,
+  biography: text,
   followersCount: counter,
   private: flag,
   latestPosts: z.array(z.unknown()).nullish(),
@@ -129,6 +132,7 @@ export function parseInstagramActorOutput(input: AdapterInput): AdapterResult {
       platform: 'instagram',
       postId: post.id,
       postUrl: post.url,
+      thumbnailUrl: post.displayUrl ?? null,
       ownerHandle: post.ownerUsername,
       publishedAt: post.timestamp,
       likes: post.likesCount,
@@ -171,6 +175,7 @@ function toProfile(
   return {
     platform: 'instagram',
     username: expected,
+    biography: profileRun.ok ? profileRun.profile.biography : null,
     displayName: profileRun.ok ? profileRun.profile.fullName : fallbackName,
     // Null when the profile run failed. v2 does not divide by followers, so a
     // rate is still produced; the admin sees an empty Follower Count field.

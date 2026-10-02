@@ -19,6 +19,7 @@ import {
   type ExtractionDeps,
 } from '@services/guestProfileExtraction/guestProfileExtractionService';
 import { applyExtractionToPendingPitchesSafe } from '@services/guestProfileExtraction/pendingPitchMetrics';
+import { cacheDiscoveryThumbnail } from '@services/socialMediaService';
 import { enqueueExtraction } from '@utils/queue';
 import { prisma } from '@/src/prisma/prisma';
 
@@ -45,6 +46,7 @@ const deps: ExtractionDeps = {
   // cleared first, or reconciliation could never requeue anything.
   enqueue: (extractionId: string) => enqueueExtraction(extractionId, { removeOnComplete: true }),
   log: (message, context) => console.log(`[engagement-worker] ${message}`, context ?? ''),
+  cacheThumbnail: cacheDiscoveryThumbnail,
 };
 
 const worker = new Worker(

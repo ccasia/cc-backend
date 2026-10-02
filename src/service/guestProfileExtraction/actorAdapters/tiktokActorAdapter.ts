@@ -1,7 +1,17 @@
 import { z } from 'zod';
 
 import type { AdapterInput, AdapterResult, ExtractedProfile, PostCandidate } from '@/src/types/guestProfileExtraction';
-import { asArray, counter, errorItemFailure, fail, flag, normalizeHandle, runFailure, text } from './adapterShared';
+import {
+  asArray,
+  counter,
+  errorItemFailure,
+  fail,
+  flag,
+  normalizeHandle,
+  runFailure,
+  text,
+  imageUrl,
+} from './adapterShared';
 
 /**
  * Adapter for `clockworks/tiktok-profile-scraper`.
@@ -20,6 +30,7 @@ const authorSchema = z.object({
   /** The handle, without the leading `@`. */
   name: text,
   nickName: text,
+  signature: text,
   /** Follower count. Named `fans` by the actor. */
   fans: counter,
   privateAccount: flag,
@@ -28,6 +39,7 @@ const authorSchema = z.object({
 const postSchema = z.object({
   id: z.string().min(1),
   webVideoUrl: text,
+  videoMeta: z.object({ coverUrl: imageUrl.optional(), originalCoverUrl: imageUrl.optional() }).nullish().catch(null),
   createTimeISO: text,
   /**
    * Counters, flat and top level. `collectCount` is saves — measured present
@@ -93,6 +105,7 @@ export function parseTiktokActorOutput(input: AdapterInput): AdapterResult {
       platform: 'tiktok',
       postId: post.id,
       postUrl: post.webVideoUrl,
+      thumbnailUrl: post.videoMeta?.coverUrl ?? post.videoMeta?.originalCoverUrl ?? null,
       ownerHandle: post.authorMeta.name,
       publishedAt: post.createTimeISO,
       likes: post.diggCount,
@@ -121,6 +134,7 @@ export function parseTiktokActorOutput(input: AdapterInput): AdapterResult {
   const profile: ExtractedProfile = {
     platform: 'tiktok',
     username: expected,
+    biography: owner?.signature ?? null,
     displayName: owner?.nickName ?? null,
     followerCount: owner?.fans ?? null,
     isPrivate: false,

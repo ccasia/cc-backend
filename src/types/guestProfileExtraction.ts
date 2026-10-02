@@ -46,6 +46,8 @@ export interface PostCandidate {
   platform: SupportedPlatform;
   postId: string | null;
   postUrl: string | null;
+  /** Image URL supplied by the saved provider result; absent on older records. */
+  thumbnailUrl?: string | null;
   /** Author handle as the provider reported it. Compared case-insensitively. */
   ownerHandle: string | null;
   /** Raw publication time from the provider, before parsing. */
@@ -82,6 +84,8 @@ export interface ValidPost {
   platform: SupportedPlatform;
   postId: string;
   postUrl: string | null;
+  /** Image URL supplied by the saved provider result; absent on older records. */
+  thumbnailUrl?: string | null;
   publishedAt: Date;
   likes: number;
   comments: number;
@@ -129,11 +133,13 @@ export type UnverifiableFlag = 'isPinned' | 'isAd' | 'isSponsored' | 'isRepost' 
  *
  * Kept for every candidate the actor returned, so an admin can see why a post
  * was left out and so a future rule change can be checked against real data.
- * Counters and IDs only. No caption, no media URL, no avatar, no bio.
+ * Counters, IDs and an optional thumbnail URL. No avatar or bio.
  */
 export interface EvaluatedCandidate {
   postId: string | null;
   postUrl: string | null;
+  /** Image URL supplied by the saved provider result; absent on older records. */
+  thumbnailUrl?: string | null;
   publishedAt: string | null;
   likes: number | null;
   comments: number | null;
@@ -168,6 +174,7 @@ export type AdapterFailureCode =
   | 'PROVIDER_FAILURE';
 
 export interface ExtractedProfile {
+  biography?: string | null;
   platform: SupportedPlatform;
   /** Lowercased handle as the provider reported it. */
   username: string;
@@ -217,10 +224,12 @@ export type EngagementFormulaId =
  */
 export type FormulaFailureCode = 'MISSING_FOLLOWER_COUNT' | 'WRONG_SAMPLE_SIZE' | 'INVALID_POST';
 
-/** One selected post, as shown to the admin. No media URL, no avatar, no bio. */
+/** One selected post, as shown to the admin. Optional thumbnail URL, no avatar or bio. */
 export interface SelectedPostEvidence {
   postId: string;
   postUrl: string | null;
+  /** Image URL supplied by the saved provider result; absent on older records. */
+  thumbnailUrl?: string | null;
   publishedAt: string;
   likes: number;
   comments: number;
