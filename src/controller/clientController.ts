@@ -455,7 +455,6 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         orderBy: { createdAt: 'asc' },
       });
 
-      const selectedSubscriptionId: string | undefined = activeSubscriptions?.[0]?.id;
       let remainingCreditsToAllocate = requestedCredits;
       const creditAllocationBreakdown: any[] = [];
 
@@ -481,6 +480,9 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           }
         }
       }
+
+      const selectedSubscriptionId: string | undefined =
+        creditAllocationBreakdown[0]?.subscriptionId ?? activeSubscriptions?.[0]?.id;
 
       // --- LOGISTICS: Process Products ---
       let productsToCreate: any[] = [];
