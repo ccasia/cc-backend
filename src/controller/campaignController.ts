@@ -395,7 +395,6 @@ export const createCampaign = async (req: Request, res: Response) => {
         const creditAllocationBreakdown: any[] = [];
         const parsedCampaignCredits = Number(campaignCredits) || 0;
         let remainingCreditsToAllocate = parsedCampaignCredits;
-        const selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
 
         if (existingClient.subscriptions && existingClient.subscriptions.length > 0 && parsedCampaignCredits > 0) {
           // FIFO: Charge oldest subscriptions first
@@ -420,6 +419,9 @@ export const createCampaign = async (req: Request, res: Response) => {
             }
           }
         }
+
+        const selectedSubscriptionId: string | undefined =
+          creditAllocationBreakdown[0]?.subscriptionId ?? existingClient.subscriptions?.[0]?.id;
 
         // Create Campaign
         // Normalize dates for campaign brief
@@ -1050,7 +1052,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         const creditAllocationBreakdown: any[] = [];
         const parsedCampaignCredits = Number(campaignCredits) || 0;
         let remainingCreditsToAllocate = parsedCampaignCredits;
-        const selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
         if (existingClient.subscriptions && existingClient.subscriptions.length > 0 && parsedCampaignCredits > 0) {
           for (const sub of existingClient.subscriptions) {
             if (remainingCreditsToAllocate <= 0) break;
@@ -1066,6 +1067,10 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             }
           }
         }
+
+        const selectedSubscriptionId: string | undefined =
+          creditAllocationBreakdown[0]?.subscriptionId ?? existingClient.subscriptions?.[0]?.id;
+
         // Process uploaded images
         const publicURL: string[] = Array.isArray(rawData.draftCampaignImageUrls)
           ? rawData.draftCampaignImageUrls.filter(isOwnedDraftFileUrl)
@@ -12861,6 +12866,7 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
       creditsUtilized?: number;
       creditsPending?: number;
       creditAllocationBreakdown?: any;
+      subscriptionId?: string;
     } = {};
 
     if (campaignCredits !== undefined && campaignCredits !== null) {
@@ -13004,6 +13010,7 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
         }
 
         updateData.creditAllocationBreakdown = newBreakdown.length > 0 ? newBreakdown : Prisma.DbNull;
+        if (newBreakdown.length > 0) updateData.subscriptionId = newBreakdown[0].subscriptionId;
       }
 
       const updated = await tx.campaign.update({
