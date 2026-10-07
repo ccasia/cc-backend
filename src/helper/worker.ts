@@ -19,6 +19,34 @@ import { xero } from '@configs/xero';
 import { users } from '@utils/activeUsers';
 import { prisma } from '@/src/prisma/prisma';
 
+interface InvoiceForXero {
+  invoiceType?: string | null;
+  reimbursements?: unknown;
+}
+
+/**
+ * Xero line items for an invoice. The approve form only sends the fee line, so each billed
+ * reimbursement receipt is added as its own line. A REIMBURSEMENT invoice has no fee line.
+ */
+const withReimbursementLines = (items: any[], invoice: InvoiceForXero) => {
+  const lines = Array.isArray(invoice.reimbursements)
+    ? (invoice.reimbursements as { description?: string; amount?: number }[])
+    : [];
+
+  const reimbursementItems = lines.map((line) => ({
+    quantity: 1,
+    total: Number(line.amount) || 0,
+    xeroDescription: `Reimbursement – ${line.description ?? ''}`,
+  }));
+
+  return invoice.invoiceType === 'REIMBURSEMENT'
+    ? reimbursementItems
+    : [...(items ?? []), ...reimbursementItems];
+};
+
+const xeroCampaignName = (campaignName: string, invoice: InvoiceForXero) =>
+  invoice.invoiceType === 'REIMBURSEMENT' ? `${campaignName} (Reimbursement)` : campaignName;
+
 const worker = new Worker(
   'invoice-queue',
   async (job) => {
@@ -117,9 +145,9 @@ const worker = new Worker(
     if (contactID) {
       const createdInvoice = await createXeroInvoiceLocal(
         contactID,
-        job.data.items,
+        withReimbursementLines(job.data.items, invoice),
         job.data.dueDate,
-        campaign.name,
+        xeroCampaignName(campaign.name, invoice),
         invoice.invoiceNumber,
         invoice.user?.email!,
         job.data.invoiceFrom,
@@ -311,7 +339,7 @@ export const bulkInvoiceWorker = new Worker(
         let contactID = invoice.creator.xeroContactId;
 
         const clientName = invoice.campaign.brand?.name || invoice.campaign.company?.name || '';
-        const campaignName = invoice.campaign.name;
+        const campaignName = xeroCampaignName(invoice.campaign.name, invoice);
         const recipientName =
           (invoice.bankAcc as any)?.payTo ||
           invoice.creator.user.paymentForm?.bankAccountName ||

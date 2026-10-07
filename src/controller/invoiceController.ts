@@ -17,6 +17,7 @@ import {
 } from '@helper/notification';
 import { saveNotification } from './notificationController';
 import { onInvoicePaid } from '@/src/modules/gamification';
+import { attachInvoiceFamily } from '@/src/modules/reimbursement/reimbursement.service';
 
 import { TokenSet } from 'openid-client';
 import { error } from 'console';
@@ -190,6 +191,8 @@ export const getAllInvoices = async (req: Request, res: Response) => {
         select: {
           id: true,
           invoiceNumber: true,
+          invoiceType: true, 
+          parentInvoiceId: true,
           amount: true,
           status: true,
           createdAt: true,
@@ -350,7 +353,8 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       const paginatedInvoices = invoicesWithCurrency.slice(skip, skip + limitNum);
 
       return res.status(200).json({
-        data: paginatedInvoices,
+        // Nest receipts-only invoices under their main invoice (see attachInvoiceFamily)
+        data: await attachInvoiceFamily(paginatedInvoices),
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -385,6 +389,8 @@ export const getAllInvoices = async (req: Request, res: Response) => {
         select: {
           id: true,
           invoiceNumber: true,
+          invoiceType: true, 
+          parentInvoiceId: true,
           amount: true,
           status: true,
           createdAt: true,
@@ -481,7 +487,8 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       });
 
       return res.status(200).json({
-        data: invoicesWithCurrency,
+        // Nest receipts-only invoices under their main invoice (see attachInvoiceFamily)
+        data: await attachInvoiceFamily(invoicesWithCurrency),
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -906,7 +913,36 @@ export const getInvoiceById = async (req: Request, res: Response) => {
       },
     });
 
-    res.status(200).json(invoice);
+    if (!invoice) return res.status(200).json(invoice);
+
+    // Invoice family: a child (receipts-only) shows its main invoice ("Related to INV-1234"),
+    // a main invoice lists its child reimbursement invoices
+    const [{ childInvoices, parentInvoice }] = await attachInvoiceFamily([invoice]);
+    const parentInvoiceNumber = parentInvoice?.invoiceNumber ?? null;
+
+    // Attach the admin's "Note to Finance" to each reimbursement line
+    const lines = Array.isArray(invoice.reimbursements) ? (invoice.reimbursements as any[]) : [];
+    const requester = lines.length
+      ? await prisma.user.findUnique({ where: { id: req.userId }, select: { role: true } })
+      : null;
+    const isStaff = requester?.role === 'admin' || requester?.role === 'superadmin';
+
+    let reimbursements = invoice.reimbursements;
+
+    if (isStaff) {
+      const receipts = await prisma.reimbursementReceipt.findMany({
+        where: { id: { in: lines.map((line) => line.receiptId).filter(Boolean) } },
+        select: { id: true, financeNote: true },
+      });
+      const noteByReceiptId = new Map(receipts.map((receipt) => [receipt.id, receipt.financeNote]));
+
+      reimbursements = lines.map((line) => ({
+        ...line,
+        financeNote: noteByReceiptId.get(line.receiptId) ?? null,
+      }));
+    }
+
+    res.status(200).json({ ...invoice, reimbursements, parentInvoiceNumber, childInvoices });
   } catch (error) {
     res.status(400).json(error);
   }
@@ -921,6 +957,7 @@ export const getInvoiceByCreatorIdAndCampaignId = async (req: Request, res: Resp
       where: {
         creatorId: creatorId,
         campaignId: campaignId,
+        invoiceType: 'STANDARD',
       },
     });
 
@@ -1774,6 +1811,7 @@ export const generateInvoice = async (req: Request, res: Response) => {
         campaignId: campaignId,
         creatorId: userId,
         round,
+        invoiceType: 'STANDARD',
       },
     });
 
