@@ -79,6 +79,19 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             email: true,
             status: true,
             photoURL: true,
+            creator: {
+              select: {
+                instagram: true,
+                tiktok: true,
+                instagramUser: { select: { username: true } },
+                tiktokUser: { select: { username: true } },
+                discoveryProfiles: { select: { platform: true, handle: true } },
+              },
+            },
+            shortlisted: {
+              where: { campaignId },
+              select: { selectedPlatform: true },
+            },
           },
         },
         video: {
