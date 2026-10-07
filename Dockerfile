@@ -48,7 +48,6 @@ COPY . .
 
 # Generate Prisma client
 RUN npx prisma generate
-RUN npx prisma db push
 
 # Build the application
 RUN yarn build
@@ -96,4 +95,6 @@ WORKDIR /app/dist
 
 RUN mkdir -p form/tmp form/pdf upload
 
-CMD ["pm2-runtime", "ecosystem.config.js"]
+# CMD ["pm2-runtime", "ecosystem.config.js"]
+CMD ["sh", "-c", "npx prisma db push && pm2-runtime ecosystem.config.js"]
+
