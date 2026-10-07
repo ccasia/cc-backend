@@ -8,164 +8,142 @@ datasource db {
 }
 
 model User {
-  id String @id @unique @default(cuid())
-
-  googleId          String?   @unique
-  appleId           String?   @unique
-  appleRefreshToken String?
-  appleAudience     String?
-  googleEmail       String?   @db.VarChar(255)
-  appleEmail        String?   @db.VarChar(255)
-  googleUnlinkedAt  DateTime?
-  appleUnlinkedAt   DateTime?
-
-  email    String  @unique @db.VarChar(255)
-  password String? @db.VarChar(255)
-
-  emailVerificationId String?            @unique
-  emailVerifcation    EmailVerification? @relation(fields: [emailVerificationId], references: [id])
-
-  createdAt               DateTime              @default(now())
-  name                    String?               @db.VarChar(255)
-  photoURL                String?               @db.VarChar(255)
-  country                 String?               @db.VarChar(100)
-  city                    String?               @db.VarChar(100)
-  phoneNumber             String?               @db.VarChar(100)
-  updatedAt               DateTime?             @updatedAt
-  status                  Status                @default(pending)
-  eventId                 String?
-  role                    RoleEnum
-  photoBackgroundURL      String?               @db.VarChar(255)
-  updateRefershToken      DateTime?
-  xeroRefreshToken        String?
-  admin                   Admin?
-  client                  Client?
-  agreementTemplate       AgreementTemplate[]
-  Board                   Board?
-  BookMarkCampaign        BookMarkCampaign[]
-  blockedBrand            BlockedBrand[]
-  campaignFlag            CampaignFlag[]
-  bookMarkCreator         BookMarkCreator[]     @relation("BookMarkCreatorOwner")
-  bookMarkedBy            BookMarkCreator[]     @relation("BookMarkCreatorTarget")
-  bookMarkCreatorLists    BookMarkCreatorList[]
-  campaignLogs            CampaignLog[]
-  CampaignTaskAdmin       CampaignTaskAdmin[]
-  creator                 Creator?
-  creatorAgreement        CreatorAgreement[]
-  feedback                Feedback[]
-  commentAgreements       CommentAgreement[]
-  submissionComments      SubmissionComment[]
-  forwardedComments       SubmissionComment[]   @relation("ForwardedComments")
-  resolvedComments        SubmissionComment[]   @relation("ResolvedComments")
-  finance                 Finance?
-  invoice                 Invoice[]             @relation("CreatedBy")
-  sentMessages            Message[]             @relation("UserMessages")
-  notifications           Notification[]
-  paymentForm             PaymentForm?
-  pitch                   Pitch[]
-  approvedPitches         Pitch[]               @relation("ApprovedByClient")
-  rejectedPitches         Pitch[]               @relation("RejectedByClient")
-  maybePitches            Pitch[]               @relation("MaybeByClient")
-  acceptedInviteByCreator Pitch[]               @relation("AcceptedInviteByCreator")
-
-  resetPasswordToken         ResetPasswordToken?
-  seenMessages               SeenMessage[]
-  shortlisted                ShortListedCreator[]
-  submission                 Submission[]
-  taskAssignee               TaskAssignee[]
-  unreadMessages             UnreadMessage[]
-  event                      Event?               @relation(fields: [eventId], references: [id])
-  userNotification           UserNotification[]
-  pushTokens                 PushToken[]
-  UserThread                 UserThread[]
-  threads                    Thread[]             @relation("UserThreads")
-  bugs                       Bugs[]
-  video                      Video[]
-  rawFootage                 RawFootage[]
-  photo                      Photo[]
-  isActive                   Boolean              @default(true)
-  isVerified                 Boolean              @default(false)
-  isKWSPCampaign             Boolean?             @default(false)
-  hasSubmittedKWSP           Boolean              @default(false)
-  hasAcceptedTermsAndPrivacy Boolean              @default(false)
-
-  referralCode String? @db.VarChar(50)
-
-  // Media Kit Mandatory flag for selected creators
-  mediaKitMandatory Boolean @default(false)
-
-  // Individual feedback relations
-  videoFeedback      Video[]      @relation("VideoFeedback")
-  rawFootageFeedback RawFootage[] @relation("RawFootageFeedback")
-  photoFeedback      Photo[]      @relation("PhotoFeedback")
-
-  npsFeedback NpsFeedback[]
-
-  // logistics
-  assignedLogistics Logistic[]      @relation("AssignedLogistics")
-  createdLogistics  Logistic[]      @relation("CreatedLogistics")
-  reportedIssues    LogisticIssue[]
-
-  twoFactorSecret String?
-
-  userFlow       UserFlow[]
-  activatedAt    DateTime?
-  deletedAt      DateTime?
-  passwordSetAt  DateTime?
-  aiModel        AiModel?
-  refreshTokens  RefreshToken[]
-  uploadSessions UploadSession[]
-
-  treasureHuntClaims       TreasureHuntClaim[]
-  xpTransactions           XpTransaction[]
-  xpBalance                UserXpBalance?
-  createdTreasureHunts     TreasureHunt[]         @relation("TreasureHuntCreatedBy")
-  updatedTreasureHunts     TreasureHunt[]         @relation("TreasureHuntUpdatedBy")
-  treasureHuntAuditActions TreasureHuntAuditLog[]
-
-  isPhoneVerified Boolean @default(false)
-
-  creatorAchievements  CreatorAchievement[]
-  leaderboardSnapshots LeaderboardSnapshot[]
-
+  id                                String                             @id @unique @default(cuid())
+  email                             String                             @unique @db.VarChar(255)
+  password                          String?                            @db.VarChar(255)
+  createdAt                         DateTime                           @default(now())
+  name                              String?                            @db.VarChar(255)
+  photoURL                          String?                            @db.VarChar(255)
+  country                           String?                            @db.VarChar(100)
+  phoneNumber                       String?                            @db.VarChar(100)
+  updatedAt                         DateTime?                          @updatedAt
+  status                            Status                             @default(pending)
+  eventId                           String?
+  role                              RoleEnum
+  photoBackgroundURL                String?                            @db.VarChar(255)
+  xeroRefreshToken                  String?
+  updateRefershToken                DateTime?
+  googleId                          String?                            @unique
+  city                              String?                            @db.VarChar(100)
+  hasSubmittedKWSP                  Boolean                            @default(false)
+  isActive                          Boolean                            @default(true)
+  isKWSPCampaign                    Boolean?                           @default(false)
+  isVerified                        Boolean                            @default(false)
+  emailVerificationId               String?                            @unique
+  referralCode                      String?                            @db.VarChar(50)
+  mediaKitMandatory                 Boolean                            @default(false)
+  activatedAt                       DateTime?
+  passwordSetAt                     DateTime?
+  twoFactorSecret                   String?
+  deletedAt                         DateTime?
+  appleEmail                        String?                            @db.VarChar(255)
+  appleId                           String?                            @unique
+  appleRefreshToken                 String?
+  appleUnlinkedAt                   DateTime?
+  googleEmail                       String?                            @db.VarChar(255)
+  googleUnlinkedAt                  DateTime?
+  isPhoneVerified                   Boolean                            @default(false)
+  appleAudience                     String?
+  hasAcceptedTermsAndPrivacy        Boolean                            @default(false)
+  lastSeenReleaseNoteAt             DateTime?
+  admin                             Admin?
+  agreementTemplate                 AgreementTemplate[]
+  blockedBrand                      BlockedBrand[]
+  Board                             Board?
+  BookMarkCampaign                  BookMarkCampaign[]
+  bookMarkedBy                      BookMarkCreator[]                  @relation("BookMarkCreatorTarget")
+  bookMarkCreator                   BookMarkCreator[]                  @relation("BookMarkCreatorOwner")
+  bookMarkCreatorLists              BookMarkCreatorList[]
+  bugs                              Bugs[]
   campaignCreationDrafts            CampaignCreationDraft[]
   campaignCreationDraftUploadLeases CampaignCreationDraftUploadLease[]
-
-  lastSeenReleaseNoteAt DateTime?
-  releaseNotesCreated   ReleaseNote[] @relation("ReleaseNoteCreatedBy")
+  campaignFlag                      CampaignFlag[]
+  campaignLogs                      CampaignLog[]
+  CampaignTaskAdmin                 CampaignTaskAdmin[]
+  client                            Client?
+  commentAgreements                 CommentAgreement[]
+  creator                           Creator?
+  creatorAchievements               CreatorAchievement[]
+  creatorAgreement                  CreatorAgreement[]
+  feedback                          Feedback[]
+  finance                           Finance?
+  invoice                           Invoice[]                          @relation("CreatedBy")
+  leaderboardSnapshots              LeaderboardSnapshot[]
+  createdLogistics                  Logistic[]                         @relation("CreatedLogistics")
+  assignedLogistics                 Logistic[]                         @relation("AssignedLogistics")
+  reportedIssues                    LogisticIssue[]
+  sentMessages                      Message[]                          @relation("UserMessages")
+  notifications                     Notification[]
+  npsFeedback                       NpsFeedback[]
+  paymentForm                       PaymentForm?
+  photoFeedback                     Photo[]                            @relation("PhotoFeedback")
+  photo                             Photo[]
+  acceptedInviteByCreator           Pitch[]                            @relation("AcceptedInviteByCreator")
+  approvedPitches                   Pitch[]                            @relation("ApprovedByClient")
+  maybePitches                      Pitch[]                            @relation("MaybeByClient")
+  rejectedPitches                   Pitch[]                            @relation("RejectedByClient")
+  pitch                             Pitch[]
+  pushTokens                        PushToken[]
+  rawFootageFeedback                RawFootage[]                       @relation("RawFootageFeedback")
+  rawFootage                        RawFootage[]
+  releaseNotesCreated               ReleaseNote[]                      @relation("ReleaseNoteCreatedBy")
+  resetPasswordToken                ResetPasswordToken?
+  seenMessages                      SeenMessage[]
+  shortlisted                       ShortListedCreator[]
+  submission                        Submission[]
+  forwardedComments                 SubmissionComment[]                @relation("ForwardedComments")
+  resolvedComments                  SubmissionComment[]                @relation("ResolvedComments")
+  submissionComments                SubmissionComment[]
+  taskAssignee                      TaskAssignee[]
+  createdTreasureHunts              TreasureHunt[]                     @relation("TreasureHuntCreatedBy")
+  updatedTreasureHunts              TreasureHunt[]                     @relation("TreasureHuntUpdatedBy")
+  treasureHuntAuditActions          TreasureHuntAuditLog[]
+  treasureHuntClaims                TreasureHuntClaim[]
+  unreadMessages                    UnreadMessage[]
+  uploadSessions                    UploadSession[]
+  emailVerifcation                  EmailVerification?                 @relation(fields: [emailVerificationId], references: [id])
+  event                             Event?                             @relation(fields: [eventId], references: [id])
+  userFlow                          UserFlow[]
+  userNotification                  UserNotification[]
+  UserThread                        UserThread[]
+  xpBalance                         UserXpBalance?
+  videoFeedback                     Video[]                            @relation("VideoFeedback")
+  video                             Video[]
+  xpTransactions                    XpTransaction[]
+  aiModel                           AiModel?
+  refreshTokens                     RefreshToken[]
+  threads                           Thread[]                           @relation("UserThreads")
 }
 
 model CampaignCreationDraft {
-  id                    String   @id
+  id                    String                             @id
   ownerId               String
   name                  String
   payload               Json
   activeStep            Int
   showAdditionalDetails Boolean
   revision              Int
-  legacyFileStorage     Boolean  @default(false)
-  filesCleanupPending   Boolean  @default(false)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-
-  owner        User                               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  uploadLeases CampaignCreationDraftUploadLease[]
+  legacyFileStorage     Boolean                            @default(false)
+  filesCleanupPending   Boolean                            @default(false)
+  createdAt             DateTime                           @default(now())
+  updatedAt             DateTime                           @updatedAt
+  owner                 User                               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  uploadLeases          CampaignCreationDraftUploadLease[]
 
   @@index([ownerId, updatedAt])
 }
 
 model CampaignCreationDraftUploadLease {
-  id             String    @id @default(uuid())
+  id             String                @id @default(uuid())
   draftId        String
   ownerId        String
   expiresAt      DateTime
   objectUrl      String?
-  cleanupPending Boolean   @default(false)
+  cleanupPending Boolean               @default(false)
   releasedAt     DateTime?
-  createdAt      DateTime  @default(now())
-
-  draft CampaignCreationDraft @relation(fields: [draftId], references: [id], onDelete: Restrict)
-  owner User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt      DateTime              @default(now())
+  draft          CampaignCreationDraft @relation(fields: [draftId], references: [id])
+  owner          User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([draftId, expiresAt])
   @@index([ownerId, draftId])
@@ -189,18 +167,14 @@ model PendingSocialSignup {
 }
 
 model RefreshToken {
-  id        String @id @default(cuid())
-  tokenHash String @unique
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
   expiresAt DateTime
-
   userAgent String?
   ipAddress String?
-
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([tokenHash])
@@ -209,13 +183,12 @@ model RefreshToken {
 }
 
 model EmailVerification {
-  id        String @id @unique @default(cuid())
-  shortCode String
-  token     String
-  attempts  Int?   @default(0)
-
-  lastSendAt DateTime? @default(now())
+  id         String    @id @unique @default(cuid())
+  shortCode  String
+  token      String
   expiredAt  DateTime
+  attempts   Int?      @default(0)
+  lastSendAt DateTime? @default(now())
   user       User?
 }
 
@@ -224,88 +197,54 @@ model ResetPasswordToken {
   token     String?
   userId    String?   @unique
   used      Boolean   @default(false)
+  createdAt DateTime  @default(now())
   attempts  Int       @default(0)
   expiresAt DateTime?
-  createdAt DateTime  @default(now())
   user      User?     @relation(fields: [userId], references: [id])
 }
 
 model Admin {
-  id          String  @id @unique @default(cuid())
-  mode        Mode    @default(normal)
-  inviteToken String? @unique
-  userId      String  @unique
-  roleId      String?
-
-  xeroTokenSet  Json?
-  bdInviteToken String? @unique
-
-  role Role? @relation(fields: [roleId], references: [id])
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  // Remove client relation since we're separating client and admin
-  // client Client?
-
+  id                    String                  @id @unique @default(cuid())
+  mode                  Mode                    @default(normal)
+  inviteToken           String?                 @unique
+  userId                String                  @unique
+  roleId                String?
+  xeroTokenSet          Json?
+  bdInviteToken         String?                 @unique
+  role                  Role?                   @relation(fields: [roleId], references: [id])
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adminLogs             AdminLog[]              @relation("AdminToAdminLog")
   adminPermissionModule AdminPermissionModule[]
   campaignAdmin         CampaignAdmin[]
-  adminLogs             AdminLog[]              @relation("AdminToAdminLog")
+  completedAgreements   CreatorAgreement[]      @relation("CompletedByAdmin")
+  adminCommentedPitches Pitch[]                 @relation("AdminCommenter")
   approvedPitches       Pitch[]                 @relation("ApprovedByAdmin")
   rejectedPitches       Pitch[]                 @relation("RejectedByAdmin")
-  adminCommentedPitches Pitch[]                 @relation("AdminCommenter")
   approvedSubmissions   Submission[]            @relation("ApprovedByAdmin")
   submittedSubmissions  Submission[]            @relation("SubmittedByAdmin")
-  completedAgreements   CreatorAgreement[]      @relation("CompletedByAdmin")
 }
 
 model Client {
-  id              String  @id @unique @default(cuid())
-  inviteToken     String? @unique
-  demoAccessToken String? @unique
-  companyId       String?
-
-  // Remove admin sharing - clients should not share admin IDs
-  // adminId String? @unique  // ❌ REMOVED
-  // admin  Admin? @relation(fields: [adminId], references: [id])  // ❌ REMOVED
-
-  // Keep user relation but with better separation
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // Keep company relation
-  company Company? @relation(fields: [companyId], references: [id])
-
-  // Add client-specific fields
-  clientType ClientType @default(directClient)
-  isActive   Boolean    @default(true)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @default(now()) @updatedAt
-
-  isParentAccount Boolean  @default(false)
-  parentClientId  String?
-  parentClient    Client?  @relation("ParentChildClients", fields: [parentClientId], references: [id])
-  childClients    Client[] @relation("ParentChildClients")
-
-  // Client-specific relations
-  clientNotifications ClientNotification[]
+  id                  String               @id @unique @default(cuid())
+  userId              String               @unique
+  companyId           String?
+  inviteToken         String?              @unique
+  clientType          ClientType           @default(directClient)
+  createdAt           DateTime             @default(now())
+  isActive            Boolean              @default(true)
+  updatedAt           DateTime             @default(now()) @updatedAt
+  isParentAccount     Boolean              @default(false)
+  parentClientId      String?
+  demoAccessToken     String?              @unique
   campaignClients     CampaignClient[]
   childAccounts       ChildAccount[]
+  company             Company?             @relation(fields: [companyId], references: [id])
+  parentClient        Client?              @relation("ParentChildClients", fields: [parentClientId], references: [id])
+  childClients        Client[]             @relation("ParentChildClients")
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientNotifications ClientNotification[]
 }
 
-// New enum for client types
-enum ClientType {
-  directClient
-  agencyClient
-  enterpriseClient
-  demoClient
-}
-
-enum ClientCampaignRole {
-  owner
-  viewer
-  editor
-  approver
-}
-
-// Separate client notification model
 model ClientNotification {
   id        String   @id @unique @default(cuid())
   clientId  String
@@ -315,28 +254,24 @@ model ClientNotification {
   entityId  String?
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
-
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 }
 
 model ChildAccount {
-  id          String    @id @unique @default(cuid())
-  email       String
-  password    String?
-  firstName   String?
-  lastName    String?
-  isActive    Boolean   @default(false)
-  invitedAt   DateTime  @default(now())
-  activatedAt DateTime?
-
-  parentClientId String
-  parentClient   Client @relation(fields: [parentClientId], references: [id], onDelete: Cascade)
-
+  id              String    @id @unique @default(cuid())
+  email           String
+  password        String?
+  firstName       String?
+  lastName        String?
+  isActive        Boolean   @default(false)
+  invitedAt       DateTime  @default(now())
+  activatedAt     DateTime?
+  parentClientId  String
   invitationToken String?   @unique
   tokenExpiresAt  DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  parentClient    Client    @relation(fields: [parentClientId], references: [id], onDelete: Cascade)
 
   @@unique([email, parentClientId])
 }
@@ -344,9 +279,9 @@ model ChildAccount {
 model Role {
   id          String       @id @unique @default(cuid())
   name        String
-  slug        String?      @unique
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+  slug        String?      @unique
   admin       Admin[]
   permissions Permisions[] @relation("RolePermission")
 }
@@ -361,59 +296,47 @@ model Permisions {
 }
 
 model Creator {
-  id                     String      @id @unique @default(cuid())
-  pronounce              String?     @db.VarChar(100)
-  address                String?
-  state                  String?
-  city                   String?     @db.VarChar(100)
-  postcode               String?     @db.VarChar(20)
-  country                String?
-  location               String?
-  birthDate              DateTime?
-  instagram              String?     @db.VarChar(100)
-  tiktok                 String?     @db.VarChar(100)
-  employment             Employment? @default(others)
-  languages              Json?
-  userId                 String      @unique
-  socialMediaData        Json?
-  isFormCompleted        Boolean?
-  formCompletedAt        DateTime?
-  socialMediaUpdateCount Json?
-  allowToChange          Boolean     @default(false)
-  industries             Json?
-  xeroContactId          String?
-  user                   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  interests              Interest[]
-  invoices               Invoice[]
-  mediaKit               MediaKit?
-  isTiktokConnected      Boolean     @default(false)
-  isFacebookConnected    Boolean     @default(false)
-  tiktokData             Json?
-  instagramData          Json?
-  isGuest                Boolean     @default(false)
-
-  isOnBoardingFormCompleted Boolean?
-
-  profileLink String? // Profile link for creator (Instagram/TikTok/etc.)
-
+  id                            String                    @id @unique @default(cuid())
+  pronounce                     String?                   @db.VarChar(100)
+  address                       String?
+  state                         String?
+  location                      String?
+  birthDate                     DateTime?
+  instagram                     String?                   @db.VarChar(100)
+  tiktok                        String?                   @db.VarChar(100)
+  employment                    Employment?               @default(others)
+  languages                     Json?
+  userId                        String                    @unique
+  socialMediaData               Json?
+  isFormCompleted               Boolean?
+  xeroContactId                 String?
+  industries                    Json?
+  allowToChange                 Boolean                   @default(false)
+  socialMediaUpdateCount        Json?
+  instagramData                 Json?
+  tiktokData                    Json?
+  isFacebookConnected           Boolean                   @default(false)
+  isTiktokConnected             Boolean                   @default(false)
+  isOnBoardingFormCompleted     Boolean?
+  isGuest                       Boolean                   @default(false)
+  profileLink                   String?
+  instagramProfileLink          String?                   @db.VarChar(255)
+  tiktokProfileLink             String?                   @db.VarChar(255)
+  city                          String?                   @db.VarChar(100)
+  country                       String?
+  dietaryRestrictions           String?
+  postcode                      String?                   @db.VarChar(20)
+  creditTierId                  String?
+  manualFollowerCount           Int?                      @default(0)
+  tierUpdatedAt                 DateTime?
+  formCompletedAt               DateTime?
+  manualInstagramFollowerCount  Int?                      @default(0)
+  manualTiktokFollowerCount     Int?                      @default(0)
   /// Canonical guest identity, for example `instagram:example`. Derived from
   /// profileLink by profileUrlNormalizer. Unique, so two requests can never
   /// create two guest identities for the same creator. Null for a platform
   /// creator, or for a legacy guest that is part of an unresolved conflict.
-  guestProfileKey String? @unique @db.VarChar(120)
-
-  instagramProfileLink String? @db.VarChar(255)
-  tiktokProfileLink    String? @db.VarChar(255)
-
-  tiktokUser          TiktokUser?
-  instagramUser       InstagramUser?
-  dietaryRestrictions String?
-
-  // Credit Tier fields
-  manualFollowerCount          Int? @default(0) // Legacy fallback manual follower count
-  manualInstagramFollowerCount Int? @default(0) // Platform-specific manual Instagram followers
-  manualTiktokFollowerCount    Int? @default(0) // Platform-specific manual TikTok followers
-
+  guestProfileKey               String?                   @unique @db.VarChar(120)
   /// Engagement rate for a creator with no connected account, as a percentage
   /// ("4.27" is 4.27%). Written by a Bright Data scrape or by an admin override in
   /// the Add Platform Creators modal. `Float?` matches
@@ -421,177 +344,138 @@ model Creator {
   /// read site sees one type. Null means never measured; it is not zero.
   manualInstagramEngagementRate Float?
   manualTiktokEngagementRate    Float?
-
-  discoveryProfiles CreatorDiscoveryProfile[]
-
-  creditTierId  String?
-  creditTier    CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
-  tierUpdatedAt DateTime? // Last time tier was calculated
+  creditTier                    CreditTier?               @relation("UserCurrentTier", fields: [creditTierId], references: [id])
+  user                          User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  discoveryProfiles             CreatorDiscoveryProfile[]
+  instagramUser                 InstagramUser?
+  interests                     Interest[]
+  invoices                      Invoice[]
+  mediaKit                      MediaKit?
+  tiktokUser                    TiktokUser?
 
   @@index([formCompletedAt])
 }
 
-// model TiktokUser {
-//   id String @id @unique @default(cuid())
-
-//   creatorId String  @unique
-//   creator   Creator @relation(references: [id], fields: [creatorId])
-
-//   display_name String?
-//   avatar_url   String?
-
-//   following_count Int?
-//   follower_count  Int?
-//   likes_count     Int?
-
-//   averageComments Int?
-//   averageLikes    Int?
-//   engagement_rate
-
-//   createdAt   DateTime      @default(now())
-//   updatedAt   DateTime      @updatedAt
-//   tiktokVideo TiktokVideo[]
-// }
-
 model TiktokUser {
-  id String @id @unique @default(cuid())
-
-  creatorId String  @unique
-  creator   Creator @relation(references: [id], fields: [creatorId])
-
-  display_name String?
-  username     String?
-  avatar_url   String?
-  biography    String?
-
+  id              String        @id @unique @default(cuid())
+  creatorId       String        @unique
+  display_name    String?
+  avatar_url      String?
   following_count Int?
   follower_count  Int?
   likes_count     Int?
-
-  totalLikes      Int?
-  totalComments   Int?
-  totalShares     Int?
-  averageLikes    Float?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   averageComments Float?
-  averageShares   Float?
+  averageLikes    Float?
   engagement_rate Float?
-  analyticsData   Json?
   lastUpdated     DateTime?
-
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  tiktokVideo TiktokVideo[]
+  totalComments   Int?
+  totalLikes      Int?
+  averageShares   Float?
+  totalShares     Int?
+  username        String?
+  biography       String?
+  analyticsData   Json?
+  creator         Creator       @relation(fields: [creatorId], references: [id])
+  tiktokVideo     TiktokVideo[]
 }
 
 model TiktokVideo {
-  id              String  @id @unique @default(cuid())
-  video_id        String? @unique
+  id              String      @id @unique @default(cuid())
+  video_id        String?     @unique
   cover_image_url String?
   title           String?
   description     String?
   duration        Float?
   embed_link      String?
   embed_html      String?
-
-  like_count    Int?
-  comment_count Int?
-  share_count   Int?
-  view_count    Int?
-
-  tiktokUserId String?
-  tiktokUser   TiktokUser? @relation(references: [id], fields: [tiktokUserId])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  like_count      Int?
+  comment_count   Int?
+  share_count     Int?
+  view_count      Int?
+  tiktokUserId    String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  tiktokUser      TiktokUser? @relation(fields: [tiktokUserId], references: [id])
 }
 
 model InstagramUser {
-  id String @id @unique @default(cuid())
-
-  creatorId String  @unique
-  creator   Creator @relation(references: [id], fields: [creatorId])
-
-  accessToken         Json?
-  expiresIn           Int?
-  user_id             String?   @unique
-  profile_picture_url String?
-  biography           String?
+  id                  String           @id @unique @default(cuid())
+  creatorId           String           @unique
+  user_id             String?          @unique
   followers_count     Int?
   follows_count       Int?
   media_count         Int?
   username            String?
-  totalLikes          Int?
-  totalComments       Int?
-  totalShares         Int?
-  totalSaves          Int?
-  averageLikes        Float?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  accessToken         Json?
+  expiresIn           Int?
   averageComments     Float?
-  averageShares       Float?
-  averageSaves        Float?
-  insightData         Json?
+  averageLikes        Float?
+  totalComments       Int?
+  totalLikes          Int?
   engagement_rate     Float?
   lastUpdated         DateTime?
-
-  instagramVideo InstagramVideo[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  averageSaves        Float?
+  averageShares       Float?
+  biography           String?
+  insightData         Json?
+  profile_picture_url String?
+  totalSaves          Int?
+  totalShares         Int?
+  creator             Creator          @relation(fields: [creatorId], references: [id])
+  instagramVideo      InstagramVideo[]
 }
 
 model InstagramVideo {
-  id String @id @unique @default(cuid())
-
-  video_id String? @unique
-
-  comments_count Int?
-  like_count     Int?
-  view_count     Int?
-  media_type     String?
-  media_url      String?
-  thumbnail_url  String?
-  caption        String?
-  permalink      String?
-  shortCode      String?
-  datePosted     DateTime?
-
+  id              String         @id @unique @default(cuid())
+  video_id        String?        @unique
+  comments_count  Int?
+  like_count      Int?
+  media_type      String?
+  media_url       String?
+  thumbnail_url   String?
+  caption         String?
+  permalink       String?
   instagramUserId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  instagramUser InstagramUser? @relation(fields: [instagramUserId], references: [id])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  datePosted      DateTime?
+  shortCode       String?
+  view_count      Int?
+  instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
 }
 
 model MediaKit {
   id          String  @id @unique @default(cuid())
+  about       String?
+  creatorId   String  @unique
   displayName String?
-
-  about String?
-
-  creatorId String  @unique
-  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  creator     Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 }
 
 model Message {
   id             Int             @id @default(autoincrement())
   content        String
   createdAt      DateTime        @default(now())
-  editedAt       DateTime?
-  deletedAt      DateTime?
-  deletedById    String?
   threadId       String?
   senderId       String?
   file           String?
   fileType       String?
-  fileWidth      Int?
+  deletedAt      DateTime?
+  deletedById    String?
+  editedAt       DateTime?
   fileHeight     Int?
   fileName       String?
   fileSize       Int?
+  fileWidth      Int?
   replyToId      Int?
+  replyTo        Message?        @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies        Message[]       @relation("MessageReplies")
   sender         User?           @relation("UserMessages", fields: [senderId], references: [id])
   thread         Thread?         @relation(fields: [threadId], references: [id])
-  replyTo        Message?        @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
-  replies        Message[]       @relation("MessageReplies")
   seenMessages   SeenMessage[]
   threadLatest   Thread?         @relation("LatestMessage")
   unreadMessages UnreadMessage[]
@@ -675,12 +559,6 @@ model Event {
   user        User[]
 }
 
-// model session {
-//   sid    String   @id @unique @default(cuid())
-//   sess   Json
-//   expire DateTime
-// }
-
 model Session {
   id        String   @id
   sid       String   @unique
@@ -689,52 +567,44 @@ model Session {
 }
 
 model Company {
-  // id                  String         @id @unique @default(cuid())
-  id                  String       @id @unique @default(cuid())
+  id                  String                @id @unique @default(cuid())
   name                String
   email               String?
-  // clientId            String?        @unique @default(cuid())
-  clientId            String?      @unique @default(cuid())
-  type                CompanyType?
   phone               String?
   website             String?
   address             String?
   logo                String?
   about               String?
   objectives          Json?
-  registration_number String?      @db.VarChar(150)
-  isArchived          Boolean      @default(false)
+  registration_number String?               @db.VarChar(150)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  clientId            String?               @unique @default(cuid())
+  type                CompanyType?
   archivedAt          DateTime?
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
-
+  isArchived          Boolean               @default(false)
+  blockedBy           BlockedBrand[]
   brand               Brand[]
   campaign            Campaign[]
+  clients             Client[]
   pic                 Pic[]
   subscriptions       Subscription[]
-  clients             Client[]
   SubscriptionHistory SubscriptionHistory[]
-  blockedBy           BlockedBrand[]
 
   @@index([clientId])
-}
-
-enum CompanyType {
-  agency
-  directClient
 }
 
 model Pic {
   id          String   @id @unique @default(cuid())
   name        String
-  email       String?
   designation String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  company     Company? @relation(fields: [companyId], references: [id])
   companyId   String?
-  brand       Brand?   @relation(fields: [brandId], references: [id])
   brandId     String?
+  email       String?
+  brand       Brand?   @relation(fields: [brandId], references: [id])
+  company     Company? @relation(fields: [companyId], references: [id])
 }
 
 model Brand {
@@ -756,8 +626,8 @@ model Brand {
   companyId    String
   company      Company    @relation(fields: [companyId], references: [id])
   campaign     Campaign[]
-  supBrand     SupBrand[]
   pic          Pic[]
+  supBrand     SupBrand[]
 }
 
 model SupBrand {
@@ -806,137 +676,105 @@ model SupSupBrand {
 }
 
 model Campaign {
-  id          String         @id @unique @default(cuid())
-  campaignId  String?
-  name        String
-  description String
-  status      CampaignStatus @default(SCHEDULED)
-
-  campaignCredits           Int?
-  creditsPending            Int?
-  creditsUtilized           Int?
-  creditAllocationBreakdown Json? // Tracks which subscriptions were charged and how much
-
-  brandId        String?
-  subscriptionId String?
-
-  companyId           String?
-  brandTone           String?
-  brandAbout          String?
-  productName         String?
-  websiteLink         String?
-  eventId             String?
-  agreementTemplateId String?
-  spreadSheetURL      String?
-  campaignType        String?            @default("normal")
-  origin              CampaignOrigin     @default(ADMIN)
-  bookMarkCampaign    BookMarkCampaign[]
-  campaignFlag        CampaignFlag[]
-  agreementTemplate   AgreementTemplate? @relation(fields: [agreementTemplateId], references: [id])
-  brand               Brand?             @relation(fields: [brandId], references: [id])
-  company             Company?           @relation(fields: [companyId], references: [id])
-  event               Event?             @relation(fields: [eventId], references: [id])
-  subscription        Subscription?      @relation(fields: [subscriptionId], references: [id])
-
-  campaignAdmin                 CampaignAdmin[]
-  campaignClients               CampaignClient[]
-  campaignBrief                 CampaignBrief?
+  id                            String                          @id @unique @default(cuid())
+  name                          String
+  description                   String
+  status                        CampaignStatus                  @default(SCHEDULED)
+  createdAt                     DateTime                        @default(now())
+  updatedAt                     DateTime                        @updatedAt
+  brandId                       String?
+  companyId                     String?
+  brandTone                     String?
+  productName                   String?
+  eventId                       String?
+  spreadSheetURL                String?
+  agreementTemplateId           String?
+  campaignType                  String?                         @default("normal")
+  rawFootage                    Boolean                         @default(false)
+  ads                           Boolean                         @default(false)
+  campaignCredits               Int?
+  campaignId                    String?
+  photos                        Boolean                         @default(false)
+  creditsPending                Int?
+  creditsUtilized               Int?
+  subscriptionId                String?
+  crossPosting                  Boolean                         @default(false)
+  isKWSPCampaign                Boolean?                        @default(false)
+  origin                        CampaignOrigin                  @default(ADMIN)
+  submissionVersion             String?                         @default("v4")
+  logisticsType                 LogisticType?
+  brandAbout                    String?
+  websiteLink                   String?
+  isCreditTier                  Boolean                         @default(false)
+  isPCRReady                    Boolean                         @default(false)
+  completedAt                   DateTime?
+  publishedAt                   DateTime?
+  isForSurfShark                Boolean?
+  creditAllocationBreakdown     Json?
+  bdInviteToken                 String?
+  approvedAt                    DateTime?
+  briefOwnerId                  String?
+  clientBriefSnapshot           Json?
+  clientEmail                   String?
+  clientMagicToken              String?                         @unique
+  clientName                    String?
+  clientPackage                 String?
+  clientTokenExpiresAt          DateTime?
+  draftOrigin                   CampaignDraftOrigin?
+  draftStatus                   CampaignDraftStatus?
+  editedByClientFields          String[]                        @default([])
+  handedOverAt                  DateTime?
+  internalComments              String?
+  sentToClientAt                DateTime?
+  lostAmount                    Float?
+  lostCurrency                  String?
+  lostReason                    String?
+  lostAt                        DateTime?
+  wonAmount                     Float?
+  wonCurrency                   String?
+  brandName                     String?
+  onHoldAt                      DateTime?
+  isForMobile                   Boolean                         @default(false)
+  summaryUrl                    String?
+  isNdaRequired                 Boolean                         @default(false)
+  approvalRequests              ApprovalRequest[]
+  bookMarkCampaign              BookMarkCampaign[]
+  agreementTemplate             AgreementTemplate?              @relation(fields: [agreementTemplateId], references: [id])
+  brand                         Brand?                          @relation(fields: [brandId], references: [id])
+  company                       Company?                        @relation(fields: [companyId], references: [id])
+  event                         Event?                          @relation(fields: [eventId], references: [id])
+  subscription                  Subscription?                   @relation(fields: [subscriptionId], references: [id])
   campaignAdditionalDetails     CampaignAdditionalDetails?
+  campaignAdmin                 CampaignAdmin[]
+  campaignBrief                 CampaignBrief?
+  campaignClients               CampaignClient[]
+  campaignFlag                  CampaignFlag[]
   campaignLogs                  CampaignLog[]
+  pcr                           CampaignPCR?
   campaignRequirement           CampaignRequirement?
   campaignSubmissionRequirement CampaignSubmissionRequirement[]
   campaignTasks                 CampaignTask[]
   campaignTimeline              CampaignTimeline[]
   creatorAgreement              CreatorAgreement[]
+  guestCreatorCreateRequests    GuestCreatorCreateRequest[]
+  guestProfileExtractions       GuestProfileExtraction[]
+  insightSnapshots              InsightSnapshot[]
   invoice                       Invoice[]
   logistics                     Logistic[]
-  logisticsType                 LogisticType?
+  manualCreatorEntries          ManualCreatorEntry[]
   notifications                 Notification[]
+  photosData                    Photo[]
   pitch                         Pitch[]
+  products                      Product[]
+  publicAccess                  PublicAccess[]
+  rawFootages                   RawFootage[]
+  reservationConfig             ReservationConfiguration?
   shortlisted                   ShortListedCreator[]
   submission                    Submission[]
+  submissionPostingUrls         SubmissionPostingUrl[]
   thread                        Thread?
-  publicAccess                  PublicAccess[]
-  products                      Product[]
-  reservationConfig             ReservationConfiguration?
-
-  rawFootage   Boolean @default(false)
-  photos       Boolean @default(false)
-  ads          Boolean @default(false)
-  crossPosting Boolean @default(false)
-
-  rawFootages RawFootage[]
-  photosData  Photo[]
-  video       Video[]
-
-  isKWSPCampaign Boolean? @default(false)
-
-  // Credit Tiering: When true, creator costs based on follower tier instead of flat 1 credit/video
-  isCreditTier Boolean @default(false)
-
-  // Adds the Confidentiality (NDA) section to generated creator agreements
-  isNdaRequired Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // V4 submission version tracking
-  submissionVersion String? @default("v4") // "v2", "v3", "v4" — immutable after creation; all new campaigns are v4
-
-  // Trends analysis
-  submissionPostingUrls SubmissionPostingUrl[]
-  insightSnapshots      InsightSnapshot[]
-  manualCreatorEntries  ManualCreatorEntry[]
-
-  // PCR (Post Campaign Report)
-  pcr            CampaignPCR?
-  isPCRReady     Boolean      @default(false)
-  isForSurfShark Boolean?
-
-  // Bd invites
-  bdInviteToken String?
-
-  // BD-authored brief flow (Campaign Brief lifecycle before activation)
-  draftStatus          CampaignDraftStatus?
-  draftOrigin          CampaignDraftOrigin?
-  briefOwnerId         String?
-  brandName            String?
-  clientName           String?
-  clientEmail          String?
-  clientMagicToken     String?              @unique
-  clientTokenExpiresAt DateTime?
-  editedByClientFields String[]             @default([])
-
-  // Lost Deal tracking
-  lostAmount   Float?
-  lostCurrency String?
-  lostReason   String?   @db.Text
-  lostAt       DateTime?
-
-  // Won Deal tracking (BD dashboard) — deal value snapshotted at handover, from
-  wonAmount   Float?
-  wonCurrency String?
-
-  // Snapshot of the brief field values at the moment it was sent to the client
-  clientBriefSnapshot Json?
-  clientPackage       String?
-  internalComments    String?
-  sentToClientAt      DateTime?
-  approvedAt          DateTime?
-  handedOverAt        DateTime?
-  onHoldAt            DateTime?
-
-  publishedAt DateTime?
-  completedAt DateTime?
-  summaryUrl  String?
-
-  approvalRequests ApprovalRequest[]
-  uploadSessions   UploadSession[]
-
-  guestProfileExtractions    GuestProfileExtraction[]
-  guestCreatorCreateRequests GuestCreatorCreateRequest[]
-
-  isForMobile Boolean @default(false)
+  uploadSessions                UploadSession[]
+  video                         Video[]
 }
 
 model BookMarkCampaign {
@@ -949,37 +787,27 @@ model BookMarkCampaign {
   @@unique([userId, campaignId])
 }
 
-// Named for the "block this brand" product feature, but keys off Company, not
-// Brand: campaigns are populated with `companyId`, and `Brand`/`campaign.brandId`
-// are effectively unused in practice (0 Brand rows / 0 campaigns with brandId
-// set as of this writing). Company is what's actually shown to creators as the
-// campaign's "brand" (see mobile `cardPropsFromCampaign`: brand ?? company).
 model BlockedBrand {
-  id        String  @id @unique @default(cuid())
+  id        String   @id @unique @default(cuid())
   userId    String
   companyId String
-  user      User    @relation(fields: [userId], references: [id])
-  company   Company @relation(fields: [companyId], references: [id])
-
   createdAt DateTime @default(now())
+  company   Company  @relation(fields: [companyId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, companyId])
   @@index([userId])
 }
 
-// Content-moderation "report this campaign" flagging — unrelated to the
-// AI-generated Post Campaign Report (PCR) feature (`ReportService`,
-// `CampaignReportResult` in src/types/index.ts), hence the distinct name.
 model CampaignFlag {
   id         String   @id @unique @default(cuid())
   userId     String
   campaignId String
   reason     String
   details    String?
-  user       User     @relation(fields: [userId], references: [id])
+  createdAt  DateTime @default(now())
   campaign   Campaign @relation(fields: [campaignId], references: [id])
-
-  createdAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
 
   @@index([campaignId])
   @@index([userId])
@@ -991,8 +819,8 @@ model BookMarkCreatorList {
   name      String
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   creators  BookMarkCreator[]
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
   @@index([userId])
@@ -1001,22 +829,19 @@ model BookMarkCreatorList {
 model BookMarkCreator {
   id            String              @id @unique @default(cuid())
   userId        String
-  listId        String
   creatorUserId String
   platform      String
   createdAt     DateTime            @default(now())
-  user          User                @relation("BookMarkCreatorOwner", fields: [userId], references: [id])
+  listId        String
   creatorUser   User                @relation("BookMarkCreatorTarget", fields: [creatorUserId], references: [id])
   list          BookMarkCreatorList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  user          User                @relation("BookMarkCreatorOwner", fields: [userId], references: [id])
 
   @@unique([listId, creatorUserId, platform])
   @@index([userId])
   @@index([listId])
 }
 
-// Isolated table for campaigns created by client_demo sessions.
-// Has no link to real Campaign / credits / subscriptions. Owner IDs are
-// scalar (no formal relations) so this stays fully self-contained.
 model DemoCampaign {
   id          String    @id @unique @default(cuid())
   name        String
@@ -1025,55 +850,40 @@ model DemoCampaign {
   startDate   DateTime?
   endDate     DateTime?
   status      String    @default("SCHEDULED")
-
-  // Owner (demo session) — scalar IDs, isolated from real tables
-  userId    String // demo User.id (role client_demo)
-  clientId  String // demo Client.id (clientType demoClient)
-  companyId String // demo Company.id
-
-  data Json? // full submitted form payload snapshot
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  userId      String
+  clientId    String
+  companyId   String
+  data        Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([companyId])
   @@index([clientId])
   @@index([userId])
 }
 
-// Separate admin and client campaign access models
 model CampaignAdmin {
   adminId    String
   campaignId String
-  role       CampaignAdminRole @default(viewer)
   createdAt  DateTime          @default(now())
+  role       CampaignAdminRole @default(viewer)
   updatedAt  DateTime          @default(now()) @updatedAt
-
-  admin    Admin    @relation(fields: [adminId], references: [userId], onDelete: Cascade)
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  admin      Admin             @relation(fields: [adminId], references: [userId], onDelete: Cascade)
+  campaign   Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@id([adminId, campaignId])
   @@index([adminId])
   @@index([campaignId])
 }
 
-enum CampaignAdminRole {
-  owner
-  viewer
-  editor
-  manager
-}
-
-// Separate client campaign access model
 model CampaignClient {
   clientId   String
   campaignId String
   role       ClientCampaignRole @default(viewer)
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @default(now()) @updatedAt
-
-  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign   Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  client     Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@id([clientId, campaignId])
   @@index([clientId])
@@ -1082,28 +892,26 @@ model CampaignClient {
 
 model CampaignRequirement {
   id                        String   @id @unique @default(cuid())
-  // Primary Audience
   gender                    String[]
   age                       String[]
   geoLocation               String[]
   language                  String[]
   creator_persona           String[]
-  country                   String?
-  countries                 String[]
   user_persona              String
-  // Secondary Audience
-  secondary_gender          String[]
-  secondary_age             String[]
-  secondary_geoLocation     String[]
-  secondary_language        String[]
-  secondary_creator_persona String[]
-  secondary_country         String?
-  secondary_user_persona    String?
-  geographic_focus          String?
-  geographicFocusOthers     String?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
   campaignId                String   @unique
+  country                   String?
+  geographic_focus          String?
+  secondary_age             String[]
+  secondary_country         String?
+  secondary_creator_persona String[]
+  secondary_gender          String[]
+  secondary_geoLocation     String[]
+  secondary_language        String[]
+  secondary_user_persona    String?
+  geographicFocusOthers     String?
+  countries                 String[]
   campaign                  Campaign @relation(fields: [campaignId], references: [id])
 }
 
@@ -1111,16 +919,10 @@ model CampaignBrief {
   id                  String    @id @unique @default(cuid())
   title               String
   objectives          String?
-  secondaryObjectives String[]
-  boostContent        String?
-  primaryKPI          String?
-  performanceBaseline String?
   images              Json?
   agreementFrom       String?
   startDate           DateTime
   endDate             DateTime
-  postingStartDate    DateTime?
-  postingEndDate      DateTime?
   interests           Json?
   industries          String?
   success             String?
@@ -1133,8 +935,13 @@ model CampaignBrief {
   campaignId          String    @unique
   otherAttachments    String[]
   referencesLinks     String[]
-
-  campaign Campaign @relation(fields: [campaignId], references: [id])
+  postingEndDate      DateTime?
+  postingStartDate    DateTime?
+  boostContent        String?
+  performanceBaseline String?
+  primaryKPI          String?
+  secondaryObjectives String[]
+  campaign            Campaign  @relation(fields: [campaignId], references: [id])
 }
 
 model CampaignAdditionalDetails {
@@ -1147,7 +954,6 @@ model CampaignAdditionalDetails {
   referenceContent         String?
   productImage1Url         String?
   productImage2Url         String?
-  // Additional Details 2 fields
   hashtagsToUse            String?
   mentionsTagsRequired     String?
   creatorCompensation      String?
@@ -1229,9 +1035,9 @@ model CampaignLog {
   id         String   @id @unique @default(cuid())
   createdAt  DateTime @default(now())
   message    String
-  metadata   Json?
   campaignId String
   adminId    String?
+  metadata   Json?
   admin      User?    @relation(fields: [adminId], references: [id])
   campaign   Campaign @relation(fields: [campaignId], references: [id])
 }
@@ -1240,65 +1046,60 @@ model AdminLog {
   id          String   @id @unique @default(cuid())
   createdAt   DateTime @default(now())
   message     String
+  adminId     String?
   performedBy String?
-  adminId     String? // Nullable for past actions
   admin       Admin?   @relation("AdminToAdminLog", fields: [adminId], references: [userId], onDelete: Cascade)
 }
 
 model Pitch {
-  id                        String          @id @unique @default(cuid())
+  id                        String                    @id @unique @default(cuid())
   type                      PitchType
   campaignId                String
   userId                    String
-  status                    PitchStatus?    @default(pending)
-  content                   String          @default("test")
-  createdAt                 DateTime        @default(now())
-  completedAt               DateTime?
+  status                    PitchStatus?              @default(pending)
+  content                   String                    @default("test")
+  createdAt                 DateTime                  @default(now())
   approvedByAdminId         String?
+  completedAt               DateTime?
+  agreementTemplateId       String?
+  amount                    Int?
   approvedByClientId        String?
   rejectedByAdminId         String?
   rejectedByClientId        String?
   rejectionReason           String?
+  ugcCredits                Int?
+  adminCommentedBy          String?
+  adminComments             String?
   customRejectionText       String?
+  maybeByClientId           String?
+  engagementRate            String?
+  followerCount             String?
+  outreachStatus            OutreachStatus?
+  outreachUpdatedAt         DateTime?
+  outreachUpdatedBy         String?
+  acceptedInviteByCreatorId String?
+  isInvited                 Boolean                   @default(false)
   /// From public approval link; shown only to brand client UI, not admin
   clientVisibleApprovalNote String?
-  maybeByClientId           String?
-  acceptedInviteByCreatorId String?
-  amount                    Int?
-  ugcCredits                Int?
-  agreementTemplateId       String?
-  Notification              Notification[]
-  followerCount             String?
   selectedPlatform          SocialPlatform?
-  engagementRate            String?
-  adminComments             String?
-  adminCommentedBy          String?
-  isInvited                 Boolean         @default(false)
-  adminCommenter            Admin?          @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
-
-  // Outreach status tracking
-  outreachStatus    OutreachStatus?
-  outreachUpdatedAt DateTime?
-  outreachUpdatedBy String?
-
-  campaign                Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user                    User     @relation(fields: [userId], references: [id])
-  admin                   Admin?   @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
-  client                  User?    @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
-  rejectedByAdmin         Admin?   @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
-  rejectedByClient        User?    @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
-  maybeByClient           User?    @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
-  acceptedInviteByCreator User?    @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
-
-  approvalRequestCreators  ApprovalRequestCreator[]
-  guestCreatorMetricAudits GuestCreatorMetricAudit[]
-
   /// Set while a scrape job still owns Followers and ER for this pitch.
-  pendingExtractionId String?                 @unique
-  pendingExtraction   GuestProfileExtraction? @relation("PendingPitchExtraction", fields: [pendingExtractionId], references: [id], onDelete: SetNull)
+  pendingExtractionId       String?                   @unique
   /// Why that run gave no metrics, e.g. INSUFFICIENT_DATA. While set, an admin
   /// may enter Followers and ER by hand.
-  metricsFailureCode  String?
+  metricsFailureCode        String?
+  approvalRequestCreators   ApprovalRequestCreator[]
+  guestCreatorMetricAudits  GuestCreatorMetricAudit[]
+  Notification              Notification[]
+  acceptedInviteByCreator   User?                     @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
+  adminCommenter            Admin?                    @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
+  admin                     Admin?                    @relation("ApprovedByAdmin", fields: [approvedByAdminId], references: [userId])
+  client                    User?                     @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
+  campaign                  Campaign                  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  maybeByClient             User?                     @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
+  pendingExtraction         GuestProfileExtraction?   @relation("PendingPitchExtraction", fields: [pendingExtractionId], references: [id])
+  rejectedByAdmin           Admin?                    @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
+  rejectedByClient          User?                     @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
+  user                      User                      @relation(fields: [userId], references: [id])
 
   @@unique([userId, campaignId])
 }
@@ -1307,35 +1108,29 @@ model ShortListedCreator {
   id               String          @id @default(cuid())
   campaignId       String
   userId           String?
-  adminComments    String?
-  currency         String?
   shortlisted_date DateTime        @default(now())
   isAgreementReady Boolean?        @default(false)
   isCampaignDone   Boolean?        @default(false)
   isCreatorPaid    Boolean?        @default(false)
   ugcVideos        Int?
   amount           Int?
+  currency         String?
+  adminComments    String?
+  creditPerVideo   Int?
+  creditTierId     String?
   followerCount    Int?
   selectedPlatform SocialPlatform?
+  adminRatedAt     DateTime?
+  adminRatedById   String?
+  adminRating      Int?
+  adminRatingNote  String?
+  adminRatingTags  String[]        @default([])
+  clientRatedAt    DateTime?
+  clientRatedById  String?
+  clientRating     Int?
   campaign         Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creditTier       CreditTier?     @relation(fields: [creditTierId], references: [id])
   user             User?           @relation(fields: [userId], references: [id])
-
-  // Credit Tier snapshot at assignment time (for tier campaigns)
-  creditPerVideo Int? // Credits per video at time of assignment
-  creditTierId   String? // Tier ID at time of assignment (snapshot)
-  creditTier     CreditTier? @relation(fields: [creditTierId], references: [id])
-
-  // Admin rating (client-side rating pending SAM)
-  adminRating     Int?
-  adminRatingTags String[]  @default([])
-  adminRatingNote String?
-  adminRatedAt    DateTime?
-  adminRatedById  String?
-
-  // Client rating
-  clientRating    Int?
-  clientRatedAt   DateTime?
-  clientRatedById String?
 
   @@unique([userId, campaignId])
   @@index([userId])
@@ -1412,52 +1207,50 @@ model PushToken {
 }
 
 model Submission {
-  id                   String                 @id @default(cuid())
-  content              String?
-  caption              String?
-  videos               String[]
-  campaignId           String
-  status               SubmissionStatus       @default(IN_PROGRESS)
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
-  submissionDate       DateTime?
-  dueDate              DateTime?
-  completedAt          DateTime?
-  nextsubmissionDate   DateTime?
-  approvedByAdminId    String?
-  userId               String
-  submissionTypeId     String
-  isReview             Boolean                @default(false)
-  startDate            DateTime?
-  endDate              DateTime?
-  approvedAt           DateTime?
-  viewedAt             DateTime?
-  submittedByAdminId   String? // Track if admin submitted for creator
-  feedback             Feedback[]
-  Notification         Notification[]
-  campaign             Campaign               @relation(fields: [campaignId], references: [id])
-  submissionType       SubmissionType         @relation(fields: [submissionTypeId], references: [id])
-  user                 User                   @relation(fields: [userId], references: [id])
-  admin                Admin?                 @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
-  submittedByAdmin     Admin?                 @relation(fields: [submittedByAdminId], references: [userId], name: "SubmittedByAdmin")
-  dependencies         SubmissionDependency[] @relation("Dependencies")
-  dependentOn          SubmissionDependency[] @relation("DependentOn")
-  task                 Task[]
-  video                Video[]
-  rawFootages          RawFootage[]
-  photos               Photo[]
-  publicFeedback       PublicFeedback[]
-  photosDriveLink      String?
-  rawFootagesDriveLink String?
-  comments             SubmissionComment[]
-
-  // V4 specific fields
-  contentOrder          Int? // Order of content (Video 1, Video 2, etc.)
-  submissionVersion     String?                @default("v2") // "v2", "v3", "v4"
+  id                    String                 @id @default(cuid())
+  content               String?
+  caption               String?
+  campaignId            String
+  status                SubmissionStatus       @default(IN_PROGRESS)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  submissionDate        DateTime?
+  dueDate               DateTime?
+  userId                String
+  submissionTypeId      String
+  isReview              Boolean                @default(false)
+  startDate             DateTime?
+  endDate               DateTime?
+  videos                String[]
+  photosDriveLink       String?
+  rawFootagesDriveLink  String?
+  approvedByAdminId     String?
+  completedAt           DateTime?
+  nextsubmissionDate    DateTime?
+  contentOrder          Int?
+  submissionVersion     String?                @default("v2")
+  submittedByAdminId    String?
+  approvedAt            DateTime?
+  viewedAt              DateTime?
   captionHistory        CaptionHistory[]
+  feedback              Feedback[]
+  Notification          Notification[]
+  photos                Photo[]
+  publicFeedback        PublicFeedback[]
+  rawFootages           RawFootage[]
+  admin                 Admin?                 @relation("ApprovedByAdmin", fields: [approvedByAdminId], references: [userId])
+  campaign              Campaign               @relation(fields: [campaignId], references: [id])
+  submissionType        SubmissionType         @relation(fields: [submissionTypeId], references: [id])
+  submittedByAdmin      Admin?                 @relation("SubmittedByAdmin", fields: [submittedByAdminId], references: [userId])
+  user                  User                   @relation(fields: [userId], references: [id])
+  comments              SubmissionComment[]
+  dependencies          SubmissionDependency[] @relation("Dependencies")
+  dependentOn           SubmissionDependency[] @relation("DependentOn")
   submissionPostingUrls SubmissionPostingUrl[]
-  videoOfTheMonth       VideoOfTheMonth?
+  task                  Task[]
   uploadSessions        UploadSession[]
+  video                 Video[]
+  videoOfTheMonth       VideoOfTheMonth?
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
 }
@@ -1465,14 +1258,14 @@ model Submission {
 model VideoOfTheMonth {
   id           String     @id @default(cuid())
   submissionId String     @unique
-  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  thumbnailUrl String?
-  videoIndex   Int        @default(0) // which entry in Submission.videos[] to feature
-  order        Int        @default(0) // display order on the home feed (asc)
-  featured     Boolean    @default(true) // currently shown; manual replace
-  createdById  String // admin user id who curated it
+  videoIndex   Int        @default(0)
+  order        Int        @default(0)
+  featured     Boolean    @default(true)
+  createdById  String
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+  thumbnailUrl String?
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@index([featured, order])
 }
@@ -1480,16 +1273,16 @@ model VideoOfTheMonth {
 model SubmissionPostingUrl {
   id           String     @id @unique @default(cuid())
   campaignId   String
-  campaign     Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   submissionId String
-  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  platform     String // "Instagram" | "TikTok"
-  postUrl      String // Full URL
-  postingDate  DateTime? // When creator posted (null = not posted yet)
-  shortCode    String? // Instagram shortcode
-  mediaId      String? // Instagram media ID or TikTok video ID
+  platform     String
+  postUrl      String
+  postingDate  DateTime?
+  shortCode    String?
+  mediaId      String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+  campaign     Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@unique([submissionId, platform, postUrl])
   @@index([submissionId])
@@ -1499,11 +1292,10 @@ model SubmissionPostingUrl {
 model InsightSnapshot {
   id                    String   @id @unique @default(cuid())
   campaignId            String
-  campaign              Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   snapshotDate          DateTime
-  snapshotType          String // "daily", "weekly", "monthly"
-  dayOfWeek             Int? // 0 (Sunday) - 6 (Saturday), for weekly snapshots
-  platform              String // "Instagram" | "TikTok" | "All"
+  snapshotType          String
+  dayOfWeek             Int?
+  platform              String
   totalPosts            Int
   totalViews            Int      @default(0)
   totalLikes            Int      @default(0)
@@ -1516,6 +1308,7 @@ model InsightSnapshot {
   dailyViewDeltas       Json?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  campaign              Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, platform, snapshotDate])
   @@index([campaignId, snapshotDate])
@@ -1523,32 +1316,25 @@ model InsightSnapshot {
 }
 
 model PostEngagementSnapshot {
-  id           String @id @unique @default(cuid())
-  campaignId   String
-  submissionId String
-  postUrl      String
-  platform     String // "Instagram" | "TikTok"
-  userId       String // Creator user ID
-
-  // Snapshot timing
-  snapshotDay Int // Day number from campaign start (7, 15, 30)
-  postDate    DateTime // When the post was originally published
-  capturedAt  DateTime // When this snapshot was captured
-
-  // Engagement metrics at snapshot time
-  views          Int   @default(0)
-  likes          Int   @default(0)
-  comments       Int   @default(0)
-  shares         Int   @default(0)
-  saved          Int   @default(0)
-  reach          Int   @default(0)
-  engagementRate Float // ER at this snapshot
-
-  // Raw insight data for reference
-  rawMetrics Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @unique @default(cuid())
+  campaignId     String
+  submissionId   String
+  postUrl        String
+  platform       String
+  userId         String
+  snapshotDay    Int
+  postDate       DateTime
+  capturedAt     DateTime
+  views          Int      @default(0)
+  likes          Int      @default(0)
+  comments       Int      @default(0)
+  shares         Int      @default(0)
+  saved          Int      @default(0)
+  reach          Int      @default(0)
+  engagementRate Float
+  rawMetrics     Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([campaignId, postUrl, snapshotDay])
   @@index([campaignId, snapshotDay])
@@ -1557,33 +1343,26 @@ model PostEngagementSnapshot {
 }
 
 model DailyPostEngagementSnapshot {
-  id           String @id @unique @default(cuid())
-  campaignId   String
-  submissionId String
-  postUrl      String
-  platform     String // "Instagram" | "TikTok"
-  userId       String // Creator user ID
-
-  // Snapshot timing
-  postDate      DateTime // When the post was originally published
-  snapshotDate  DateTime // Start-of-day for this snapshot (the "this day" anchor)
-  daysSincePost Int // Whole days between postDate and snapshotDate (anchored on the post)
-  capturedAt    DateTime // When this snapshot was captured
-
-  // Engagement metrics at snapshot time
-  views          Int   @default(0)
-  likes          Int   @default(0)
-  comments       Int   @default(0)
-  shares         Int   @default(0)
-  saved          Int   @default(0)
-  reach          Int   @default(0)
+  id             String   @id @unique @default(cuid())
+  campaignId     String
+  submissionId   String
+  postUrl        String
+  platform       String
+  userId         String
+  postDate       DateTime
+  snapshotDate   DateTime
+  daysSincePost  Int
+  capturedAt     DateTime
+  views          Int      @default(0)
+  likes          Int      @default(0)
+  comments       Int      @default(0)
+  shares         Int      @default(0)
+  saved          Int      @default(0)
+  reach          Int      @default(0)
   engagementRate Float
-
-  // Raw insight data for reference
-  rawMetrics Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  rawMetrics     Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([postUrl, snapshotDate])
   @@index([campaignId, snapshotDate])
@@ -1592,149 +1371,93 @@ model DailyPostEngagementSnapshot {
 }
 
 model ManualCreatorEntry {
-  id         String   @id @unique @default(cuid())
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
+  id              String   @id @unique @default(cuid())
+  campaignId      String
   creatorName     String
   creatorUsername String
-  photoUrl        String?
-  platform        String // "Instagram" | "TikTok"
+  platform        String
   postUrl         String?
-
-  views          Int   @default(0)
-  likes          Int   @default(0)
-  comments       Int   @default(0)
-  shares         Int   @default(0)
-  saved          Int? // Only for Instagram
-  engagementRate Float @default(0)
-
-  createdBy String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  views           Int      @default(0)
+  likes           Int      @default(0)
+  shares          Int      @default(0)
+  saved           Int?
+  engagementRate  Float    @default(0)
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  comments        Int      @default(0)
+  photoUrl        String?
+  campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId])
 }
 
 model Video {
-  id           String         @id @default(cuid())
-  url          String?
-  status       FeedbackStatus @default(PENDING)
-  campaignId   String?
-  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
-  userId       String?
-  user         User?          @relation(fields: [userId], references: [id])
-  submissionId String?
-  submission   Submission?    @relation(fields: [submissionId], references: [id])
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime?      @updatedAt
-
+  id                 String              @id @default(cuid())
+  url                String?
+  submissionId       String?
+  campaignId         String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime?           @updatedAt
+  userId             String?
+  status             FeedbackStatus      @default(PENDING)
+  adminId            String?
+  feedback           String?
+  feedbackAt         DateTime?
+  reasons            String[]
+  previousDrafts     String[]
+  resubmittedFromId  String?
   feedbackDeadline   DateTime?
   feedbackSentByName String?
-
-  // Individual feedback fields
-  feedback   String? // Individual feedback message
-  reasons    String[] // Reasons for changes (if any)
-  adminId    String? // Admin who provided feedback
-  admin      User?     @relation("VideoFeedback", fields: [adminId], references: [id])
-  feedbackAt DateTime? // When feedback was provided
-
-  // Previous video draft URLs
-  previousDrafts String[] // Array of previous video URLs
-
-  // Reupload version chain: links to the video this one replaced
-  resubmittedFromId String?
-  resubmittedFrom   Video?  @relation("VideoResubmissions", fields: [resubmittedFromId], references: [id])
-  resubmissions     Video[] @relation("VideoResubmissions")
-
+  uploadSessionId    String?             @unique
   feedbackRecords    Feedback[]
   submissionComments SubmissionComment[]
-
-  uploadSessionId String?        @unique
-  uploadSession   UploadSession? @relation(fields: [uploadSessionId], references: [id])
+  admin              User?               @relation("VideoFeedback", fields: [adminId], references: [id])
+  campaign           Campaign?           @relation(fields: [campaignId], references: [id])
+  resubmittedFrom    Video?              @relation("VideoResubmissions", fields: [resubmittedFromId], references: [id])
+  resubmissions      Video[]             @relation("VideoResubmissions")
+  submission         Submission?         @relation(fields: [submissionId], references: [id])
+  uploadSession      UploadSession?      @relation(fields: [uploadSessionId], references: [id])
+  user               User?               @relation(fields: [userId], references: [id])
 }
 
 model RawFootage {
-  id         String         @id @default(cuid())
-  url        String
-  campaignId String?
-  campaign   Campaign?      @relation(fields: [campaignId], references: [id])
-  userId     String?
-  user       User?          @relation(fields: [userId], references: [id])
-  status     FeedbackStatus @default(PENDING)
-
+  id           String         @id @default(cuid())
+  url          String
+  campaignId   String?
   submissionId String?
-  submission   Submission? @relation(fields: [submissionId], references: [id])
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime?   @updatedAt
-
-  // Individual feedback fields
-  feedback   String? // Individual feedback message
-  reasons    String[] // Reasons for changes (if any)
-  adminId    String? // Admin who provided feedback
-  admin      User?     @relation("RawFootageFeedback", fields: [adminId], references: [id])
-  feedbackAt DateTime? // When feedback was provided
+  createdAt    DateTime       @default(now())
+  status       FeedbackStatus @default(PENDING)
+  updatedAt    DateTime?      @updatedAt
+  userId       String?
+  adminId      String?
+  feedback     String?
+  feedbackAt   DateTime?
+  reasons      String[]
+  admin        User?          @relation("RawFootageFeedback", fields: [adminId], references: [id])
+  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
+  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  user         User?          @relation(fields: [userId], references: [id])
 }
 
 model Photo {
-  id         String         @id @default(cuid())
-  url        String
-  campaignId String?
-  campaign   Campaign?      @relation(fields: [campaignId], references: [id])
-  userId     String?
-  user       User?          @relation(fields: [userId], references: [id])
-  status     FeedbackStatus @default(PENDING)
-
+  id           String         @id @default(cuid())
+  url          String
+  campaignId   String?
   submissionId String?
-  submission   Submission? @relation(fields: [submissionId], references: [id])
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime?   @updatedAt
-
-  // Individual feedback fields
-  feedback   String? // Individual feedback message
-  reasons    String[] // Reasons for changes (if any)
-  adminId    String? // Admin who provided feedback
-  admin      User?     @relation("PhotoFeedback", fields: [adminId], references: [id])
-  feedbackAt DateTime? // When feedback was provided
+  createdAt    DateTime       @default(now())
+  status       FeedbackStatus @default(PENDING)
+  updatedAt    DateTime?      @updatedAt
+  userId       String?
+  adminId      String?
+  feedback     String?
+  feedbackAt   DateTime?
+  reasons      String[]
+  admin        User?          @relation("PhotoFeedback", fields: [adminId], references: [id])
+  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
+  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  user         User?          @relation(fields: [userId], references: [id])
 }
-
-// model DeliverableFeedback {
-//   id String @id @unique @default(cuid())
-// }
-
-enum VideoStatus {
-  Uploaded
-  Processing
-  Published
-  Rejected
-}
-
-enum FeedbackStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  REVISION_REQUESTED
-  SENT_TO_CLIENT
-  CLIENT_FEEDBACK
-}
-
-// model DeliverableFeedback {
-//   id String @id @unique @default(cuid())
-// }
-
-// enum VideoStatus {
-//   Uploaded
-//   Processing
-//   Published
-//   Rejected
-// }
-
-// enum FeedbackStatus {
-//   PENDING
-//   APPROVED
-//   REJECTED
-//   REVISION_REQUESTED
-// }
 
 model SubmissionDependency {
   id                    String      @id @default(cuid())
@@ -1771,61 +1494,53 @@ model SubmissionType {
 model Feedback {
   id                  String             @id @unique @default(cuid())
   content             String?
-  rawFootageContent   String?
-  photoContent        String?
   type                FeedbackType?
   reasons             String[]
-  videosToUpdate      String[]
-  rawFootageToUpdate  String[]
-  photosToUpdate      String[]
   submissionId        String
   adminId             String
-  videoId             String?
-  sentToCreator       Boolean            @default(false)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
-  admin               User               @relation(fields: [adminId], references: [id])
-  submission          Submission         @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  video               Video?             @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  videosToUpdate      String[]
+  photoContent        String?
+  photosToUpdate      String[]
+  rawFootageContent   String?
+  rawFootageToUpdate  String[]
+  sentToCreator       Boolean            @default(false)
   submissionCommentId String?            @unique
-  submissionComment   SubmissionComment? @relation(fields: [submissionCommentId], references: [id], onDelete: SetNull)
+  videoId             String?
+  admin               User               @relation(fields: [adminId], references: [id])
+  submissionComment   SubmissionComment? @relation(fields: [submissionCommentId], references: [id])
+  submission          Submission         @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  video               Video?             @relation(fields: [videoId], references: [id])
 }
 
 model SubmissionComment {
-  id              String  @id @default(cuid())
-  text            String  @db.Text
-  editedText      String? @db.Text
-  timestamp       String?
-  editedTimestamp String?
-
-  submissionId String
-  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-
-  videoId String?
-  video   Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  parentId String?
-  parent   SubmissionComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies  SubmissionComment[] @relation("CommentReplies")
-
+  id                 String              @id @default(cuid())
+  text               String
+  editedText         String?
+  timestamp          String?
+  editedTimestamp    String?
+  submissionId       String
+  videoId            String?
+  userId             String
+  parentId           String?
+  isClientDraft      Boolean             @default(false)
+  forwardedByUserId  String?
+  resolvedAt         DateTime?
+  resolvedByUserId   String?
+  createdAt          DateTime            @default(now())
+  updateAt           DateTime            @updatedAt
+  isVisibleToCreator Boolean             @default(true)
+  isSentToCreator    Boolean             @default(false)
   agreedBy           CommentAgreement[]
   feedback           Feedback?
-  isClientDraft      Boolean            @default(false)
-  isVisibleToCreator Boolean            @default(true)
-  isSentToCreator    Boolean            @default(false)
-
-  forwardedByUserId String?
-  forwardedBy       User?   @relation("ForwardedComments", fields: [forwardedByUserId], references: [id], onDelete: SetNull)
-
-  resolvedAt       DateTime?
-  resolvedByUserId String?
-  resolvedBy       User?     @relation("ResolvedComments", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-  updateAt  DateTime @updatedAt
+  forwardedBy        User?               @relation("ForwardedComments", fields: [forwardedByUserId], references: [id])
+  parent             SubmissionComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies            SubmissionComment[] @relation("CommentReplies")
+  resolvedBy         User?               @relation("ResolvedComments", fields: [resolvedByUserId], references: [id])
+  submission         Submission          @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video              Video?              @relation(fields: [videoId], references: [id])
 
   @@index([submissionId])
   @@index([videoId])
@@ -1834,69 +1549,51 @@ model SubmissionComment {
 model CommentAgreement {
   id        String            @id @default(cuid())
   commentId String
-  comment   SubmissionComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
   userId    String
+  comment   SubmissionComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
   user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([commentId, userId])
 }
 
 model Invoice {
-  id            String        @id @unique @default(cuid())
-  invoiceNumber String        @unique
-  amount        Float
-  status        InvoiceStatus @default(draft)
-  task          Json?
-  bankAcc       Json?
-  invoiceFrom   Json?
-  invoiceTo     Json?
-  deliverables  Json?
-  reimbursements Json?
-  invoiceType     InvoiceType @default(STANDARD)
+  id              String        @id @unique @default(cuid())
+  invoiceNumber   String        @unique
+  amount          Float
+  status          InvoiceStatus @default(draft)
+  task            Json?
+  bankAcc         Json?
+  invoiceFrom     Json?
+  invoiceTo       Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  dueDate         DateTime
+  creatorId       String
+  campaignId      String
+  adminId         String?
+  deliverables    Json?
+  xeroInvoiceId   String?
+  round           Int           @default(1)
+  invoiceType     InvoiceType   @default(STANDARD)
   parentInvoiceId String?
-
-  dueDate    DateTime
-  creatorId  String
-  campaignId String
-  adminId    String?
-  round      Int      @default(1)
-
-  xeroInvoiceId String?
-
-  user     User?    @relation("CreatedBy", fields: [adminId], references: [id])
-  campaign Campaign @relation(fields: [campaignId], references: [id])
-  creator  Creator  @relation(fields: [creatorId], references: [userId])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  reimbursements  Json?
+  user            User?         @relation("CreatedBy", fields: [adminId], references: [id])
+  campaign        Campaign      @relation(fields: [campaignId], references: [id])
+  creator         Creator       @relation(fields: [creatorId], references: [userId])
 }
-
-// model Logistic {
-//   id             String         @id @unique @default(cuid())
-//   trackingNumber String
-//   itemName       String
-//   courier        String
-//   status         LogisticStatus @default(Product_is_being_packaged)
-//   updateAt       DateTime       @updatedAt
-//   createdAt      DateTime       @default(now())
-//   userId         String
-//   campaignId     String
-//   campaign       Campaign       @relation(fields: [campaignId], references: [id])
-//   user           User           @relation(fields: [userId], references: [id])
-// }
 
 model PaymentForm {
   id                String             @id @unique @default(cuid())
   userId            String             @unique
   icNumber          String?
   bankName          String?
-  bankAccountName   String?
   bankAccountNumber String?
-  countryOfBank     String?
   bodyMeasurement   String?
   allergies         String[]
-  status            PaymentFormStatus? @default(approved)
+  bankAccountName   String?
+  countryOfBank     String?
   reason            String?
+  status            PaymentFormStatus? @default(approved)
   user              User               @relation(fields: [userId], references: [id])
 }
 
@@ -1946,54 +1643,46 @@ model TaskAssignee {
 }
 
 model CreatorAgreement {
-  id                String    @id @unique @default(cuid())
-  agreementUrl      String
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  isSent            Boolean   @default(false)
-  amount            String?
-  currency          String?
-  userId            String
-  campaignId        String
-  completedAt       DateTime?
-  approvedByAdminId String?
-
-  round Int @default(1)
-
-  selectedPlatform SocialPlatform?
-  videoCount       Int?
-  followerCount    Int?
-  creditPerVideo   Int?
-  creditTierId     String?
-  creditsAssigned  Int?
-  campaign         Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  admin            Admin?          @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
-  creditTier       CreditTier?     @relation(fields: [creditTierId], references: [id])
-  version          Int?            @default(1)
-
-  isSeeding      Boolean          @default(false)
-  productSeeding ProductSeeding[]
-
-  // Reimbursement: when on, the round's invoice waits until the creator's receipts are all approved
+  id                    String                 @id @unique @default(cuid())
+  agreementUrl          String
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  isSent                Boolean                @default(false)
+  amount                String?
+  userId                String
+  campaignId            String
+  approvedByAdminId     String?
+  completedAt           DateTime?
+  currency              String?
+  creditPerVideo        Int?
+  creditTierId          String?
+  creditsAssigned       Int?
+  followerCount         Int?
+  round                 Int                    @default(1)
+  selectedPlatform      SocialPlatform?
+  videoCount            Int?
+  isSeeding             Boolean                @default(false)
+  version               Int?                   @default(1)
   isReceiptRequired     Boolean                @default(false)
   receiptsSubmittedAt   DateTime?
+  admin                 Admin?                 @relation("CompletedByAdmin", fields: [approvedByAdminId], references: [userId])
+  campaign              Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creditTier            CreditTier?            @relation(fields: [creditTierId], references: [id])
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productSeeding        ProductSeeding[]
   reimbursementReceipts ReimbursementReceipt[]
 
   @@unique([userId, campaignId, round])
 }
 
 model ProductSeeding {
-  id String @id @unique @default(cuid())
-
-  name  String
-  value Float
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime? @updatedAt
-
-  creatorAgreement   CreatorAgreement? @relation(fields: [creatorAgreementId], references: [id])
+  id                 String            @id @unique @default(cuid())
+  name               String
+  value              Float
+  createdAt          DateTime          @default(now())
   creatorAgreementId String?
+  updatedAt          DateTime?         @updatedAt
+  creatorAgreement   CreatorAgreement? @relation(fields: [creatorAgreementId], references: [id])
 }
 
 model Crawler {
@@ -2009,36 +1698,30 @@ model Crawler {
 model AgreementTemplate {
   id                    String                 @id @unique @default(cuid())
   url                   String?
-  adminName             String?
-  adminICNumber         String?
-  signURL               String?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
+  adminICNumber         String?
+  adminName             String?
+  signURL               String?
   userId                String?
-  user                  User?                  @relation(fields: [userId], references: [id])
   isDefault             Boolean?               @default(false)
   agreementTemplateType AgreementTemplateType?
+  isNdaRequired         Boolean                @default(false)
+  user                  User?                  @relation(fields: [userId], references: [id])
   campaign              Campaign[]
-
-  isNdaRequired Boolean @default(false)
-}
-
-enum AgreementTemplateType {
-  seedingCampaign
-  surfSharkCampaign
 }
 
 model Bugs {
   id               String   @id @unique @default(cuid())
   stepsToReproduce String
-  category         String?
-  context          Json?
   attachment       String?
-  attachments      String[]
-  campaignName     String?
   createdAt        DateTime @default(now())
   userId           String?
-  user             User?    @relation(references: [id], fields: [userId])
+  campaignName     String?
+  attachments      String[]
+  category         String?
+  context          Json?
+  user             User?    @relation(fields: [userId], references: [id])
 }
 
 model Subscription {
@@ -2048,23 +1731,22 @@ model Subscription {
   packageId       String?
   customPackageId String?
   currency        String?
-  company         Company?              @relation(references: [id], fields: [companyId])
   creditsUsed     Int
   totalCredits    Int?
   packagePrice    Float?
   status          SubscriptionStatus    @default(ACTIVE)
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
-  package         Package?              @relation(fields: [packageId], references: [id])
-  customPackage   CustomPackage?        @relation(fields: [customPackageId], references: [id])
   expiredAt       DateTime
   campaign        Campaign[]
+  company         Company?              @relation(fields: [companyId], references: [id])
+  customPackage   CustomPackage?        @relation(fields: [customPackageId], references: [id])
+  package         Package?              @relation(fields: [packageId], references: [id])
   history         SubscriptionHistory[]
 }
 
 model CustomPackage {
-  id String @id @unique @default(cuid())
-
+  id                   String         @id @unique @default(cuid())
   customName           String
   customCredits        Int
   customValidityPeriod Int
@@ -2074,34 +1756,928 @@ model CustomPackage {
   subscriptions        Subscription[]
 }
 
-enum SubscriptionStatus {
-  ACTIVE
-  EXPIRED
-  CANCELLED
-}
-
 model Package {
   id             String         @id @unique @default(cuid())
   name           String?
   credits        Int
   validityPeriod Int
-  subscriptions  Subscription[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
-  prices         Price[]
   isArchived     Boolean        @default(false)
+  prices         Price[]
+  subscriptions  Subscription[]
 }
 
 model Price {
   id        Int      @id @default(autoincrement())
   packageId String
-  package   Package  @relation(fields: [packageId], references: [id])
   currency  String
   amount    Float
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  package   Package  @relation(fields: [packageId], references: [id])
 
-  @@unique([packageId, currency]) // Ensure each package has only one price per currency
+  @@unique([packageId, currency])
+}
+
+model PublicAccess {
+  id         Int      @id @default(autoincrement())
+  campaignId String
+  password   String
+  expiryDate DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+}
+
+model PublicFeedback {
+  id           String        @id @unique @default(cuid())
+  content      String?
+  type         FeedbackType?
+  reasons      String[]
+  submissionId String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+}
+
+model ApprovalRequest {
+  id            String                   @id @default(cuid())
+  token         String                   @unique
+  campaignId    String
+  approverName  String
+  approverEmail String
+  inviteToken   String?
+  expiresAt     DateTime
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  campaign      Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creators      ApprovalRequestCreator[]
+}
+
+model ApprovalRequestCreator {
+  id                String                @id @default(cuid())
+  approvalRequestId String
+  pitchId           String
+  status            ApprovalCreatorStatus @default(PENDING)
+  comment           String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  csComment         String?
+  approvalRequest   ApprovalRequest       @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  pitch             Pitch                 @relation(fields: [pitchId], references: [id], onDelete: Cascade)
+
+  @@unique([approvalRequestId, pitchId])
+}
+
+model CaptionHistory {
+  id           String     @id @default(cuid())
+  submissionId String
+  caption      String?
+  author       String
+  authorType   String
+  createdAt    DateTime   @default(now())
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([createdAt])
+}
+
+model Product {
+  id            String         @id @unique @default(cuid())
+  productName   String
+  description   String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  campaignId    String
+  isArchived    Boolean        @default(false)
+  deliveryItems DeliveryItem[]
+  campaign      Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+}
+
+model Logistic {
+  id                 String              @id @unique @default(cuid())
+  status             LogisticStatus      @default(PENDING_ASSIGNMENT)
+  createdAt          DateTime            @default(now())
+  campaignId         String
+  completedAt        DateTime?
+  createdById        String
+  creatorId          String
+  deliveredAt        DateTime?
+  receivedAt         DateTime?
+  shippedAt          DateTime?
+  type               LogisticType
+  updatedAt          DateTime            @updatedAt
+  deliveryDetails    DeliveryDetails?
+  campaign           Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdBy          User                @relation("CreatedLogistics", fields: [createdById], references: [id], onDelete: Cascade)
+  creator            User                @relation("AssignedLogistics", fields: [creatorId], references: [id], onDelete: Cascade)
+  issues             LogisticIssue[]
+  reservationDetails ReservationDetails?
+  storeVisitDetails  StoreVisitDetails?
+
+  @@unique([creatorId, campaignId])
+  @@index([campaignId])
+  @@index([creatorId])
+}
+
+model DeliveryDetails {
+  id                   String         @id @unique @default(cuid())
+  trackingLink         String?
+  address              String?
+  expectedDeliveryDate DateTime?
+  dietaryRestrictions  String?
+  logisticId           String         @unique
+  createdAt            DateTime       @default(now())
+  isConfirmed          Boolean        @default(false)
+  logistic             Logistic       @relation(fields: [logisticId], references: [id], onDelete: Cascade)
+  items                DeliveryItem[]
+}
+
+model ReservationDetails {
+  id             String            @id @unique @default(cuid())
+  logisticId     String            @unique
+  budget         String?
+  clientRemarks  String?
+  creatorRemarks String?
+  isConfirmed    Boolean           @default(false)
+  outlet         String?
+  pax            Int?
+  picContact     String?
+  picName        String?
+  promoCode      String?
+  logistic       Logistic          @relation(fields: [logisticId], references: [id], onDelete: Cascade)
+  slots          ReservationSlot[]
+}
+
+model StoreVisitDetails {
+  id              String   @id @unique @default(cuid())
+  storeName       String
+  address         String
+  appointmentTime DateTime
+  contactPerson   String?
+  proofOfVisitUrl String?
+  logisticId      String   @unique
+  logistic        Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
+}
+
+model LogisticIssue {
+  id              String              @id @unique @default(cuid())
+  reason          String
+  status          LogisticIssueStatus @default(OPEN)
+  createdAt       DateTime            @default(now())
+  resolvedAt      DateTime?
+  resolutionNotes String?
+  logisticId      String
+  reportedById    String
+  logistic        Logistic            @relation(fields: [logisticId], references: [id], onDelete: Cascade)
+  reportedBy      User                @relation(fields: [reportedById], references: [id])
+}
+
+model DeliveryItem {
+  id                String          @id @unique @default(cuid())
+  deliveryDetailsId String
+  productId         String
+  quantity          Int             @default(1)
+  deliveryDetails   DeliveryDetails @relation(fields: [deliveryDetailsId], references: [id], onDelete: Cascade)
+  product           Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryDetailsId, productId])
+}
+
+model ReservationConfiguration {
+  id                    String          @id @unique @default(cuid())
+  campaignId            String          @unique
+  mode                  ReservationMode
+  locations             Json
+  availabilityRules     Json
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  allowMultipleBookings Boolean         @default(false)
+  clientRemarks         String?
+  campaign              Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+model ReservationSlot {
+  id                   String             @id @unique @default(cuid())
+  reservationDetailsId String
+  startTime            DateTime
+  endTime              DateTime
+  status               SlotStatus         @default(PROPOSED)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  reservationDetails   ReservationDetails @relation(fields: [reservationDetailsId], references: [id], onDelete: Cascade)
+}
+
+model CampaignPCR {
+  id         String   @id @unique @default(cuid())
+  campaignId String   @unique
+  content    Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  revision   Int      @default(1)
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+model CreditTier {
+  id                  String               @id @unique @default(cuid())
+  name                String               @unique
+  minFollowers        Int
+  maxFollowers        Int?
+  creditsPerVideo     Int
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  creators            Creator[]            @relation("UserCurrentTier")
+  creatorAgreements   CreatorAgreement[]
+  shortlistedCreators ShortListedCreator[]
+
+  @@index([minFollowers])
+}
+
+model NpsFeedback {
+  id           String      @id @unique @default(cuid())
+  userId       String
+  userType     NpsUserType @default(CLIENT)
+  rating       Int
+  feedback     String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  browser      String?
+  deviceModel  String?
+  deviceType   String?
+  deviceVendor String?
+  os           String?
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userType])
+}
+
+model UserFlow {
+  id               String     @id @unique @default(cuid())
+  userId           String
+  sessionId        String?
+  flow             FlowType
+  step             String
+  status           StepStatus @default(STARTED)
+  timeSpentSeconds Int?       @default(0)
+  meta             Json?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, flow, step, sessionId])
+  @@index([flow, step])
+}
+
+model SubscriptionHistory {
+  id                String                 @id @unique @default(cuid())
+  companyId         String
+  subscriptionId    String?
+  changeType        SubscriptionChangeType
+  previousPackageId String?
+  newPackageId      String
+  amountPaid        Float
+  currency          String                 @default("MYR")
+  createdAt         DateTime               @default(now())
+  actionByUserId    String?
+  company           Company                @relation(fields: [companyId], references: [id])
+  subscription      Subscription?          @relation(fields: [subscriptionId], references: [id])
+}
+
+model AiModel {
+  id              String   @id @unique @default(cuid())
+  model           String
+  temperature     Float
+  systemPrompt    Json?
+  maxOutputTokens Int
+  apiKey          String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  userId          String?  @unique
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@map("ai_model")
+}
+
+model WhatsappSetting {
+  id                String   @id @unique @default(cuid())
+  accessToken       String?
+  businessAccountId String?
+  phoneNumberId     String?
+  templateName      String?
+  isFeatureEnabled  Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("whatsapp-setting")
+}
+
+model VerificationCode {
+  id               String   @id @unique @default(cuid())
+  verificationCode String
+  accessToken      String
+  phoneNumber      String
+  isUsed           Boolean  @default(false)
+  attempts         Int      @default(0)
+  expiredAt        DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model WhatsappMessage {
+  id        String    @id @unique @default(cuid())
+  messageId String?   @unique
+  from      String?
+  to        String?
+  message   String?
+  sticker   Json?
+  type      String?
+  status    String?
+  sentAt    DateTime
+  direction TypeEnum?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model UploadSession {
+  id            String       @id @default(cuid())
+  gcsSessionUri String?
+  gcsObjectPath String
+  status        UploadStatus @default(INITIATED)
+  bytesTotal    BigInt?
+  bytesUploaded BigInt       @default(0)
+  userId        String
+  campaignId    String?
+  submissionId  String?
+  expiresAt     DateTime
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  completedAt   DateTime?
+  failedAt      DateTime?
+  errorMessage  String?
+  fileName      String?
+  campaign      Campaign?    @relation(fields: [campaignId], references: [id])
+  submission    Submission?  @relation(fields: [submissionId], references: [id])
+  user          User         @relation(fields: [userId], references: [id])
+  video         Video?
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+}
+
+model TreasureHunt {
+  id             String                 @id @default(cuid())
+  eventKey       String                 @unique @default("FIND_CIPTA") @db.VarChar(50)
+  title          String                 @db.VarChar(255)
+  description    String
+  heroArtworkUrl String?                @db.VarChar(2048)
+  startsAt       DateTime
+  endsAt         DateTime
+  rewardXp       Int                    @default(50)
+  status         TreasureHuntStatus     @default(DRAFT)
+  featuredSlot   Int?                   @unique
+  publishedAt    DateTime?
+  pausedAt       DateTime?
+  archivedAt     DateTime?
+  createdById    String
+  updatedById    String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  createdBy      User                   @relation("TreasureHuntCreatedBy", fields: [createdById], references: [id])
+  updatedBy      User?                  @relation("TreasureHuntUpdatedBy", fields: [updatedById], references: [id])
+  auditLogs      TreasureHuntAuditLog[]
+  locations      TreasureHuntLocation[]
+
+  @@index([status, startsAt, endsAt])
+  @@index([createdAt])
+}
+
+model TreasureHuntLocation {
+  id                    String                        @id @default(cuid())
+  huntId                String
+  name                  String                        @db.VarChar(255)
+  hint                  String
+  sortOrder             Int
+  artworkUrl            String                        @db.VarChar(2048)
+  isEnabled             Boolean                       @default(true)
+  publicTokenHash       String?                       @unique @db.VarChar(64)
+  publicTokenCiphertext String?
+  tokenIssuedAt         DateTime?
+  tokenVersion          Int                           @default(0)
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+  auditLogs             TreasureHuntAuditLog[]
+  bitlyPublication      TreasureHuntBitlyPublication?
+  claims                TreasureHuntClaim[]
+  hunt                  TreasureHunt                  @relation(fields: [huntId], references: [id], onDelete: Cascade)
+
+  @@unique([huntId, sortOrder])
+  @@index([huntId, isEnabled, sortOrder])
+}
+
+model TreasureHuntBitlyPublication {
+  id                    String                 @id @default(cuid())
+  locationId            String                 @unique
+  status                BitlyPublicationStatus @default(NOT_STARTED)
+  bitlinkId             String?                @unique @db.VarChar(255)
+  bitlinkUrl            String?                @unique @db.VarChar(2048)
+  qrCodeId              String?                @unique @db.VarChar(255)
+  qrImageUrl            String?                @db.VarChar(2048)
+  rawScanCount          Int                    @default(0)
+  analyticsSource       String?                @db.VarChar(100)
+  lastAnalyticsSyncedAt DateTime?
+  lastAttemptAt         DateTime?
+  nextRetryAt           DateTime?
+  lastErrorCode         String?                @db.VarChar(100)
+  lastErrorMessage      String?
+  leaseId               String?                @db.VarChar(64)
+  leaseExpiresAt        DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  location              TreasureHuntLocation   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRetryAt])
+  @@index([leaseExpiresAt])
+}
+
+model TreasureHuntClaim {
+  id         String                  @id @default(cuid())
+  userId     String
+  locationId String
+  source     TreasureHuntClaimSource
+  claimedAt  DateTime                @default(now())
+  capture    TreasureHuntCapture?
+  location   TreasureHuntLocation    @relation(fields: [locationId], references: [id])
+  user       User                    @relation(fields: [userId], references: [id])
+
+  @@unique([userId, locationId])
+  @@index([userId, claimedAt])
+  @@index([locationId, claimedAt])
+}
+
+model TreasureHuntCapture {
+  id          String            @id @default(cuid())
+  claimId     String            @unique
+  objectPath  String            @unique @db.VarChar(2048)
+  contentType String            @db.VarChar(100)
+  byteSize    Int
+  sha256      String            @db.VarChar(64)
+  width       Int
+  height      Int
+  createdAt   DateTime          @default(now())
+  claim       TreasureHuntClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+}
+
+model XpTransaction {
+  id         String        @id @default(cuid())
+  userId     String
+  amount     Int
+  sourceType XpSourceType?
+  sourceId   String
+  metadata   Json?
+  createdAt  DateTime      @default(now())
+  actionId   String?
+  periodId   String?
+  action     XpAction?     @relation(fields: [actionId], references: [id])
+  user       User          @relation(fields: [userId], references: [id])
+
+  @@unique([userId, actionId, sourceId])
+  @@index([userId, createdAt])
+  @@index([periodId])
+  @@index([actionId])
+}
+
+model UserXpBalance {
+  userId          String    @id
+  total           Int       @default(0)
+  updatedAt       DateTime  @updatedAt
+  currentRankId   String?
+  mediaKitBonusAt DateTime?
+  rank            Rank?     @relation(fields: [currentRankId], references: [id])
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TreasureHuntAuditLog {
+  id          String                @id @default(cuid())
+  huntId      String?
+  locationId  String?
+  actorUserId String
+  action      String                @db.VarChar(100)
+  metadata    Json?
+  requestId   String?               @db.VarChar(255)
+  createdAt   DateTime              @default(now())
+  actor       User                  @relation(fields: [actorUserId], references: [id])
+  hunt        TreasureHunt?         @relation(fields: [huntId], references: [id])
+  location    TreasureHuntLocation? @relation(fields: [locationId], references: [id])
+
+  @@index([huntId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model Achievement {
+  id          String               @id @default(cuid())
+  code        String               @unique
+  name        String
+  category    String
+  rarity      String
+  icon        String
+  description String
+  xp          Int
+  target      Int
+  active      Boolean              @default(true)
+  sortOrder   Int
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  creators    CreatorAchievement[]
+}
+
+model CreatorAchievement {
+  userId        String
+  achievementId String
+  unlockedAt    DateTime?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  achievement   Achievement               @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  user          User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events        CreatorAchievementEvent[]
+
+  @@id([userId, achievementId])
+  @@index([achievementId])
+}
+
+model CreatorAchievementEvent {
+  id                 String             @id @default(cuid())
+  userId             String
+  achievementId      String
+  sourceId           String
+  increment          Int                @default(1)
+  createdAt          DateTime           @default(now())
+  creatorAchievement CreatorAchievement @relation(fields: [userId, achievementId], references: [userId, achievementId], onDelete: Cascade)
+
+  @@unique([userId, achievementId, sourceId])
+  @@index([userId, achievementId])
+}
+
+model LeaderboardSnapshot {
+  periodId  String
+  userId    String
+  rank      Int
+  xp        Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([periodId, userId])
+  @@index([userId])
+}
+
+model XpAction {
+  id             String          @id @default(cuid())
+  code           String          @unique
+  name           String
+  points         Int?
+  rewardType     RewardType
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  xpTransactions XpTransaction[]
+
+  @@map("xp_action")
+}
+
+model Rank {
+  id             String          @id @default(cuid())
+  name           String          @unique
+  minPoints      Int
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  userXpBalances UserXpBalance[]
+}
+
+/// One durable unit of provider work.
+///
+/// Written before the job is enqueued, so a restart can recover it. Holds
+/// typed results only. Raw provider JSON is never persisted.
+model GuestProfileExtraction {
+  id                      String                       @id @default(cuid())
+  campaignId              String
+  /// The admin who started the work. Status and receipt access require this
+  /// exact user. Not a relation, so a user record change never deletes work.
+  requestedByUserId       String
+  /// Canonical identity, for example `instagram:example`.
+  canonicalProfileKey     String                       @db.VarChar(120)
+  canonicalProfileUrl     String                       @db.VarChar(255)
+  platform                SocialPlatform
+  /// Column names predate the Bright Data migration (2026-09). Apify-era rows
+  /// keep their Apify values.
+  /// Bright Data posts dataset ID, for example `gd_lyclm20il4r5helnj`.
+  actorId                 String                       @db.VarChar(120)
+  /// Adapter contract version, for example `brightdata-ig-2026-09`. Keys the
+  /// cache and the work fingerprint. Bright Data has no build pinning.
+  actorBuild              String                       @db.VarChar(40)
+  /// Posts job `snapshot_id` (`sd_...`). Both columns hold the same value.
+  actorRunId              String?                      @db.VarChar(60)
+  actorDatasetId          String?                      @db.VarChar(60)
+  /// Profile job `snapshot_id`, on both platforms. It supplies followers and
+  /// the private flag, and on Instagram the pinned flag and fallback dates.
+  /// Recorded before polling, so a paid job is never untracked.
+  profileActorRunId       String?                      @db.VarChar(60)
+  profileActorDatasetId   String?                      @db.VarChar(60)
+  status                  GuestProfileExtractionStatus @default(QUEUED)
+  resultName              String?                      @db.VarChar(255)
+  resultFollowerCount     Int?
+  /// Percentage without the sign. `"4.27"` means 4.27%.
+  resultEngagementRate    String?                      @db.VarChar(24)
+  sampleSize              Int?
+  formulaVersion          String?                      @db.VarChar(60)
+  /// Selected-post evidence built by this backend. Not provider JSON.
+  selectedPosts           Json?
+  /// Every candidate the provider returned, with the verdict the policy gave it.
+  /// Counters, IDs and timestamps only. No caption, media URL, avatar or bio.
+  candidatePosts          Json?
+  /// Policy flags the provider did not report, plus `publishedAt` when an
+  /// undated Instagram Reel was ordered by provider list order.
+  unverifiedFlags         String[]
+  failureCode             String?                      @db.VarChar(60)
+  failureMessage          String?
+  /// Start idempotency. The same key with a different body is a conflict.
+  idempotencyKey          String                       @db.VarChar(120)
+  requestFingerprint      String                       @db.VarChar(64)
+  /// Receipt binding. The nonce is consumed inside the create transaction.
+  receiptNonce            String?                      @unique @db.VarChar(64)
+  receiptDigest           String?                      @db.VarChar(64)
+  receiptExpiresAt        DateTime?
+  receiptConsumedAt       DateTime?
+  /// Measured charge from the provider. Apify-era rows only: Bright Data
+  /// reports no per-job cost, so it stays null. Spend is in its dashboard.
+  costUsd                 Decimal?                     @db.Decimal(10, 6)
+  /// Measured charge for the profile run. Apify-era rows only.
+  profileCostUsd          Decimal?                     @db.Decimal(10, 6)
+  /// Set when this row copied a completed result instead of paying again.
+  reusedFromExtractionId  String?
+  /// Starts refused because the same work was already running or already
+  /// done. A high number means the browser is asking twice.
+  duplicateStartAttempts  Int                          @default(0)
+  reconcileAttempts       Int                          @default(0)
+  lastReconciledAt        DateTime?
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
+  startedAt               DateTime?
+  completedAt             DateTime?
+  /// Cleanup boundary. Removing a row here must never remove an audit.
+  expiresAt               DateTime?
+  /// Typed result. Present only for READY.
+  resultBiography         String?
+  /// Profile picture copied to our storage. Provider CDN links expire. Set on
+  /// READY and INSUFFICIENT_DATA, because the profile job worked on both.
+  resultProfilePictureUrl String?
+  /// Second posts job (`snapshot_id`), started only when the first batch had
+  /// too few usable posts. Recorded before polling, so a paid job is never
+  /// untracked. Null when one batch was enough.
+  topUpRunId              String?                      @db.VarChar(60)
+  metricAudits            GuestCreatorMetricAudit[]
+  campaign                Campaign                     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  pendingPitches          Pitch?                       @relation("PendingPitchExtraction")
+
+  @@unique([requestedByUserId, idempotencyKey])
+  @@index([canonicalProfileKey, platform, actorBuild, status])
+  @@index([requestedByUserId, status])
+  @@index([campaignId, status])
+  @@index([status, updatedAt])
+  @@index([expiresAt])
+  @@index([completedAt])
+}
+
+/// Provenance for every guest metric written to a Pitch.
+///
+/// Denormalized on purpose. It must stay readable after the extraction row is
+/// cleaned up, so the extraction link is optional and set to null on delete.
+model CreatorDiscoveryProfile {
+  biography             String?
+  id                    String             @id @default(cuid())
+  userId                String
+  platform              SocialPlatform
+  profileUrl            String?
+  handle                String?
+  followers             Int?
+  engagementRate        Float?
+  followersSource       GuestMetricSource?
+  engagementRateSource  GuestMetricSource?
+  followersSavedAt      DateTime?
+  engagementRateSavedAt DateTime?
+  savedAt               DateTime
+  scrapedAt             DateTime?
+  /// When this profile first joined Discovery. A re-scrape does not change it.
+  createdAt             DateTime           @default(now())
+  /// When Link Creator moved this scrape from a guest to a platform creator.
+  linkedAt              DateTime?
+  /// Durable, typed evidence. Independent of temporary extractions and manual values.
+  scrapeDetails         Json?
+  /// Caption search without loading full post evidence for every candidate.
+  captions              String             @default("")
+  creator               Creator            @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([userId, platform])
+  @@index([platform])
+}
+
+model GuestCreatorMetricAudit {
+  id                     String                  @id @default(cuid())
+  pitchId                String
+  extractionId           String?
+  /// The guest User the pitch belongs to.
+  guestUserId            String?
+  canonicalProfileKey    String?                 @db.VarChar(120)
+  platform               SocialPlatform?
+  /// What the fetch produced. Null when there was no fetch.
+  originalName           String?                 @db.VarChar(255)
+  originalFollowerCount  Int?
+  originalEngagementRate String?                 @db.VarChar(24)
+  /// What was saved.
+  finalName              String?                 @db.VarChar(255)
+  finalFollowerCount     Int?
+  finalEngagementRate    String?                 @db.VarChar(24)
+  source                 GuestMetricSource
+  overrideReason         String?
+  /// Copied from the extraction so cleanup cannot erase it.
+  actorId                String?                 @db.VarChar(120)
+  actorBuild             String?                 @db.VarChar(40)
+  actorRunId             String?                 @db.VarChar(60)
+  formulaVersion         String?                 @db.VarChar(60)
+  /// The authenticated admin who made the request.
+  performedByUserId      String
+  /// The admin who reviewed the values, when that differs.
+  reviewerUserId         String?
+  createdAt              DateTime                @default(now())
+  extraction             GuestProfileExtraction? @relation(fields: [extractionId], references: [id])
+  pitch                  Pitch                   @relation(fields: [pitchId], references: [id], onDelete: Cascade)
+
+  @@index([pitchId])
+  @@index([extractionId])
+  @@index([canonicalProfileKey])
+  @@index([performedByUserId, createdAt])
+}
+
+/// Database idempotency for the final create call.
+///
+/// The same key with the same body returns the saved response. The same key
+/// with a different body is a conflict.
+model GuestCreatorCreateRequest {
+  id                String                   @id @default(cuid())
+  /// Scoped to the authenticated actor and the operation, never global.
+  performedByUserId String                   @db.VarChar(60)
+  operation         String                   @db.VarChar(60)
+  idempotencyKey    String                   @db.VarChar(120)
+  campaignId        String
+  /// Hash of the normalized request body.
+  requestHash       String                   @db.VarChar(64)
+  status            GuestCreateRequestStatus @default(IN_PROGRESS)
+  /// Saved response, replayed for a repeated key.
+  responseStatus    Int?
+  responseBody      Json?
+  resultPitchIds    String[]
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  completedAt       DateTime?
+  expiresAt         DateTime?
+  campaign          Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([performedByUserId, operation, idempotencyKey])
+  @@index([campaignId])
+  @@index([expiresAt])
+}
+
+/// A legacy group of guest creators that share one canonical identity.
+///
+/// Created by the backfill. While UNRESOLVED it blocks both extraction and
+/// creation for that key. A conflicting key is never set to null so that a
+/// duplicate can be created instead.
+model GuestProfileIdentityConflict {
+  id                  String                      @id @default(cuid())
+  canonicalProfileKey String                      @unique @db.VarChar(120)
+  platform            SocialPlatform
+  /// Every Creator and User record in the conflicting group.
+  creatorIds          String[]
+  userIds             String[]
+  /// The raw profileLink values that produced the same canonical key.
+  profileLinks        String[]
+  status              GuestIdentityConflictStatus @default(UNRESOLVED)
+  detectedAt          DateTime                    @default(now())
+  resolvedAt          DateTime?
+  resolvedByUserId    String?
+  resolutionNote      String?
+
+  @@index([status])
+}
+
+model ReleaseNote {
+  id          String            @id @default(cuid())
+  releaseDate DateTime
+  status      ReleaseNoteStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdById String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  createdBy   User?             @relation("ReleaseNoteCreatedBy", fields: [createdById], references: [id])
+  items       ReleaseNoteItem[]
+
+  @@index([status, publishedAt])
+}
+
+model ReleaseNoteItem {
+  id            String              @id @default(cuid())
+  releaseNoteId String
+  type          ReleaseNoteItemType
+  title         String              @db.VarChar(255)
+  description   String
+  order         Int                 @default(0)
+  releaseNote   ReleaseNote         @relation(fields: [releaseNoteId], references: [id], onDelete: Cascade)
+
+  @@index([releaseNoteId])
+}
+
+model ReimbursementReceipt {
+  id              String              @id @default(cuid())
+  agreementId     String
+  userId          String
+  campaignId      String
+  round           Int
+  order           Int
+  fileUrl         String
+  fileName        String
+  mimeType        String
+  amount          Float
+  currency        String              @default("MYR")
+  description     String
+  status          ReimbursementStatus @default(DRAFT)
+  submittedAt     DateTime?
+  reviewedAt      DateTime?
+  reviewedById    String?
+  rejectionReason String?
+  financeNote     String?
+  invoiceId       String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  agreement       CreatorAgreement    @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, userId, round])
+  @@index([agreementId])
+}
+
+enum ClientType {
+  directClient
+  agencyClient
+  enterpriseClient
+  demoClient
+}
+
+enum ClientCampaignRole {
+  owner
+  viewer
+  editor
+  approver
+}
+
+enum CompanyType {
+  agency
+  directClient
+}
+
+enum CampaignAdminRole {
+  owner
+  viewer
+  editor
+  manager
+}
+
+enum VideoStatus {
+  Uploaded
+  Processing
+  Published
+  Rejected
+}
+
+enum FeedbackStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVISION_REQUESTED
+  SENT_TO_CLIENT
+  CLIENT_FEEDBACK
+}
+
+enum AgreementTemplateType {
+  seedingCampaign
+  surfSharkCampaign
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
 }
 
 enum PackageType {
@@ -2117,71 +2693,11 @@ enum Currencies {
   SGD
 }
 
-model PublicAccess {
-  id         Int      @id @default(autoincrement())
-  campaignId String
-  password   String
-  expiryDate DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  campaign Campaign @relation(fields: [campaignId], references: [id])
-}
-
-model PublicFeedback {
-  id           String        @id @unique @default(cuid())
-  content      String?
-  type         FeedbackType?
-  reasons      String[] // Optional field for reasons (if required)
-  submissionId String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-}
-
-model ApprovalRequest {
-  id            String   @id @default(cuid())
-  token         String   @unique
-  campaignId    String
-  approverName  String
-  approverEmail String
-  inviteToken   String?
-  expiresAt     DateTime
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  campaign Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  creators ApprovalRequestCreator[]
-}
-
-model ApprovalRequestCreator {
-  id                String                @id @default(cuid())
-  approvalRequestId String
-  pitchId           String
-  status            ApprovalCreatorStatus @default(PENDING)
-  comment           String?
-  csComment         String?
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-
-  approvalRequest ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
-  pitch           Pitch           @relation(fields: [pitchId], references: [id], onDelete: Cascade)
-
-  @@unique([approvalRequestId, pitchId])
-}
-
 enum ApprovalCreatorStatus {
   PENDING
   APPROVED
   REJECTED
 }
-
-// enum LogisticStatus {
-//   Product_is_being_packaged
-//   Proudct_is_at_delivery_warehouse_in_transit
-//   Product_is_out_for_delivery
-//   Product_has_been_received
-// }
 
 enum Designation {
   Finance
@@ -2207,8 +2723,8 @@ enum Resources {
 
 enum Mode {
   god
-  advanced
   normal
+  advanced
 }
 
 enum Status {
@@ -2263,19 +2779,19 @@ enum CampaignDraftStatus {
 
 enum CampaignDraftOrigin {
   BD_CREATED
+  CLIENT_INVITED
   CSL_CREATED
   CSM_CREATED
-  CLIENT_INVITED
 }
 
 enum RoleEnum {
   admin
   creator
-  client
-  client_demo
   brand
   superadmin
   finance
+  client
+  client_demo
 }
 
 enum Stage {
@@ -2317,14 +2833,13 @@ enum PitchStatus {
   filtered
   undecided
   draft
-  // New simplified flow statuses
   PENDING_REVIEW
   SENT_TO_CLIENT
   APPROVED
-  MAYBE
   REJECTED
   AGREEMENT_PENDING
   AGREEMENT_SUBMITTED
+  MAYBE
   WITHDRAWN
   INVITED
   AWAITING_APPROVAL
@@ -2335,7 +2850,6 @@ enum SocialPlatform {
   tiktok
 }
 
-// Outreach status for internal admin tracking of creator outreach
 enum OutreachStatus {
   OUTREACHED
   DISCUSSING
@@ -2372,14 +2886,13 @@ enum SubmissionStatus {
   ON_HOLD
   OVERDUE
   CHANGES_REQUIRED
-  POSTED
-  APPROVE_LINK
-  // V3 flow statuses for client-created campaigns
   SENT_TO_CLIENT
   CLIENT_APPROVED
   CLIENT_FEEDBACK
   SENT_TO_ADMIN
   SENT_TO_SUPERADMIN
+  POSTED
+  APPROVE_LINK
 }
 
 enum Priority {
@@ -2395,6 +2908,16 @@ enum Entity {
   Shortlist
   Timeline
   Feedback
+  Draft
+  Post
+  Logistic
+  Invoice
+  Metrcis
+  Agreement
+  Chat
+  Live
+  Status
+  PaymentForm
   AdminAgreementForm
   AdminFirstDraft
   AdminFinalDraft
@@ -2407,16 +2930,6 @@ enum Entity {
   FirstDraft
   FinalDraft
   Posting
-  Draft
-  Post
-  Logistic
-  Invoice
-  Metrcis
-  Agreement
-  Chat
-  Live
-  Status
-  PaymentForm
   Creator
   Reimbursement
 }
@@ -2426,10 +2939,10 @@ enum SubmissionEnum {
   FIRST_DRAFT
   FINAL_DRAFT
   POSTING
+  OTHER
   VIDEO
   PHOTO
   RAW_FOOTAGE
-  OTHER
 }
 
 enum FeedbackType {
@@ -2454,43 +2967,22 @@ enum CampaignOrigin {
   CLIENT
 }
 
-model CaptionHistory {
-  id           String   @id @default(cuid())
-  submissionId String
-  caption      String?
-  author       String // userId or adminId who wrote this caption
-  authorType   String // "creator" or "admin" - who wrote this caption
-  createdAt    DateTime @default(now())
-
-  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-
-  @@index([submissionId])
-  @@index([createdAt])
-}
-
-// logistics enums
 enum LogisticType {
   PRODUCT_DELIVERY
   RESERVATION
-  // STORE_VISIT
 }
 
 enum LogisticStatus {
-  // initial status
-  NOT_STARTED
   PENDING_ASSIGNMENT
   SCHEDULED
-
-  // delivery specific
   SHIPPED
   DELIVERED
   RECEIVED
-
-  // general completion
   COMPLETED
   ISSUE_REPORTED
   ISSUE_RESOLVED
   CANCELLED
+  NOT_STARTED
 }
 
 enum LogisticIssueStatus {
@@ -2509,221 +3001,9 @@ enum SlotStatus {
   REJECTED
 }
 
-// logistics models
-model Product {
-  id          String   @id @unique @default(cuid())
-  productName String
-  description String?
-  isArchived  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  deliveryItems DeliveryItem[]
-
-  @@index([campaignId])
-}
-
-model Logistic {
-  id        String   @id @unique @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  type   LogisticType
-  status LogisticStatus @default(PENDING_ASSIGNMENT)
-
-  shippedAt   DateTime?
-  deliveredAt DateTime?
-  receivedAt  DateTime?
-  completedAt DateTime?
-
-  //relations
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  creatorId String
-  creator   User   @relation("AssignedLogistics", fields: [creatorId], references: [id], onDelete: Cascade)
-
-  createdById String
-  createdBy   User   @relation("CreatedLogistics", fields: [createdById], references: [id], onDelete: Cascade)
-
-  deliveryDetails    DeliveryDetails?
-  reservationDetails ReservationDetails?
-  storeVisitDetails  StoreVisitDetails?
-
-  issues LogisticIssue[]
-
-  @@unique([creatorId, campaignId])
-  @@index([campaignId])
-  @@index([creatorId])
-}
-
-model DeliveryDetails {
-  id                   String    @id @unique @default(cuid())
-  trackingLink         String?
-  address              String?
-  expectedDeliveryDate DateTime?
-  dietaryRestrictions  String?
-
-  logisticId String   @unique
-  logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
-
-  items DeliveryItem[]
-
-  createdAt   DateTime @default(now())
-  isConfirmed Boolean  @default(false)
-}
-
-model ReservationDetails {
-  id String @id @unique @default(cuid())
-
-  outlet         String?
-  pax            Int?
-  creatorRemarks String?
-
-  picName       String?
-  picContact    String?
-  budget        String?
-  promoCode     String?
-  clientRemarks String?
-
-  logisticId String   @unique
-  logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
-
-  slots       ReservationSlot[]
-  isConfirmed Boolean           @default(false)
-}
-
-model StoreVisitDetails {
-  id              String   @id @unique @default(cuid())
-  storeName       String
-  address         String
-  appointmentTime DateTime
-  contactPerson   String?
-  proofOfVisitUrl String? // URL to the uploaded photo/receipt
-
-  logisticId String   @unique
-  logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
-}
-
-model LogisticIssue {
-  id         String              @id @unique @default(cuid())
-  reason     String
-  status     LogisticIssueStatus @default(OPEN)
-  createdAt  DateTime            @default(now())
-  resolvedAt DateTime?
-
-  resolutionNotes String?
-
-  logisticId String
-  logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
-
-  reportedById String
-  reportedBy   User   @relation(fields: [reportedById], references: [id])
-}
-
-model DeliveryItem {
-  id String @id @unique @default(cuid())
-
-  deliveryDetailsId String
-  deliveryDetails   DeliveryDetails @relation(fields: [deliveryDetailsId], references: [id], onDelete: Cascade)
-
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  quantity Int @default(1)
-
-  @@unique([deliveryDetailsId, productId])
-}
-
-model ReservationConfiguration {
-  id String @id @unique @default(cuid())
-
-  campaignId String   @unique
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  mode                  ReservationMode
-  locations             Json
-  availabilityRules     Json
-  clientRemarks         String?
-  allowMultipleBookings Boolean         @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model ReservationSlot {
-  id String @id @unique @default(cuid())
-
-  reservationDetailsId String
-  reservationDetails   ReservationDetails @relation(fields: [reservationDetailsId], references: [id], onDelete: Cascade)
-
-  startTime DateTime
-  endTime   DateTime
-
-  status SlotStatus @default(PROPOSED)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model CampaignPCR {
-  id String @id @unique @default(cuid())
-
-  campaignId String   @unique
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  content  Json // Stores all editable PCR content as JSON
-  revision Int  @default(1)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// Credit Tiering System
-model CreditTier {
-  id              String   @id @unique @default(cuid())
-  name            String   @unique // "Nano A", "Nano B", "Micro A", etc.
-  minFollowers    Int // Minimum follower count (inclusive)
-  maxFollowers    Int? // Maximum follower count (inclusive, null = unlimited)
-  creditsPerVideo Int // Credits cost per video for this tier
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  creators            Creator[]            @relation("UserCurrentTier")
-  shortlistedCreators ShortListedCreator[]
-  creatorAgreements   CreatorAgreement[]
-
-  @@index([minFollowers])
-}
-
-// NPS Feedback
 enum NpsUserType {
   CLIENT
   CREATOR
-}
-
-model NpsFeedback {
-  id           String      @id @unique @default(cuid())
-  userId       String
-  userType     NpsUserType @default(CLIENT)
-  rating       Int // 1-5 star rating
-  feedback     String? // Optional text feedback
-  deviceType   String? // "mobile", "tablet", "desktop"
-  deviceModel  String? // "iPhone", "Galaxy S21"
-  deviceVendor String? // "Apple", "Samsung"
-  os           String? // "macOS 15.1", "iOS 18.0", "Windows 11"
-  browser      String? // "Chrome 131.0", "Safari 18.1"
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([userType])
 }
 
 enum FlowType {
@@ -2745,330 +3025,20 @@ enum SubscriptionChangeType {
   DOWNGRADE
 }
 
-model UserFlow {
-  id     String @id @unique @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  sessionId String?
-
-  // Context
-  flow FlowType // e.g., CAMPAIGN_CREATION
-  step String // e.g., "BRIEF_DETAILS", "AUDIENCE"
-
-  // Metrics
-  status           StepStatus @default(STARTED)
-  timeSpentSeconds Int?       @default(0) // Cumulative time (Frontend stopwatch)
-  meta             Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Allows updating the specific step time instead of creating duplicates
-  @@unique([userId, flow, step, sessionId])
-  @@index([flow, step])
-}
-
-model SubscriptionHistory {
-  id String @id @unique @default(cuid())
-
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-
-  subscriptionId String?
-  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
-
-  changeType        SubscriptionChangeType
-  previousPackageId String?
-  newPackageId      String
-  amountPaid        Float
-  currency          String                 @default("MYR")
-
-  createdAt DateTime @default(now())
-
-  actionByUserId String?
-}
-
-model AiModel {
-  id String @id @unique @default(cuid())
-
-  model           String
-  temperature     Float
-  systemPrompt    Json?
-  maxOutputTokens Int
-  apiKey          String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  userId String? @unique
-  user   User?   @relation(references: [id], fields: [userId])
-
-  @@map("ai_model")
-}
-
-model WhatsappSetting {
-  id String @id @unique @default(cuid())
-
-  accessToken       String?
-  businessAccountId String?
-  phoneNumberId     String?
-  templateName      String?
-
-  isFeatureEnabled Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("whatsapp-setting")
-}
-
-model VerificationCode {
-  id String @id @unique @default(cuid())
-
-  verificationCode String
-  accessToken      String
-  phoneNumber      String
-  isUsed           Boolean @default(false)
-  attempts         Int     @default(0)
-
-  expiredAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model WhatsappMessage {
-  id String @id @unique @default(cuid())
-
-  messageId String? @unique
-
-  from String?
-  to   String?
-
-  message String?
-  sticker Json?
-
-  type String?
-
-  status String?
-  sentAt DateTime
-
-  direction TypeEnum?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 enum TypeEnum {
   inbound
   outbound
 }
 
-model UploadSession {
-  id String @id @default(cuid())
-
-  fileName String?
-
-  // GCS resumable session
-  gcsSessionUri String? @db.Text // filled in after client reports the Location header
-  gcsObjectPath String // e.g. "raw/{userId}/{timestamp}-{filename}"
-
-  // Progress tracking
-  status        UploadStatus @default(INITIATED)
-  bytesTotal    BigInt?
-  bytesUploaded BigInt       @default(0)
-
-  // Ownership / association
-  userId       String
-  user         User        @relation(fields: [userId], references: [id])
-  campaignId   String?
-  campaign     Campaign?   @relation(fields: [campaignId], references: [id])
-  submissionId String?
-  submission   Submission? @relation(fields: [submissionId], references: [id])
-
-  // // Link to final Video once compression completes
-  // videoId String? @unique
-  // video   Video?  @relation(fields: [videoId], references: [id])
-
-  // Lifecycle
-  expiresAt    DateTime
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  completedAt  DateTime?
-  failedAt     DateTime?
-  errorMessage String?
-  video        Video?
-
-  @@index([userId, status])
-  @@index([status, expiresAt])
-}
-
 enum UploadStatus {
-  INITIATED // signed URL generated, client hasn't started GCS handshake yet
-  UPLOADING // client is PUTting chunks to GCS
-  RAW_UPLOAD_COMPLETE // raw file fully landed in GCS
-  QUEUED_FOR_COMPRESSION // compression job enqueued
-  COMPRESSING // ffmpeg worker actively processing
+  INITIATED
+  UPLOADING
+  RAW_UPLOAD_COMPLETE
+  QUEUED_FOR_COMPRESSION
+  COMPRESSING
   COMPRESSION_FAILED
-  COMPLETED // compressed file uploaded, Video row created
+  COMPLETED
   FAILED
-}
-
-model TreasureHunt {
-  id             String                 @id @default(cuid())
-  eventKey       String                 @unique @default("FIND_CIPTA") @db.VarChar(50)
-  title          String                 @db.VarChar(255)
-  description    String                 @db.Text
-  heroArtworkUrl String?                @db.VarChar(2048)
-  startsAt       DateTime
-  endsAt         DateTime
-  rewardXp       Int                    @default(50)
-  status         TreasureHuntStatus     @default(DRAFT)
-  featuredSlot   Int?                   @unique
-  publishedAt    DateTime?
-  pausedAt       DateTime?
-  archivedAt     DateTime?
-  createdById    String
-  updatedById    String?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  createdBy      User                   @relation("TreasureHuntCreatedBy", fields: [createdById], references: [id])
-  updatedBy      User?                  @relation("TreasureHuntUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  locations      TreasureHuntLocation[]
-  auditLogs      TreasureHuntAuditLog[]
-
-  @@index([status, startsAt, endsAt])
-  @@index([createdAt])
-}
-
-model TreasureHuntLocation {
-  id                    String                        @id @default(cuid())
-  huntId                String
-  name                  String                        @db.VarChar(255)
-  hint                  String                        @db.Text
-  sortOrder             Int
-  artworkUrl            String                        @db.VarChar(2048)
-  isEnabled             Boolean                       @default(true)
-  publicTokenHash       String?                       @unique @db.VarChar(64)
-  publicTokenCiphertext String?                       @db.Text
-  tokenIssuedAt         DateTime?
-  tokenVersion          Int                           @default(0)
-  createdAt             DateTime                      @default(now())
-  updatedAt             DateTime                      @updatedAt
-  hunt                  TreasureHunt                  @relation(fields: [huntId], references: [id], onDelete: Cascade)
-  bitlyPublication      TreasureHuntBitlyPublication?
-  claims                TreasureHuntClaim[]
-  auditLogs             TreasureHuntAuditLog[]
-
-  @@unique([huntId, sortOrder])
-  @@index([huntId, isEnabled, sortOrder])
-}
-
-model TreasureHuntBitlyPublication {
-  id                    String                 @id @default(cuid())
-  locationId            String                 @unique
-  status                BitlyPublicationStatus @default(NOT_STARTED)
-  bitlinkId             String?                @unique @db.VarChar(255)
-  bitlinkUrl            String?                @unique @db.VarChar(2048)
-  qrCodeId              String?                @unique @db.VarChar(255)
-  qrImageUrl            String?                @db.VarChar(2048)
-  rawScanCount          Int                    @default(0)
-  analyticsSource       String?                @db.VarChar(100)
-  lastAnalyticsSyncedAt DateTime?
-  lastAttemptAt         DateTime?
-  nextRetryAt           DateTime?
-  lastErrorCode         String?                @db.VarChar(100)
-  lastErrorMessage      String?                @db.Text
-  leaseId               String?                @db.VarChar(64)
-  leaseExpiresAt        DateTime?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  location              TreasureHuntLocation   @relation(fields: [locationId], references: [id], onDelete: Cascade)
-
-  @@index([status, nextRetryAt])
-  @@index([leaseExpiresAt])
-}
-
-model TreasureHuntClaim {
-  id         String                  @id @default(cuid())
-  userId     String
-  locationId String
-  source     TreasureHuntClaimSource
-  claimedAt  DateTime                @default(now())
-  user       User                    @relation(fields: [userId], references: [id])
-  location   TreasureHuntLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  capture    TreasureHuntCapture?
-
-  @@unique([userId, locationId])
-  @@index([userId, claimedAt])
-  @@index([locationId, claimedAt])
-}
-
-model TreasureHuntCapture {
-  id          String            @id @default(cuid())
-  claimId     String            @unique
-  objectPath  String            @unique @db.VarChar(2048)
-  contentType String            @db.VarChar(100)
-  byteSize    Int
-  sha256      String            @db.VarChar(64)
-  width       Int
-  height      Int
-  createdAt   DateTime          @default(now())
-  claim       TreasureHuntClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
-}
-
-model XpTransaction {
-  id String @id @default(cuid())
-
-  amount Int //points
-  userId String
-
-  sourceType XpSourceType? // maybe we are not using this anymore
-  sourceId   String // maybe we are not using this anymore
-
-  actionId String?
-  action   XpAction? @relation(references: [id], fields: [actionId])
-
-  periodId String?
-
-  metadata  Json?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
-
-  @@unique([userId, actionId, sourceId])
-  @@index([userId, createdAt])
-  @@index([periodId])
-  @@index([actionId])
-}
-
-model UserXpBalance {
-  total           Int       @default(0)
-  mediaKitBonusAt DateTime?
-
-  userId        String  @id
-  currentRankId String?
-
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  rank Rank? @relation(fields: [currentRankId], references: [id])
-
-  updatedAt DateTime @updatedAt
-}
-
-model TreasureHuntAuditLog {
-  id          String                @id @default(cuid())
-  huntId      String?
-  locationId  String?
-  actorUserId String
-  action      String                @db.VarChar(100)
-  metadata    Json?
-  requestId   String?               @db.VarChar(255)
-  createdAt   DateTime              @default(now())
-  hunt        TreasureHunt?         @relation(fields: [huntId], references: [id], onDelete: SetNull)
-  location    TreasureHuntLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  actor       User                  @relation(fields: [actorUserId], references: [id])
-
-  @@index([huntId, createdAt])
-  @@index([actorUserId, createdAt])
 }
 
 enum TreasureHuntStatus {
@@ -3109,109 +3079,10 @@ enum XpSourceType {
   ACHIEVEMENT
 }
 
-// ─────────────────────────── Gamification ────────────────────────────
-
-model Achievement {
-  id          String               @id @default(cuid())
-  code        String               @unique
-  name        String
-  category    String
-  rarity      String
-  icon        String
-  description String
-  xp          Int
-  target      Int
-  active      Boolean              @default(true)
-  sortOrder   Int
-  creators    CreatorAchievement[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model CreatorAchievement {
-  userId        String
-  achievementId String
-  unlockedAt    DateTime?
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
-
-  events CreatorAchievementEvent[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@id([userId, achievementId])
-  @@index([achievementId])
-}
-
-model CreatorAchievementEvent {
-  id            String @id @default(cuid())
-  userId        String
-  achievementId String
-  sourceId      String
-  increment     Int    @default(1)
-
-  creatorAchievement CreatorAchievement @relation(fields: [userId, achievementId], references: [userId, achievementId], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-
-  @@unique([userId, achievementId, sourceId])
-  @@index([userId, achievementId])
-}
-
-model LeaderboardSnapshot {
-  periodId String
-  userId   String
-  rank     Int
-  xp       Int
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@id([periodId, userId])
-  @@index([userId])
-}
-
-model XpAction {
-  id         String     @id @default(cuid())
-  code       String     @unique
-  name       String
-  points     Int?
-  rewardType RewardType
-
-  xpTransactions XpTransaction[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("xp_action")
-}
-
 enum RewardType {
   repeatable
   one_time
 }
-
-model Rank {
-  id        String @id @default(cuid())
-  name      String @unique
-  minPoints Int
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  userXpBalances UserXpBalance[]
-}
-
-// =============================================================================
-// Guest profile extraction
-//
-// Automatic engagement rate for non-platform creators. See
-// engagement-rate-new/02-architecture.md.
-// =============================================================================
 
 enum GuestProfileExtractionStatus {
   QUEUED
@@ -3244,261 +3115,6 @@ enum GuestCreateRequestStatus {
   FAILED
 }
 
-/// One durable unit of provider work.
-///
-/// Written before the job is enqueued, so a restart can recover it. Holds
-/// typed results only. Raw provider JSON is never persisted.
-model GuestProfileExtraction {
-  id String @id @default(cuid())
-
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  /// The admin who started the work. Status and receipt access require this
-  /// exact user. Not a relation, so a user record change never deletes work.
-  requestedByUserId String
-
-  /// Canonical identity, for example `instagram:example`.
-  canonicalProfileKey String         @db.VarChar(120)
-  canonicalProfileUrl String         @db.VarChar(255)
-  platform            SocialPlatform
-
-  /// Column names predate the Bright Data migration (2026-09). Apify-era rows
-  /// keep their Apify values.
-  /// Bright Data posts dataset ID, for example `gd_lyclm20il4r5helnj`.
-  actorId        String  @db.VarChar(120)
-  /// Adapter contract version, for example `brightdata-ig-2026-09`. Keys the
-  /// cache and the work fingerprint. Bright Data has no build pinning.
-  actorBuild     String  @db.VarChar(40)
-  /// Posts job `snapshot_id` (`sd_...`). Both columns hold the same value.
-  actorRunId     String? @db.VarChar(60)
-  actorDatasetId String? @db.VarChar(60)
-
-  /// Profile job `snapshot_id`, on both platforms. It supplies followers and
-  /// the private flag, and on Instagram the pinned flag and fallback dates.
-  /// Recorded before polling, so a paid job is never untracked.
-  profileActorRunId     String? @db.VarChar(60)
-  profileActorDatasetId String? @db.VarChar(60)
-
-  /// Second posts job (`snapshot_id`), started only when the first batch had
-  /// too few usable posts. Recorded before polling, so a paid job is never
-  /// untracked. Null when one batch was enough.
-  topUpRunId String? @db.VarChar(60)
-
-  status GuestProfileExtractionStatus @default(QUEUED)
-
-  /// Typed result. Present only for READY.
-  resultBiography         String?
-  /// Profile picture copied to our storage. Provider CDN links expire. Set on
-  /// READY and INSUFFICIENT_DATA, because the profile job worked on both.
-  resultProfilePictureUrl String?
-  resultName              String?  @db.VarChar(255)
-  resultFollowerCount     Int?
-  /// Percentage without the sign. `"4.27"` means 4.27%.
-  resultEngagementRate    String?  @db.VarChar(24)
-  sampleSize              Int?
-  formulaVersion          String?  @db.VarChar(60)
-  /// Selected-post evidence built by this backend. Not provider JSON.
-  selectedPosts           Json?
-  /// Every candidate the provider returned, with the verdict the policy gave it.
-  /// Counters, IDs and timestamps only. No caption, media URL, avatar or bio.
-  candidatePosts          Json?
-  /// Policy flags the provider did not report, plus `publishedAt` when an
-  /// undated Instagram Reel was ordered by provider list order.
-  unverifiedFlags         String[]
-
-  failureCode    String? @db.VarChar(60)
-  failureMessage String?
-
-  /// Start idempotency. The same key with a different body is a conflict.
-  idempotencyKey     String @db.VarChar(120)
-  requestFingerprint String @db.VarChar(64)
-
-  /// Receipt binding. The nonce is consumed inside the create transaction.
-  receiptNonce      String?   @unique @db.VarChar(64)
-  receiptDigest     String?   @db.VarChar(64)
-  receiptExpiresAt  DateTime?
-  receiptConsumedAt DateTime?
-
-  /// Measured charge from the provider. Apify-era rows only: Bright Data
-  /// reports no per-job cost, so it stays null. Spend is in its dashboard.
-  costUsd Decimal? @db.Decimal(10, 6)
-
-  /// Measured charge for the profile run. Apify-era rows only.
-  profileCostUsd Decimal? @db.Decimal(10, 6)
-
-  /// Set when this row copied a completed result instead of paying again.
-  reusedFromExtractionId String?
-
-  /// Starts refused because the same work was already running or already
-  /// done. A high number means the browser is asking twice.
-  duplicateStartAttempts Int @default(0)
-
-  reconcileAttempts Int       @default(0)
-  lastReconciledAt  DateTime?
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  startedAt   DateTime?
-  completedAt DateTime?
-  /// Cleanup boundary. Removing a row here must never remove an audit.
-  expiresAt   DateTime?
-
-  metricAudits   GuestCreatorMetricAudit[]
-  pendingPitches Pitch[]                   @relation("PendingPitchExtraction")
-
-  @@unique([requestedByUserId, idempotencyKey])
-  @@index([canonicalProfileKey, platform, actorBuild, status])
-  @@index([requestedByUserId, status])
-  @@index([campaignId, status])
-  @@index([status, updatedAt])
-  @@index([expiresAt])
-  @@index([completedAt])
-}
-
-/// Provenance for every guest metric written to a Pitch.
-///
-/// Denormalized on purpose. It must stay readable after the extraction row is
-/// cleaned up, so the extraction link is optional and set to null on delete.
-model CreatorDiscoveryProfile {
-  biography             String?
-  id                    String             @id @default(cuid())
-  userId                String
-  creator               Creator            @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  platform              SocialPlatform
-  profileUrl            String?
-  handle                String?
-  followers             Int?
-  engagementRate        Float?
-  followersSource       GuestMetricSource?
-  engagementRateSource  GuestMetricSource?
-  followersSavedAt      DateTime?
-  engagementRateSavedAt DateTime?
-  savedAt               DateTime
-  scrapedAt             DateTime?
-  /// When this profile first joined Discovery. A re-scrape does not change it.
-  createdAt             DateTime           @default(now())
-  /// When Link Creator moved this scrape from a guest to a platform creator.
-  linkedAt              DateTime?
-  /// Durable, typed evidence. Independent of temporary extractions and manual values.
-  scrapeDetails         Json?
-  /// Caption search without loading full post evidence for every candidate.
-  captions              String             @default("")
-
-  @@unique([userId, platform])
-  @@index([platform])
-}
-
-model GuestCreatorMetricAudit {
-  id String @id @default(cuid())
-
-  pitchId String
-  pitch   Pitch  @relation(fields: [pitchId], references: [id], onDelete: Cascade)
-
-  extractionId String?
-  extraction   GuestProfileExtraction? @relation(fields: [extractionId], references: [id], onDelete: SetNull)
-
-  /// The guest User the pitch belongs to.
-  guestUserId         String?
-  canonicalProfileKey String?         @db.VarChar(120)
-  platform            SocialPlatform?
-
-  /// What the fetch produced. Null when there was no fetch.
-  originalName           String? @db.VarChar(255)
-  originalFollowerCount  Int?
-  originalEngagementRate String? @db.VarChar(24)
-
-  /// What was saved.
-  finalName           String? @db.VarChar(255)
-  finalFollowerCount  Int?
-  finalEngagementRate String? @db.VarChar(24)
-
-  source         GuestMetricSource
-  overrideReason String?
-
-  /// Copied from the extraction so cleanup cannot erase it.
-  actorId        String? @db.VarChar(120)
-  actorBuild     String? @db.VarChar(40)
-  actorRunId     String? @db.VarChar(60)
-  formulaVersion String? @db.VarChar(60)
-
-  /// The authenticated admin who made the request.
-  performedByUserId String
-  /// The admin who reviewed the values, when that differs.
-  reviewerUserId    String?
-
-  createdAt DateTime @default(now())
-
-  @@index([pitchId])
-  @@index([extractionId])
-  @@index([canonicalProfileKey])
-  @@index([performedByUserId, createdAt])
-}
-
-/// Database idempotency for the final create call.
-///
-/// The same key with the same body returns the saved response. The same key
-/// with a different body is a conflict.
-model GuestCreatorCreateRequest {
-  id String @id @default(cuid())
-
-  /// Scoped to the authenticated actor and the operation, never global.
-  performedByUserId String @db.VarChar(60)
-  operation         String @db.VarChar(60)
-  idempotencyKey    String @db.VarChar(120)
-
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  /// Hash of the normalized request body.
-  requestHash String @db.VarChar(64)
-
-  status GuestCreateRequestStatus @default(IN_PROGRESS)
-
-  /// Saved response, replayed for a repeated key.
-  responseStatus Int?
-  responseBody   Json?
-  resultPitchIds String[]
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  completedAt DateTime?
-  expiresAt   DateTime?
-
-  @@unique([performedByUserId, operation, idempotencyKey])
-  @@index([campaignId])
-  @@index([expiresAt])
-}
-
-/// A legacy group of guest creators that share one canonical identity.
-///
-/// Created by the backfill. While UNRESOLVED it blocks both extraction and
-/// creation for that key. A conflicting key is never set to null so that a
-/// duplicate can be created instead.
-model GuestProfileIdentityConflict {
-  id String @id @default(cuid())
-
-  canonicalProfileKey String         @unique @db.VarChar(120)
-  platform            SocialPlatform
-
-  /// Every Creator and User record in the conflicting group.
-  creatorIds   String[]
-  userIds      String[]
-  /// The raw profileLink values that produced the same canonical key.
-  profileLinks String[]
-
-  status GuestIdentityConflictStatus @default(UNRESOLVED)
-
-  detectedAt       DateTime  @default(now())
-  resolvedAt       DateTime?
-  resolvedByUserId String?
-  resolutionNote   String?
-
-  @@index([status])
-}
-
-// ─────────────────────────── Release Notes ────────────────────────────
-
 enum ReleaseNoteStatus {
   DRAFT
   PUBLISHED
@@ -3511,65 +3127,9 @@ enum ReleaseNoteItemType {
   FIXED
 }
 
-model ReleaseNote {
-  id          String            @id @default(cuid())
-  releaseDate DateTime
-  status      ReleaseNoteStatus @default(DRAFT)
-  publishedAt DateTime?
-  createdById String?
-  createdBy   User?             @relation("ReleaseNoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  items       ReleaseNoteItem[]
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-
-  @@index([status, publishedAt])
-}
-
-model ReleaseNoteItem {
-  id            String              @id @default(cuid())
-  releaseNoteId String
-  releaseNote   ReleaseNote         @relation(fields: [releaseNoteId], references: [id], onDelete: Cascade)
-  type          ReleaseNoteItemType
-  title         String              @db.VarChar(255)
-  description   String              @db.Text
-  order         Int                 @default(0)
-
-  @@index([releaseNoteId])
-}
-
 enum ReimbursementStatus {
   DRAFT
   PENDING_REVIEW
   APPROVED
   REJECTED
-}
-
-// One receipt claimed by a creator against an agreement round. Each approved receipt becomes
-// its own "Reimbursement" line on that round's invoice.
-model ReimbursementReceipt {
-  id              String              @id @default(cuid())
-  agreementId     String
-  agreement       CreatorAgreement    @relation(fields: [agreementId], references: [id], onDelete: Cascade)
-  userId          String
-  campaignId      String
-  round           Int
-  order           Int
-  fileUrl         String
-  fileName        String
-  mimeType        String
-  amount          Float
-  currency        String              @default("MYR")
-  description     String
-  status          ReimbursementStatus @default(DRAFT)
-  submittedAt     DateTime?
-  reviewedAt      DateTime?
-  reviewedById    String?
-  rejectionReason String?
-  financeNote     String?
-  invoiceId       String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-
-  @@index([campaignId, userId, round])
-  @@index([agreementId])
 }
