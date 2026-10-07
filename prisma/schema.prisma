@@ -1851,6 +1851,9 @@ model Invoice {
   invoiceFrom   Json?
   invoiceTo     Json?
   deliverables  Json?
+  reimbursements Json?
+  invoiceType     InvoiceType @default(STANDARD)
+  parentInvoiceId String?
 
   dueDate    DateTime
   creatorId  String
@@ -1971,6 +1974,11 @@ model CreatorAgreement {
 
   isSeeding      Boolean          @default(false)
   productSeeding ProductSeeding[]
+
+  // Reimbursement: when on, the round's invoice waits until the creator's receipts are all approved
+  isReceiptRequired     Boolean                @default(false)
+  receiptsSubmittedAt   DateTime?
+  reimbursementReceipts ReimbursementReceipt[]
 
   @@unique([userId, campaignId, round])
 }
@@ -2228,6 +2236,11 @@ enum InvoiceStatus {
   failed
 }
 
+enum InvoiceType {
+  STANDARD
+  REIMBURSEMENT
+}
+
 enum CampaignStatus {
   DRAFT
   ACTIVE
@@ -2405,6 +2418,7 @@ enum Entity {
   Status
   PaymentForm
   Creator
+  Reimbursement
 }
 
 enum SubmissionEnum {
@@ -3521,4 +3535,41 @@ model ReleaseNoteItem {
   order         Int                 @default(0)
 
   @@index([releaseNoteId])
+}
+
+enum ReimbursementStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+// One receipt claimed by a creator against an agreement round. Each approved receipt becomes
+// its own "Reimbursement" line on that round's invoice.
+model ReimbursementReceipt {
+  id              String              @id @default(cuid())
+  agreementId     String
+  agreement       CreatorAgreement    @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  userId          String
+  campaignId      String
+  round           Int
+  order           Int
+  fileUrl         String
+  fileName        String
+  mimeType        String
+  amount          Float
+  currency        String              @default("MYR")
+  description     String
+  status          ReimbursementStatus @default(DRAFT)
+  submittedAt     DateTime?
+  reviewedAt      DateTime?
+  reviewedById    String?
+  rejectionReason String?
+  financeNote     String?
+  invoiceId       String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([campaignId, userId, round])
+  @@index([agreementId])
 }

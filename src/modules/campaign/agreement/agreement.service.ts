@@ -577,6 +577,7 @@ export const updateAgreementAmount = async (
           creatorId: creator.id,
           campaignId: campaignId,
           round,
+          invoiceType: 'STANDARD',
         },
       });
 
@@ -589,12 +590,18 @@ export const updateAgreementAmount = async (
             { invoiceStatus: existingInvoice.status, invoiceNumber: existingInvoice.invoiceNumber },
           );
         }
+        // The fee changes; any reimbursement lines on the invoice stay part of the total
+        const reimbursementLines = Array.isArray(existingInvoice.reimbursements)
+          ? (existingInvoice.reimbursements as { amount?: number }[])
+          : [];
+        const reimbursementTotal = reimbursementLines.reduce((sum, line) => sum + (Number(line?.amount) || 0), 0);
+
         await prisma.invoice.update({
           where: {
             id: existingInvoice.id,
           },
           data: {
-            amount: parseFloat(String(paymentAmount)),
+            amount: parseFloat(String(paymentAmount)) + reimbursementTotal,
           },
         });
         console.log(`Updated invoice ${existingInvoice.invoiceNumber} amount from ${oldAmount} to ${newAmount}`);

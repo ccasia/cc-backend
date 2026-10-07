@@ -48,7 +48,13 @@ export const saveNotification = async ({
     });
   }
 
-  if (entity === 'Agreement' || entity === 'Draft' || entity === 'Timeline' || entity === 'Post') {
+  if (
+    entity === 'Agreement' ||
+    entity === 'Draft' ||
+    entity === 'Timeline' ||
+    entity === 'Post' ||
+    entity === 'Reimbursement'
+  ) {
     return prisma.notification.create({
       data: {
         message: message,
