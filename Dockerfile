@@ -49,7 +49,6 @@ COPY . .
 # Generate Prisma client
 RUN npx prisma generate
 
-
 # Build the application
 RUN yarn build
 
@@ -82,6 +81,8 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 # Generate Prisma client in production environment
 RUN npx prisma generate
+
+RUN npx prisma db push
 
 EXPOSE 3001
 
