@@ -96,5 +96,5 @@ WORKDIR /app/dist
 RUN mkdir -p form/tmp form/pdf upload
 
 # CMD ["pm2-runtime", "ecosystem.config.js"]
-CMD ["sh", "-c", "npx prisma migrate deploy && pm2-runtime ecosystem.config.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy --schema /app/prisma/schema.prisma && pm2-runtime ecosystem.config.js"]
 
