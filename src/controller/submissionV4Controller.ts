@@ -14,14 +14,18 @@ import {
   PostingLinkAdd,
   V4ContentSubmission,
 } from '../types/submissionV4Types';
-import { normalizePostingLinks, joinPostingLinksToContent } from '../utils/postingLinkValidation';
+import {
+  PostingLinkError,
+  normalizePostingLinks,
+  joinPostingLinksToContent,
+} from '../utils/postingLinkValidation';
 import {
   getNextStatusAfterAdminAction,
   getNextStatusAfterClientAction,
   getStatusAfterForwardingClientFeedback,
 } from '../utils/v4StatusUtils';
 import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
-import { fetchCommentsForVideo, editCommentRecord } from '../service/submissionCommentService';
+import { fetchCommentsForVideo, editCommentRecord, softDeleteCommentRecord } from '../service/submissionCommentService';
 
 import { saveNotification } from './notificationController';
 import { sendExpoPushToUser } from '../helper/expoPush';
@@ -427,7 +431,8 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
  * POST /api/submissions/v4/approve
  */
 export const approveV4Submission = async (req: Request, res: Response) => {
-  const { submissionId, action, feedback, reasons, caption, videoId } = req.body;
+  // direct: approve outright, skipping client review on client campaigns (admin "Approve")
+  const { submissionId, action, feedback, reasons, caption, videoId, direct } = req.body;
   const currentUserId = req.userId;
 
   if (!currentUserId) {
@@ -481,8 +486,10 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       effectiveCampaignOrigin as any,
     );
 
-    // For VIDEO submissions, admin approve always goes to APPROVED directly
-    const isVideoDirectApprove = action === 'approve' && submission.submissionType.type === 'VIDEO';
+    // For VIDEO submissions admin approve always goes to APPROVED directly; other types do
+    // too when the admin explicitly approves (direct), instead of going to the client
+    const isVideoDirectApprove =
+      action === 'approve' && (submission.submissionType.type === 'VIDEO' || direct === true);
     const newStatus = isVideoDirectApprove ? 'APPROVED' : baseStatus;
     const contentStatus = isVideoDirectApprove ? 'APPROVED' : baseContentStatus;
 
@@ -872,6 +879,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
           submissionId: submissionId,
           videoId: bodyVideoId,
           isClientDraft: true,
+          deletedAt: null,
         },
       });
 
@@ -903,6 +911,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
             submissionId: submissionId,
             videoId: bodyVideoId,
             isClientDraft: true,
+            deletedAt: null,
           },
           data: { isClientDraft: false },
         }),
@@ -1001,6 +1010,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
             userId: clientId,
             parentId: null,
             isClientDraft: false,
+            deletedAt: null,
           },
           select: { id: true },
           orderBy: { createdAt: 'desc' },
@@ -1357,6 +1367,11 @@ export const updatePostingLinkController = async (req: Request, res: Response) =
   } catch (error) {
     console.error('Error updating posting link:', error);
 
+    // Invalid links, UGC campaigns, not approved yet: all fixable by the user
+    if (error instanceof PostingLinkError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         return res.status(404).json({ message: error.message });
@@ -1411,6 +1426,10 @@ export const addPostingLinkToPostedSubmissionController = async (req: Request, r
     });
   } catch (error) {
     console.error('Error adding posting link to posted submission:', error);
+
+    if (error instanceof PostingLinkError) {
+      return res.status(400).json({ message: error.message });
+    }
 
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
@@ -3177,7 +3196,17 @@ export const getCaptionHistory = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    return res.status(200).json({ history });
+    // `author` is a user id; add the name so the UI can say who edited it
+    const authorIds = [...new Set(history.map((entry) => entry.author).filter(Boolean))];
+    const authors = await prisma.user.findMany({
+      where: { id: { in: authorIds } },
+      select: { id: true, name: true },
+    });
+    const nameById = new Map(authors.map((author) => [author.id, author.name]));
+
+    return res.status(200).json({
+      history: history.map((entry) => ({ ...entry, authorName: nameById.get(entry.author) ?? null })),
+    });
   } catch (error) {
     console.error('Error fetching caption history:', error);
     res.status(500).json({
@@ -3257,7 +3286,7 @@ export const updateSubmissionCaption = async (req: Request, res: Response) => {
  */
 export const getComments = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
-  const { videoId } = req.query;
+  const { videoId, includeDeleted } = req.query;
   const user = await prisma.user.findUnique({
     where: { id: req.userId },
     include: { client: { select: { company: { select: { logo: true } } } } },
@@ -3282,6 +3311,8 @@ export const getComments = async (req: Request, res: Response) => {
       roleFilter,
       excludeClientDrafts,
       filterInvisibleToCreator,
+      // Opt-in "Message deleted" placeholders; existing callers keep the hard-delete view
+      includeDeleted === '1' || includeDeleted === 'true',
     );
 
     // Role-based text mapping: admins and creators see editedText (admin-curated version),
@@ -3365,8 +3396,11 @@ export const createComment = async (req: Request, res: Response) => {
     if (parentId && user.role !== 'client' && user.role !== 'creator') {
       const parentComment = await prisma.submissionComment.findUnique({
         where: { id: parentId },
-        select: { forwardedByUserId: true, isSentToCreator: true },
+        select: { forwardedByUserId: true, isSentToCreator: true, deletedAt: true },
       });
+      if (parentComment?.deletedAt) {
+        return res.status(400).json({ error: 'Cannot reply to a deleted comment' });
+      }
       if (parentComment?.forwardedByUserId) {
         autoForwardedByUserId = user.id;
         autoSentToCreator = parentComment.isSentToCreator;
@@ -3693,6 +3727,10 @@ export const updateComment = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Comment not found' });
     }
 
+    if (comment.deletedAt) {
+      return res.status(400).json({ error: 'Cannot edit a deleted comment' });
+    }
+
     // Admin can edit client comments or their own
     if (comment.user.role !== 'client' && comment.userId !== adminId) {
       return res.status(403).json({ error: 'Cannot edit this comment' });
@@ -3736,6 +3774,7 @@ export const deleteComment = async (req: Request, res: Response) => {
         submissionId: true,
         videoId: true,
         userId: true,
+        deletedAt: true,
         submission: { select: { campaignId: true } },
       },
     });
@@ -3743,10 +3782,14 @@ export const deleteComment = async (req: Request, res: Response) => {
     if (!comment) {
       return res.status(404).json({ error: 'Comment not found' });
     }
+    if (comment.deletedAt) {
+      return res.status(200).json({ success: true });
+    }
 
     const deleteCampaignId = comment.submission?.campaignId;
 
-    await prisma.submissionComment.delete({ where: { id: commentId } });
+    // Soft delete: the thread keeps a "Message deleted" placeholder and its replies
+    await softDeleteCommentRecord(commentId);
 
     if (deleteCampaignId && getIo()) {
       getIo().to(deleteCampaignId).emit('v4:comment:deleted', {
@@ -3781,6 +3824,8 @@ export const deleteCommentByClient = async (req: Request, res: Response) => {
         userId: true,
         submissionId: true,
         videoId: true,
+        isClientDraft: true,
+        deletedAt: true,
         submission: { select: { campaignId: true } },
       },
     });
@@ -3789,10 +3834,16 @@ export const deleteCommentByClient = async (req: Request, res: Response) => {
     if (comment.userId !== clientId) {
       return res.status(403).json({ error: 'You can only delete your own comments' });
     }
+    if (comment.deletedAt) return res.status(200).json({ success: true });
 
     const deleteCampaignId = comment.submission?.campaignId;
 
-    await prisma.submissionComment.delete({ where: { id: commentId } });
+    // Unpublished drafts were never seen by anyone, so they leave no placeholder
+    if (comment.isClientDraft) {
+      await prisma.submissionComment.delete({ where: { id: commentId } });
+    } else {
+      await softDeleteCommentRecord(commentId);
+    }
 
     if (deleteCampaignId && getIo()) {
       getIo().to(deleteCampaignId).emit('v4:comment:deleted', {
@@ -3851,7 +3902,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
 
     // Find all top-level comment IDs for this video to also mark their replies
     const parentCommentIds = await prisma.submissionComment.findMany({
-      where: { submissionId, videoId, parentId: null },
+      where: { submissionId, videoId, parentId: null, deletedAt: null },
       select: { id: true },
     });
     const parentIds = parentCommentIds.map((c) => c.id);
@@ -3866,6 +3917,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
         isSentToCreator: false,
         isClientDraft: false,
         parentId: null,
+        deletedAt: null,
         feedback: { is: null },
       },
       select: { id: true },
@@ -3880,7 +3932,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
       // any prior isVisibleToCreator toggle — selection UI is disabled in that status.
       // During CLIENT_FEEDBACK the admin's per-comment selection/de-selection is respected.
       prisma.submissionComment.updateMany({
-        where: { submissionId, videoId, isSentToCreator: false, isClientDraft: false },
+        where: { submissionId, videoId, isSentToCreator: false, isClientDraft: false, deletedAt: null },
         data: {
           forwardedByUserId: adminId,
           isSentToCreator: true,
@@ -3895,6 +3947,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
                 parentId: { in: parentIds },
                 isSentToCreator: false,
                 isClientDraft: false,
+                deletedAt: null,
               },
               data: {
                 forwardedByUserId: adminId,
@@ -4053,7 +4106,7 @@ export const sendVideoFeedbackToClient = async (req: Request, res: Response) => 
 
     // Find the latest comment for this video to link to Feedback
     const latestComment = await prisma.submissionComment.findFirst({
-      where: { submissionId, videoId, parentId: null },
+      where: { submissionId, videoId, parentId: null, deletedAt: null },
       select: { id: true },
       orderBy: { createdAt: 'desc' },
     });

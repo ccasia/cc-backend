@@ -31,17 +31,34 @@ const COMMENT_BASE_INCLUDE = {
   },
 };
 
-// Fetch comments for a submission, optionally filtered by videoId and user role
+// A deleted comment keeps its place in the thread but none of its content
+const scrubDeleted = (comment: any) => {
+  if (comment.deletedAt) {
+    comment.text = '';
+    comment.editedText = null;
+    comment.timestamp = null;
+    comment.editedTimestamp = null;
+    comment.agreedBy = [];
+  }
+  if (comment.replies) comment.replies.forEach(scrubDeleted);
+  return comment;
+};
+
+// Fetch comments for a submission, optionally filtered by videoId and user role.
+// Deleted comments are left out (as if hard-deleted, replies included) unless
+// includeDeleted is set, in which case they come back blanked as placeholders.
 export const fetchCommentsForVideo = async (
   submissionId: string,
   videoId: string | undefined,
   roleFilter: any,
   excludeClientDrafts = false,
   filterInvisibleToCreator = false,
+  includeDeleted = false,
 ) => {
   const where: any = {
     submissionId,
     parentId: null,
+    ...(!includeDeleted && { deletedAt: null }),
   };
 
   if (videoId) {
@@ -81,6 +98,10 @@ export const fetchCommentsForVideo = async (
     replyWhere = replyWhere ? { ...replyWhere, isClientDraft: false } : { isClientDraft: false };
   }
 
+  if (!includeDeleted) {
+    replyWhere = replyWhere ? { ...replyWhere, deletedAt: null } : { deletedAt: null };
+  }
+
   const comments = await prisma.submissionComment.findMany({
     where,
     orderBy: { createdAt: 'asc' },
@@ -112,6 +133,11 @@ export const fetchCommentsForVideo = async (
     };
     if (videoId) orphanWhere.videoId = videoId;
     if (excludeClientDrafts) orphanWhere.isClientDraft = false;
+    if (!includeDeleted) {
+      // A deleted reply, or one under a deleted parent, used to be gone entirely
+      orphanWhere.deletedAt = null;
+      orphanWhere.parent.AND.push({ deletedAt: null });
+    }
 
     const orphanedReplies = await prisma.submissionComment.findMany({
       where: orphanWhere,
@@ -161,8 +187,24 @@ export const fetchCommentsForVideo = async (
     return aSeconds - bSeconds;
   });
 
+  if (includeDeleted) comments.forEach(scrubDeleted);
+
   return comments;
 };
+
+// Soft-deletes a comment. Feedback rows are unlinked like the old hard delete's SetNull,
+// so creator-facing feedback views stop showing it exactly as before.
+export const softDeleteCommentRecord = async (commentId: string) =>
+  prisma.$transaction([
+    prisma.submissionComment.update({
+      where: { id: commentId },
+      data: { deletedAt: new Date() },
+    }),
+    prisma.feedback.updateMany({
+      where: { submissionCommentId: commentId },
+      data: { submissionCommentId: null },
+    }),
+  ]);
 
 // Create a new comment or reply
 export const createCommentRecord = async (
@@ -198,7 +240,7 @@ export const editCommentRecord = async (
   forwardedByUserId?: string,
   timestamp?: string,
 ) => {
-  const data: any = {};
+  const data: any = { editedAt: new Date() };
 
   if (forwardedByUserId) {
     // Editing a client's comment — preserve original text, store admin's version in editedText
