@@ -1,7 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { V4SubmissionCreateData } from '../types/submissionV4Types';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
-import { MAX_POSTING_LINKS, joinPostingLinksToContent } from '../utils/postingLinkValidation';
+import {
+  MAX_POSTING_LINKS,
+  PostingLinkError,
+  normalizePostingLink,
+  joinPostingLinksToContent,
+} from '../utils/postingLinkValidation';
 import { onSubmissionSubmitted } from '@/src/modules/gamification';
 import { prisma } from '@/src/prisma/prisma';
 
@@ -163,6 +168,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             submissionComment: {
               include: {
                 replies: {
+                  where: { deletedAt: null },
                   include: {
                     user: {
                       select: {
@@ -242,6 +248,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             submissionComment: {
               include: {
                 replies: {
+                  where: { deletedAt: null },
                   include: {
                     user: {
                       select: {
@@ -382,7 +389,7 @@ export const updatePostingLink = async (submissionId: string, postingLinks: stri
 
     // Check if campaign type allows posting links
     if (submission.campaign?.campaignType === 'ugc') {
-      throw new Error('Posting links are not required for UGC (No posting) campaigns');
+      throw new PostingLinkError('Posting links are not required for UGC (No posting) campaigns');
     }
 
     // Check if posting link can be added based on approval status
@@ -390,7 +397,7 @@ export const updatePostingLink = async (submissionId: string, postingLinks: stri
     const videoStatus = submission.video[0]?.status || 'PENDING';
 
     if (!canAddPostingLink(submission.status, videoStatus as any)) {
-      throw new Error(
+      throw new PostingLinkError(
         `Cannot add posting link. Video must be fully approved first. Current status: ${submission.status}, Video status: ${videoStatus}`,
       );
     }
@@ -453,16 +460,16 @@ export const addPostingLinkToPostedSubmission = async (submissionId: string, new
       throw new Error(`This submission already has the maximum of ${MAX_POSTING_LINKS} posting links`);
     }
 
-    const trimmed = newLink.trim();
-
+    // Same TikTok / Instagram rules as every other posting link
+    let trimmed: string;
     try {
-      // eslint-disable-next-line no-new
-      new URL(trimmed);
-    } catch {
-      throw new Error('Invalid posting link URL');
+      trimmed = normalizePostingLink(newLink);
+    } catch (error) {
+      if (error instanceof PostingLinkError) throw new PostingLinkError(`The link ${error.message}`);
+      throw error;
     }
 
-    if (existingLinks.includes(trimmed)) {
+    if (existingLinks.includes(trimmed) || existingLinks.includes(newLink.trim())) {
       throw new Error('This posting link has already been added');
     }
 

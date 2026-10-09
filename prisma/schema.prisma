@@ -1530,6 +1530,8 @@ model SubmissionComment {
   resolvedByUserId   String?
   createdAt          DateTime            @default(now())
   updateAt           DateTime            @updatedAt
+  deletedAt          DateTime?
+  editedAt           DateTime?
   isVisibleToCreator Boolean             @default(true)
   isSentToCreator    Boolean             @default(false)
   agreedBy           CommentAgreement[]

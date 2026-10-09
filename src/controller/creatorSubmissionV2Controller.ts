@@ -73,6 +73,7 @@ const submissionInclude = {
       submissionComment: {
         include: {
           replies: {
+            where: { deletedAt: null },
             include: {
               user: { select: { id: true, name: true, status: true, role: true, photoURL: true } },
             },
