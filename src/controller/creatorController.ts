@@ -17,6 +17,7 @@ import {
 import { decryptToken } from '@helper/encrypt';
 import { CreatorRatingReveal, mapCompletedCreatorRatingReveal } from '@utils/creatorRatingReveal';
 import { prisma } from '@/src/prisma/prisma';
+import { syncCampaignCredits } from '@modules/campaign/agreement/agreement.service';
 
 type SocialMediaData = Record<
   string,
@@ -195,6 +196,12 @@ export const deleteCreator = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
+    const sentAgreements = await prisma.creatorAgreement.findMany({
+      where: { userId: id, isSent: true },
+      select: { campaignId: true },
+      distinct: ['campaignId'],
+    });
+
     const deleteCreator = await prisma.$transaction([
       prisma.interest.deleteMany({
         where: {
@@ -297,6 +304,8 @@ export const deleteCreator = async (req: Request, res: Response) => {
         },
       }),
     ]);
+
+    await Promise.all(sentAgreements.map((a) => syncCampaignCredits(a.campaignId)));
 
     res.status(200).json('Creator deleted successfully');
   } catch (error) {
