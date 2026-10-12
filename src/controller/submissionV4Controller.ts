@@ -34,6 +34,7 @@ import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
+import { queueMissingThumbnails } from '@services/submissionThumbnailService';
 import { selectCurrentAgreementSubmission, selectAgreementSubmissions } from '@utils/submissionAgreement';
 import { clients, getIo } from '../config/socket';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
@@ -340,6 +341,7 @@ export const getV4SubmissionsController = async (req: Request, res: Response) =>
     }
 
     const submissions = await getV4Submissions(campaignId as string, userId as string | undefined);
+    queueMissingThumbnails(submissions);
 
     // Group submissions by type for easier frontend consumption. `agreements` holds one
     // entry per agreement round (oldest first); `agreement` stays the single most-relevant
