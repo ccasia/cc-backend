@@ -16,7 +16,10 @@ interface MediaRecord {
   url: string | null;
   thumbnailUrl?: string | null;
 }
+// `id` keeps this from being a weak (all-optional) type, so lists that mix in submissions
+// without media (agreement forms) still type-check; those just queue nothing
 interface SubmissionWithMedia {
+  id: string;
   video?: MediaRecord[];
   rawFootages?: MediaRecord[];
 }
