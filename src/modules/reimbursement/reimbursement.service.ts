@@ -8,6 +8,7 @@ import { logChange } from '@services/campaignServices';
 import { createInvoiceService } from '@services/invoiceService';
 import { handleV4CompletedCampaign, isReimbursementReady } from '@services/submissionV4CompletionService';
 import { ReceiptFile, ReceiptInput, ReviewInput } from './reimbursement.types';
+import { HEIF_BRANDS, heicToJpegFile } from '@helper/heicToJpeg';
 
 export class ReimbursementError extends Error {
   constructor(
@@ -22,8 +23,6 @@ export class ReimbursementError extends Error {
 const MAX_RECEIPT_SIZE = 10 * 1024 * 1024;
 
 type DetectedReceiptType = { mimeType: string; ext: string };
-
-const HEIF_BRANDS = ['heic', 'heix', 'hevc', 'heim', 'heis', 'mif1', 'msf1'];
 
 /**
  * The file's real type from its leading bytes ("magic bytes"). The browser-sent mimetype is
@@ -114,6 +113,15 @@ const validateFile = async (file: ReceiptFile): Promise<DetectedReceiptType> => 
 
   if (!detected) {
     throw new ReimbursementError(400, 'Receipt must be a JPG, PNG, WebP, HEIC image or a PDF');
+  }
+
+  if (detected.ext === 'heic') {
+    try {
+      await heicToJpegFile(file.tempFilePath, file.tempFilePath);
+      return { mimeType: 'image/jpeg', ext: 'jpg' };
+    } catch (error) {
+      console.error('Receipt HEIC to JPEG conversion failed:', error);
+    }
   }
 
   return detected;
@@ -337,9 +345,7 @@ const CHILD_INVOICE_SELECT = {
  * - parentInvoice: for a child, its main invoice's number + status
  * Works on an already-filtered page, so totals, status counts and pagination are unchanged.
  */
-export const attachInvoiceFamily = async <T extends { id: string; parentInvoiceId?: string | null }>(
-  invoices: T[],
-) => {
+export const attachInvoiceFamily = async <T extends { id: string; parentInvoiceId?: string | null }>(invoices: T[]) => {
   const parentIds = [...new Set(invoices.map((invoice) => invoice.parentInvoiceId).filter(Boolean))] as string[];
 
   const [children, parents] = await Promise.all([

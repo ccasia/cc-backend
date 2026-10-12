@@ -24,10 +24,10 @@ import {
 } from './draftSubmissionStatus';
 import { getIo, clients } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
+import { convertHeicToJpeg } from '@helper/heicToJpeg';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
-
 
 interface VideoFile {
   inputPath: string;
@@ -827,8 +827,11 @@ async function deleteFileIfExists(filePath: string) {
 
                 const urls = await Promise.all(
                   filePaths.photos.map(async (photoPath: any) => {
-                    const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
-                    const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+                    const { filePath: photoFilePath, fileName: photoFileName } = await convertHeicToJpeg(
+                      photoPath,
+                      `${submission.id}_${path.basename(photoPath)}`,
+                    );
+                    const photoPublicURL = await uploadImage(photoFilePath, photoFileName, content.folder);
 
                     const newPhoto = await prisma.photo.create({
                       data: {
@@ -873,8 +876,11 @@ async function deleteFileIfExists(filePath: string) {
 
                 const urls = await Promise.all(
                   filePaths.photos.map(async (photoPath: any) => {
-                    const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
-                    const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+                    const { filePath: photoFilePath, fileName: photoFileName } = await convertHeicToJpeg(
+                      photoPath,
+                      `${submission.id}_${path.basename(photoPath)}`,
+                    );
+                    const photoPublicURL = await uploadImage(photoFilePath, photoFileName, content.folder);
 
                     if (!requestChangePhotos.length) {
                       await prisma.photo.create({
