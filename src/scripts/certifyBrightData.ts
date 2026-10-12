@@ -18,6 +18,11 @@
  * test/guestProfileExtraction/fixtures/brightdata/. `--compare-ig-modes` also
  * runs the first Instagram profile with `discover_by=url` next to
  * `url_all_reels`.
+ *
+ * `--post` certifies the single-post datasets (`POST_SCRAPERS`) instead. Each
+ * target is a post URL; one collect-by-URL job per post:
+ *   yarn certify-brightdata --post https://www.instagram.com/reel/<code>=reel \
+ *     https://www.tiktok.com/@<handle>/video/<id>=video
  */
 import 'dotenv/config';
 
@@ -26,7 +31,13 @@ import path from 'path';
 
 import axios, { type AxiosInstance } from 'axios';
 
-import { BRIGHTDATA_API_BASE_URL, SCRAPERS, type ScraperJob } from '../config/guestProfileExtractionConfig';
+import {
+  BRIGHTDATA_API_BASE_URL,
+  POST_SCRAPERS,
+  SCRAPERS,
+  type ScraperJob,
+} from '../config/guestProfileExtractionConfig';
+import { parsePostMetrics } from '../service/postMetricsScrape/postMetricsAdapter';
 import { normalizeProfileUrl } from '../service/guestProfileExtraction/profileUrlNormalizer';
 import type { SupportedPlatform } from '../types/guestProfileExtraction';
 
@@ -288,6 +299,26 @@ async function main(): Promise<void> {
     timeout: 60_000,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
   });
+
+  if (args.includes('--post')) {
+    for (const target of targets) {
+      const [url, caseName = 'case'] = target.split(/=(?=[^=]*$)/);
+      const platform: SupportedPlatform = /tiktok\.com/i.test(url) ? 'tiktok' : 'instagram';
+      console.log(`\n== ${platform} post ${url} (${caseName})`);
+      // eslint-disable-next-line no-await-in-loop
+      const run = await runJob(http, 'post', POST_SCRAPERS[platform], [{ url }], timeout);
+      const first = run.items[0] as Record<string, unknown> | undefined;
+      console.log(`  status=${run.status} seconds=${run.seconds} items=${run.items.length}`);
+      if (run.triggerError) console.log(`  trigger error: ${run.triggerError}`);
+      console.log(`  keys: ${first ? Object.keys(first).sort().join(', ') : '(none)'}`);
+      console.log(
+        '  parsed:',
+        JSON.stringify(parsePostMetrics(platform, run.items), (key, value) => (key === 'item' ? undefined : value)),
+      );
+      save(platform, caseName, 'post', run);
+    }
+    return;
+  }
 
   let compared = false;
   // One profile at a time. Parallel runs would be faster but make a burst of

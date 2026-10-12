@@ -1284,6 +1284,10 @@ model SubmissionPostingUrl {
   postingDate  DateTime?
   shortCode    String?
   mediaId      String?
+  metricsScrapedAt     DateTime?
+  metricsScrapeStatus  String?
+  metricsScrapeFailure Json?
+  thumbnailUrl         String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   campaign     Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -1366,6 +1370,7 @@ model DailyPostEngagementSnapshot {
   reach          Int      @default(0)
   engagementRate Float
   rawMetrics     Json?
+  source         String   @default("api")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

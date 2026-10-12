@@ -18,6 +18,7 @@ import { Socket } from 'socket.io';
 import '@helper/processPitchVideo';
 
 import './helper/xeroWebhookWorker';
+import './helper/postingLinkApprovedListener';
 import { getIo, initializeSocket } from './config/socket';
 
 import '@helper/processPitchVideo';
