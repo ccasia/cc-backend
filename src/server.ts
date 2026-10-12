@@ -43,6 +43,7 @@ import { xeroWebhookQueue } from '@utils/queue';
 
 import { users } from '@utils/activeUsers';
 import { mobileRouter } from '@routes/mobile';
+import { canAccessCampaignNotes, notesRoom } from '@modules/creator-note/creator-note.service';
 
 import jwt from 'jsonwebtoken';
 import { QueueEvents } from 'bullmq';
@@ -328,6 +329,23 @@ io.on('connection', (socket) => {
 
   socket.on('leave-campaign', (campaignId: string) => {
     if (campaignId) socket.leave(campaignId);
+  });
+
+  // Admin-only creator notes room. The plain campaign room above is joined by
+  // clients too, so notes are never emitted there. Unauthorised joins are ignored.
+  socket.on('join-campaign-notes', async (campaignId: string) => {
+    const userId = socket.data.userId as string | undefined;
+    if (!userId || typeof campaignId !== 'string' || !campaignId) return;
+
+    try {
+      if (await canAccessCampaignNotes(userId, campaignId)) socket.join(notesRoom(campaignId));
+    } catch (error) {
+      console.error('Error joining creator notes room:', error);
+    }
+  });
+
+  socket.on('leave-campaign-notes', (campaignId: string) => {
+    if (typeof campaignId === 'string' && campaignId) socket.leave(notesRoom(campaignId));
   });
 
   socket.on('cancel-processing', (data) => {

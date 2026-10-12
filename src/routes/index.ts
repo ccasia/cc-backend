@@ -8,6 +8,7 @@ import eventRoute from './eventRoute';
 import campaignRoute from './campaignRoute';
 import campaignAgreementRoute from '../modules/campaign/agreement/agreement.route';
 import reimbursementRoute from '../modules/reimbursement/reimbursement.route';
+import creatorNoteRoute from '../modules/creator-note/creator-note.route';
 import notificationRoute from './notificationRoute';
 import pushTokenRoute from './pushTokenRoute';
 import draftRoute from './draftRoute';
@@ -66,6 +67,7 @@ router.use('/company', companyRoute);
 router.use('/event', eventRoute);
 // Mounted before the generic /campaign router so its paths are matched first.
 router.use('/campaign/agreement', campaignAgreementRoute);
+router.use('/campaign/:campaignId/creator-notes', creatorNoteRoute);
 router.use('/campaign', campaignRoute);
 router.use('/campaign-creation-drafts', campaignCreationDraftRoute);
 router.use('/notification', notificationRoute);

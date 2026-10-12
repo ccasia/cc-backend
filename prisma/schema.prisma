@@ -113,6 +113,9 @@ model User {
   aiModel                           AiModel?
   refreshTokens                     RefreshToken[]
   threads                           Thread[]                           @relation("UserThreads")
+  creatorNotesAbout                 CreatorNote[]                      @relation("CreatorNoteCreator")
+  creatorNotesAuthored              CreatorNote[]                      @relation("CreatorNoteAuthor")
+  creatorNoteReadStates             CreatorNoteReadState[]
 }
 
 model CampaignCreationDraft {
@@ -775,6 +778,8 @@ model Campaign {
   thread                        Thread?
   uploadSessions                UploadSession[]
   video                         Video[]
+  creatorNotes                  CreatorNote[]
+  creatorNoteReadStates         CreatorNoteReadState[]
 }
 
 model BookMarkCampaign {
@@ -2936,6 +2941,7 @@ enum Entity {
   Posting
   Creator
   Reimbursement
+  CreatorNote
 }
 
 enum SubmissionEnum {
@@ -3136,4 +3142,37 @@ enum ReimbursementStatus {
   PENDING_REVIEW
   APPROVED
   REJECTED
+}
+
+// Admin-only note threads per creator on a campaign. Never exposed to clients or creators.
+model CreatorNote {
+  id         String    @id @default(cuid())
+  campaignId String
+  creatorId  String
+  authorId   String
+  text       String
+  mentions   String[]  @default([])
+  isPinned   Boolean   @default(false)
+  pinnedAt   DateTime?
+  pinnedById String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  campaign   Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creator    User      @relation("CreatorNoteCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  author     User      @relation("CreatorNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, creatorId, createdAt])
+}
+
+model CreatorNoteReadState {
+  userId     String
+  campaignId String
+  creatorId  String
+  lastReadAt DateTime?
+  following  Boolean   @default(true)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign   Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@id([userId, campaignId, creatorId])
+  @@index([campaignId, creatorId])
 }
