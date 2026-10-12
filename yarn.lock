@@ -1918,6 +1918,11 @@
   dependencies:
     "@types/node" "*"
 
+"@types/heic-convert@^2.1.1":
+  version "2.1.1"
+  resolved "https://registry.yarnpkg.com/@types/heic-convert/-/heic-convert-2.1.1.tgz#486390398f9b0e9ee131b3fed853bba31e10c9b1"
+  integrity sha512-+s14762Nf62z9zziIs7ItvAkSUCS3ls4Z5XPT9BlVve3Q3S4DAnf6qekffMTvEWycSUF+kulkGaSN65fK6eKvg==
+
 "@types/http-cache-semantics@^4.2.0":
   version "4.2.0"
   resolved "https://registry.yarnpkg.com/@types/http-cache-semantics/-/http-cache-semantics-4.2.0.tgz#f6a7788f438cbfde15f29acad46512b4c01913b3"
@@ -4988,6 +4993,22 @@ hasown@^2.0.2, hasown@^2.0.3:
   dependencies:
     function-bind "^1.1.2"
 
+heic-convert@^2.1.0:
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/heic-convert/-/heic-convert-2.1.0.tgz#7f764529e37591ae263ef49582d1d0c13491526e"
+  integrity sha512-1qDuRvEHifTVAj3pFIgkqGgJIr0M3X7cxEPjEp0oG4mo8GFjq99DpCo8Eg3kg17Cy0MTjxpFdoBHOatj7ZVKtg==
+  dependencies:
+    heic-decode "^2.0.0"
+    jpeg-js "^0.4.4"
+    pngjs "^6.0.0"
+
+heic-decode@^2.0.0:
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/heic-decode/-/heic-decode-2.1.0.tgz#f40efb2d3ffa2402748cfb3b8e957b99a9cf9584"
+  integrity sha512-0fB3O3WMk38+PScbHLVp66jcNhsZ/ErtQ6u2lMYu/YxXgbBtl+oKOhGQHa4RpvE68k8IzbWkABzHnyAIjR758A==
+  dependencies:
+    libheif-js "^1.19.8"
+
 html-entities@^2.5.2:
   version "2.6.0"
   resolved "https://registry.yarnpkg.com/html-entities/-/html-entities-2.6.0.tgz#7c64f1ea3b36818ccae3d3fb48b6974208e984f8"
@@ -5869,6 +5890,11 @@ jose@^4.15.5, jose@^4.15.9:
   resolved "https://registry.yarnpkg.com/jose/-/jose-4.15.9.tgz#9b68eda29e9a0614c042fa29387196c7dd800100"
   integrity sha512-1vUQX+IdDMVPj4k8kOxgUqlcK518yluMuGZwqlr44FS1ppZB/5GWh4rZG89erpOBOJjU/OBsnCVFfapsRz6nEA==
 
+jpeg-js@^0.4.4:
+  version "0.4.4"
+  resolved "https://registry.yarnpkg.com/jpeg-js/-/jpeg-js-0.4.4.tgz#a9f1c6f1f9f0fa80cdb3484ed9635054d28936aa"
+  integrity sha512-WZzeDOEtTOBK4Mdsar0IqEU5sMr3vSV2RqkAIzUEV2BHnUfKGyswWFPFwK5EeDo93K3FohSHbLAjj0s1Wzd+dg==
+
 js-tiktoken@^1.0.12:
   version "1.0.21"
   resolved "https://registry.yarnpkg.com/js-tiktoken/-/js-tiktoken-1.0.21.tgz#368a9957591a30a62997dd0c4cf30866f00f8221"
@@ -6063,6 +6089,11 @@ levn@^0.4.1:
   dependencies:
     prelude-ls "^1.2.1"
     type-check "~0.4.0"
+
+libheif-js@^1.19.8:
+  version "1.23.5"
+  resolved "https://registry.yarnpkg.com/libheif-js/-/libheif-js-1.23.5.tgz#6d44e05c7004b98d08ab9bec664d8121056112eb"
+  integrity sha512-umXZPthnWZtF3iG/5mQG+AZ2V6i0UeYpo3z2CkggTEgL8dKmIIwJT6TDuAMuabXa1yTW8uJ1ZAgR+CxNTklYYw==
 
 libphonenumber-js@^1.13.8:
   version "1.13.8"
@@ -7167,6 +7198,11 @@ pngjs@^5.0.0:
   version "5.0.0"
   resolved "https://registry.yarnpkg.com/pngjs/-/pngjs-5.0.0.tgz#e79dd2b215767fd9c04561c01236df960bce7fbb"
   integrity sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==
+
+pngjs@^6.0.0:
+  version "6.0.0"
+  resolved "https://registry.yarnpkg.com/pngjs/-/pngjs-6.0.0.tgz#ca9e5d2aa48db0228a52c419c3308e87720da821"
+  integrity sha512-TRzzuFRRmEoSW/p1KVAmiOgPco2Irlah+bGFCeNfJXxxYGwSw7YwAOAcd7X28K/m5bjBWKsC29KyoMfHbypayg==
 
 possible-typed-array-names@^1.0.0:
   version "1.1.0"

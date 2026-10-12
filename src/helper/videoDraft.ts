@@ -25,10 +25,10 @@ import {
 import { getIo, clients } from '../config/socket';
 import { onSubmissionSubmitted } from '@/src/modules/gamification';
 import { prisma } from '@/src/prisma/prisma';
+import { convertHeicToJpeg } from '@helper/heicToJpeg';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
-
 
 interface VideoFile {
   inputPath: string;
@@ -614,8 +614,11 @@ const checkCurrentSubmission = async (submissionId: string) => {
               if (content.isV4 && content.preserveExistingMedia) {
                 const urls = await Promise.all(
                   filePaths.photos.map(async (photoPath: any) => {
-                    const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
-                    const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+                    const { filePath: photoFilePath, fileName: photoFileName } = await convertHeicToJpeg(
+                      photoPath,
+                      `${submission.id}_${path.basename(photoPath)}`,
+                    );
+                    const photoPublicURL = await uploadImage(photoFilePath, photoFileName, content.folder);
 
                     const newPhoto = await prisma.photo.create({
                       data: {
@@ -641,39 +644,23 @@ const checkCurrentSubmission = async (submissionId: string) => {
 
                 const urls = await Promise.all(
                   filePaths.photos.map(async (photoPath: any) => {
-                    const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
-                    const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
-                    const urls = await Promise.all(
-                      filePaths.photos.map(async (photoPath: any) => {
-                        const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
-                        const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
-
-                        if (!requestChangePhotos.length) {
-                          await prisma.photo.create({
-                            data: {
-                              url: photoPublicURL,
-                              submissionId: submission.id,
-                              campaignId: content.campaignId,
-                              userId: submission.userId,
-                            },
-                          });
-                        }
-                        // await fs.promises.unlink(photoPath);
-                        if (!requestChangePhotos.length) {
-                          await prisma.photo.create({
-                            data: {
-                              url: photoPublicURL,
-                              submissionId: submission.id,
-                              campaignId: content.campaignId,
-                              userId: submission.userId,
-                            },
-                          });
-                        }
-                        // await fs.promises.unlink(photoPath);
-
-                        return photoPublicURL;
-                      }),
+                    const { filePath: photoFilePath, fileName: photoFileName } = await convertHeicToJpeg(
+                      photoPath,
+                      `${submission.id}_${path.basename(photoPath)}`,
                     );
+                    const photoPublicURL = await uploadImage(photoFilePath, photoFileName, content.folder);
+
+                    if (!requestChangePhotos.length) {
+                      await prisma.photo.create({
+                        data: {
+                          url: photoPublicURL,
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                        },
+                      });
+                    }
+
                     return photoPublicURL;
                   }),
                 );
