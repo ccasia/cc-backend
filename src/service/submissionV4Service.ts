@@ -108,6 +108,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             feedback: true,
             reasons: true,
             feedbackAt: true,
+            feedbackDeadline: true,
             createdAt: true,
             adminId: true,
             resubmittedFromId: true,
