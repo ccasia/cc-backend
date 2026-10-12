@@ -148,15 +148,36 @@ export const getSentNonGuestUserIds = async (campaignId: string): Promise<string
 // Sum credits committed across every sent round for a set of creators. Reads from
 // CreatorAgreement.creditsAssigned (not ShortListedCreator's single cached creditPerVideo) so a
 // creator with rounds on different platforms/tiers is priced correctly.
+// Older agreements predate creditsAssigned (null), so fall back to the round's videoCount, then to
+// the ShortListedCreator snapshot for creators with a single legacy round.
 export const sumAssignedCredits = async (campaignId: string, userIds: string[]): Promise<number> => {
   if (!userIds.length) return 0;
 
-  const aggregate = await prisma.creatorAgreement.aggregate({
-    where: { campaignId, isSent: true, userId: { in: userIds } },
-    _sum: { creditsAssigned: true },
-  });
+  const [agreements, shortlisted] = await Promise.all([
+    prisma.creatorAgreement.findMany({
+      where: { campaignId, isSent: true, userId: { in: userIds } },
+      select: { userId: true, creditsAssigned: true, videoCount: true, creditPerVideo: true },
+    }),
+    prisma.shortListedCreator.findMany({
+      where: { campaignId, userId: { in: userIds } },
+      select: { userId: true, ugcVideos: true, creditPerVideo: true },
+    }),
+  ]);
 
-  return aggregate._sum.creditsAssigned ?? 0;
+  const shortlistedByUser = new Map(shortlisted.map((s) => [s.userId, s]));
+  const roundsByUser = agreements.reduce<Record<string, number>>((acc, a) => {
+    acc[a.userId] = (acc[a.userId] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return agreements.reduce((total, a) => {
+    if (a.creditsAssigned != null) return total + a.creditsAssigned;
+    if (a.videoCount != null) return total + a.videoCount * (a.creditPerVideo ?? 1);
+    if (roundsByUser[a.userId] > 1) return total;
+
+    const sc = shortlistedByUser.get(a.userId);
+    return total + (sc?.ugcVideos ?? 0) * (sc?.creditPerVideo ?? 1);
+  }, 0);
 };
 
 // Of the given users, those whose AGREEMENT_FORM submission has actually been approved.
@@ -204,7 +225,30 @@ export const recalculateCampaignCredits = async ({
     },
   });
 
+  getIo()?.to(campaignId).emit('campaign:credits:updated', { campaignId });
+
   return totalAssigned;
+};
+
+// Re-syncs credit totals after agreements are removed outside the send flow (withdraw, reject, delete).
+// Best-effort: callers run it after their change is committed, so a failure here must not fail the request.
+export const syncCampaignCredits = async (campaignId: string) => {
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { campaignCredits: true, submissionVersion: true },
+    });
+    if (campaign?.campaignCredits == null) return;
+
+    await recalculateCampaignCredits({
+      campaignId,
+      campaignCredits: campaign.campaignCredits,
+      onlyApproved: false,
+      updateUtilized: campaign.submissionVersion === 'v4',
+    });
+  } catch (error) {
+    console.error(`Failed to sync credits for campaign ${campaignId}:`, error);
+  }
 };
 
 const getCurrencySymbol = (currencyCode: string) => {
@@ -1069,14 +1113,12 @@ export const sendCreatorAgreement = async (
   }
 
   if (campaign.campaignCredits != null) {
-    // Only count creators whose agreement has actually been approved (AGREEMENT_FORM
-    // submission status === APPROVED) - not merely sent - for dashboard credit math.
-    // Non-v4: creditsUtilized is still only incremented by deductCredits on posting
-    // approval - only the "assigned" (pending) side is gated on agreement approval here.
+    // Count every sent agreement, matching the budget check above and the Edit Amount path.
+    // Non-v4: creditsUtilized is still only incremented by deductCredits on posting approval.
     await recalculateCampaignCredits({
       campaignId,
       campaignCredits: campaign.campaignCredits,
-      onlyApproved: true,
+      onlyApproved: false,
       updateUtilized: isV4Campaign,
     });
   }

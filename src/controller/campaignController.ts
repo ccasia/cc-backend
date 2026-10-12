@@ -101,8 +101,12 @@ import {
 } from '@utils/campaignMembershipEvents';
 import { buildCreatorRatingEventId, shouldEmitCreatorRatingCompleted } from '@utils/creatorRatingReveal';
 import {
+  getSentNonGuestUserIds,
+  recalculateCampaignCredits,
   resolvePlatform,
   sendCreatorAgreement,
+  sumAssignedCredits,
+  syncCampaignCredits,
   updateAgreementAmount,
 } from '@modules/campaign/agreement/agreement.service';
 import { AgreementError } from '@modules/campaign/agreement/agreement.types';
@@ -6853,6 +6857,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             id: agreement.id,
           },
         });
+        await syncCampaignCredits(pitch.campaignId);
       }
       const message = `Rejected a pitch sent by  ${existingPitch.user.name} for campaign - ${pitch.campaign.name} `;
       logAdminChange(message, adminId, req);
@@ -7547,11 +7552,7 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
     // Insufficient-credit check: aggregate credits already committed (all creators, all sent
     // rounds) against what this batch would add.
     if (campaign.campaignCredits != null) {
-      const usedAggregate = await prisma.creatorAgreement.aggregate({
-        where: { campaignId, isSent: true },
-        _sum: { creditsAssigned: true },
-      });
-      const creditsUsedBefore = usedAggregate._sum.creditsAssigned ?? 0;
+      const creditsUsedBefore = await sumAssignedCredits(campaignId, await getSentNonGuestUserIds(campaignId));
       const remainingCredits = Number(campaign.campaignCredits) - creditsUsedBefore;
       const totalRequired = resolved.reduce((sum, r) => sum + r.creditsAssigned, 0);
 
@@ -7647,16 +7648,11 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
     });
 
     if (campaign.campaignCredits != null) {
-      const totalsAfter = await prisma.creatorAgreement.aggregate({
-        where: { campaignId, isSent: true },
-        _sum: { creditsAssigned: true },
-      });
-      const creditsUtilized = totalsAfter._sum.creditsAssigned ?? 0;
-      await prisma.campaign.update({
-        where: { id: campaignId },
-        data: {
-          creditsPending: Math.max(0, Number(campaign.campaignCredits) - creditsUtilized),
-        },
+      await recalculateCampaignCredits({
+        campaignId,
+        campaignCredits: campaign.campaignCredits,
+        onlyApproved: false,
+        updateUtilized: campaign.submissionVersion === 'v4',
       });
     }
 
@@ -8691,6 +8687,7 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       pitchId: campaign.pitch?.[0]?.id,
       action: 'remove',
     });
+    await syncCampaignCredits(campaignId);
 
     return res.status(200).json({ message: 'Creator has been successfully withdrawn from the campaign.' });
   } catch (error) {
