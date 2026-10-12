@@ -93,8 +93,8 @@ function detectPlatform(url: string): 'Instagram' | 'TikTok' | null {
  * Extract Instagram post/reel data
  */
 function extractInstagramData(url: string): ExtractedUrlData {
-  // Instagram shortcode regex: /p/ABC123xyz or /reel/ABC123xyz
-  const postMatch = url.match(/\/(?:p|reel)\/([a-zA-Z0-9_-]+)/);
+  // Instagram shortcode regex: /p/, /reel/, /reels/ or /tv/ followed by the code
+  const postMatch = url.match(/\/(?:p|reels?|tv)\/([a-zA-Z0-9_-]+)/);
 
   if (!postMatch) {
     // Check if it's a story or profile link (invalid)
@@ -128,7 +128,7 @@ function extractInstagramData(url: string): ExtractedUrlData {
   }
 
   const shortCode = postMatch[1];
-  const isReel = url.includes('/reel/');
+  const isReel = /\/(?:reels?|tv)\//.test(url);
 
   return {
     platform: 'Instagram',

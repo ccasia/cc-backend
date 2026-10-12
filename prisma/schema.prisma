@@ -1488,6 +1488,10 @@ model SubmissionPostingUrl {
   postingDate  DateTime? // When creator posted (null = not posted yet)
   shortCode    String? // Instagram shortcode
   mediaId      String? // Instagram media ID or TikTok video ID
+  metricsScrapedAt DateTime? // Set once when a Bright Data post scrape is claimed (never re-scraped)
+  metricsScrapeStatus String? // "QUEUED" | "RUNNING" | "SCRAPED" | "FAILED"; drives the analytics shimmer
+  metricsScrapeFailure Json? // Why the scrape FAILED ({ code, message, jobIds, partial, at }); shown in analytics
+  thumbnailUrl         String? // Our bucket's copy of the post thumbnail (scraped posts); provider URLs expire
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -1581,6 +1585,7 @@ model DailyPostEngagementSnapshot {
 
   // Raw insight data for reference
   rawMetrics Json?
+  source     String @default("api") // "api" | "brightdata"
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
