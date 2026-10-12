@@ -1,4 +1,7 @@
 import { Request, Response } from 'express';
+import { prisma } from '@/src/prisma/prisma';
+import { getFailedPostScrapes, getPendingPostScrapes } from '@services/postMetricsScrape/pendingPostScrapes';
+import { completeFailedScrape, type PostScrapeStore } from '@services/postMetricsScrape/postMetricsScrapeService';
 import {
   getPostEngagementSnapshots,
   captureManualSnapshot,
@@ -217,6 +220,56 @@ export const getLatestCampaignPostSnapshots = async (req: Request, res: Response
       message: 'Failed to fetch latest campaign post snapshots',
       error: error.message,
     });
+  }
+};
+
+// Links whose Bright Data scrape is queued or running, for the analytics shimmer.
+// GET /api/campaign/:campaignId/post-scrapes/pending
+export const getPendingCampaignPostScrapes = async (req: Request, res: Response) => {
+  try {
+    const data = await getPendingPostScrapes(req.params.campaignId);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching pending post scrapes:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch pending post scrapes' });
+  }
+};
+
+/**
+ * Posting links whose Bright Data scrape failed, with the reason.
+ * GET /api/campaign/:campaignId/post-scrapes/failed
+ */
+export const getFailedCampaignPostScrapes = async (req: Request, res: Response) => {
+  try {
+    const data = await getFailedPostScrapes(req.params.campaignId);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching failed post scrapes:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch failed post scrapes' });
+  }
+};
+
+/**
+ * An admin enters the counters a failed scrape could not get.
+ * POST /api/campaign/:campaignId/post-scrapes/:postingUrlId/metrics
+ * Body: { views, likes?, comments?, shares? }
+ */
+export const completeFailedCampaignPostScrape = async (req: Request, res: Response) => {
+  try {
+    const { views, likes, comments, shares } = req.body ?? {};
+    const toCount = (value: unknown) =>
+      value === undefined || value === null || value === '' ? undefined : Number(value);
+    const result = await completeFailedScrape(prisma as unknown as PostScrapeStore, {
+      campaignId: req.params.campaignId,
+      postingUrlId: req.params.postingUrlId,
+      metrics: { views: toCount(views), likes: toCount(likes), comments: toCount(comments), shares: toCount(shares) },
+      adminId: req.userId as string,
+    });
+    if (!result.ok) return res.status(result.status).json({ success: false, message: result.message });
+    return res.status(200).json({ success: true, data: result.metrics });
+  } catch (error: any) {
+    console.error('Error completing failed post scrape:', error);
+    return res.status(500).json({ success: false, message: 'Failed to save the metrics' });
   }
 };
 

@@ -63,3 +63,72 @@ export async function enqueueExtraction(
     { jobId: extractionId, ...(options.removeOnComplete ? { removeOnComplete: true } : {}) },
   );
 }
+
+/**
+ * One Bright Data scrape per approved post, for creators with no connected
+ * account. One attempt only: a retry would start a second paid job.
+ */
+export const postMetricsScrapeQueue = new Queue('post-metrics-scrape-queue', {
+  connection,
+  defaultJobOptions: {
+    attempts: 1,
+    removeOnComplete: { age: 3600, count: 500 },
+    removeOnFail: { age: 86400 },
+  },
+});
+
+/**
+ * The job ID dedupes a burst of enqueues for one post. The durable once-only
+ * rule is `SubmissionPostingUrl.metricsScrapedAt`, checked by the worker.
+ */
+export interface PostScrapeJobData {
+  postingUrlId: string;
+  /** Carried so the API can tell the campaign room when the job ends. */
+  campaignId: string;
+  submissionId: string;
+}
+
+export async function enqueuePostScrape(data: PostScrapeJobData): Promise<void> {
+  const jobId = `post-scrape-${data.postingUrlId}`;
+  const existing = await postMetricsScrapeQueue.getJob(jobId);
+
+  if (existing) {
+    const state = await existing.getState();
+    if (state !== 'completed' && state !== 'failed') return;
+    await existing.remove();
+  }
+
+  await postMetricsScrapeQueue.add('scrape', data, { jobId });
+}
+
+/**
+ * One job per approved submission. It only plans: it extracts the links and
+ * queues a scrape for each unconnected one. Planning spends no credits, so it
+ * may retry; the paid scrape below never does.
+ */
+export const postingLinkApprovedQueue = new Queue('posting-link-approved-queue', {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 30_000 },
+    removeOnComplete: { age: 3600, count: 500 },
+    removeOnFail: { age: 86400 },
+  },
+});
+
+/**
+ * A waiting job already reads the submission's current links when it runs,
+ * so a second approval event for the same submission is dropped.
+ */
+export async function enqueuePostingLinkApproved(submissionId: string): Promise<void> {
+  const jobId = `posting-link-approved-${submissionId}`;
+  const existing = await postingLinkApprovedQueue.getJob(jobId);
+
+  if (existing) {
+    const state = await existing.getState();
+    if (state !== 'completed' && state !== 'failed') return;
+    await existing.remove();
+  }
+
+  await postingLinkApprovedQueue.add('plan', { submissionId }, { jobId });
+}
