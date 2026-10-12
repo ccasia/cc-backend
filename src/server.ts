@@ -103,27 +103,30 @@ app.disable('x-powered-by');
 
 app.set('trust proxy', true);
 
-app.use(
-  session({
-    name: 'sid',
-    secret: process.env.SESSION_SECRET!,
-    resave: false,
-    saveUninitialized: false,
-    proxy: process.env.NODE_ENV === 'production',
+const sessionMiddleware = session({
+  name: 'sid',
+  secret: process.env.SESSION_SECRET!,
+  resave: false,
+  saveUninitialized: false,
+  proxy: process.env.NODE_ENV === 'production',
 
-    cookie: {
-      secure: process.env.CROSS_SITE_COOKIES === 'true' || process.env.NODE_ENV === 'production',
-      sameSite: process.env.CROSS_SITE_COOKIES === 'true' ? 'none' : 'lax',
-      maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
-      httpOnly: true,
-    },
-    store: new PrismaSessionStore(prisma, {
-      checkPeriod: 2 * 60 * 1000,
-      dbRecordIdIsSessionId: true,
-      dbRecordIdFunction: undefined,
-    }),
+  cookie: {
+    secure: process.env.CROSS_SITE_COOKIES === 'true' || process.env.NODE_ENV === 'production',
+    sameSite: process.env.CROSS_SITE_COOKIES === 'true' ? 'none' : 'lax',
+    maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
+    httpOnly: true,
+  },
+  store: new PrismaSessionStore(prisma, {
+    checkPeriod: 2 * 60 * 1000,
+    dbRecordIdIsSessionId: true,
+    dbRecordIdFunction: undefined,
   }),
-);
+});
+
+app.use(sessionMiddleware);
+// Socket handshakes carry the same `sid` cookie; load the session so web
+// (cookie-auth) sockets get an identity in the io.use auth middleware below.
+io.engine.use(sessionMiddleware);
 
 app.use(passport.initialize());
 app.use(passport.session());
@@ -277,6 +280,24 @@ io.use(async (socket: Socket, next) => {
     const token = socket.handshake.auth?.token as string | undefined;
 
     if (!token) {
+      // Web clients use cookie sessions, which sessionMiddleware loads onto the
+      // handshake request. No session means an anonymous socket, as before.
+      // A failed lookup leaves the socket anonymous rather than rejecting it.
+      const sessionUserId = (socket.request as Request).session?.userid as string | undefined;
+
+      if (sessionUserId) {
+        try {
+          const sessionUser = await prisma.user.findUnique({
+            where: { id: sessionUserId },
+            select: { id: true, status: true },
+          });
+
+          if (sessionUser && sessionUser.status !== 'deleted') socket.data.userId = sessionUser.id;
+        } catch (error) {
+          console.error('Error resolving socket session user:', error);
+        }
+      }
+
       return next();
     }
 
