@@ -365,6 +365,82 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
   }
 };
 
+/**
+ * Lean list for the admin creator-submissions UI: every creator's content submissions
+ * (videos, photos, raw footage) with only what the cards and viewer render. Agreement
+ * forms and feedback history are left out; the viewer reads history from the comment threads.
+ */
+export const getV4CampaignOverview = async (campaignId: string) => {
+  try {
+    return await prisma.submission.findMany({
+      where: {
+        campaignId,
+        submissionVersion: 'v4',
+        campaign: { submissionVersion: 'v4' },
+        submissionType: { type: { in: ['VIDEO', 'PHOTO', 'RAW_FOOTAGE'] } },
+      },
+      select: {
+        id: true,
+        status: true,
+        caption: true,
+        content: true,
+        videos: true,
+        contentOrder: true,
+        submissionDate: true,
+        submissionType: { select: { type: true } },
+        campaign: { select: { id: true, name: true, campaignType: true } },
+        // Set when an admin added the posting link on the creator's behalf
+        admin: { select: { userId: true, user: { select: { name: true } } } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            photoURL: true,
+            creator: {
+              select: {
+                instagram: true,
+                tiktok: true,
+                instagramUser: { select: { username: true } },
+                tiktokUser: { select: { username: true } },
+                discoveryProfiles: { select: { platform: true, handle: true } },
+              },
+            },
+            shortlisted: {
+              where: { campaignId },
+              select: { selectedPlatform: true },
+            },
+          },
+        },
+        video: {
+          select: {
+            id: true,
+            url: true,
+            thumbnailUrl: true,
+            status: true,
+            feedback: true,
+            feedbackDeadline: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' as const },
+          take: V4_ACTIVE_VIDEO_VERSIONS_LIMIT,
+        },
+        photos: { select: { id: true, url: true, status: true, createdAt: true } },
+        rawFootages: { select: { id: true, url: true, thumbnailUrl: true, status: true, createdAt: true } },
+        feedback: {
+          where: { type: 'REQUEST', admin: { role: 'client' } },
+          select: { type: true, reasons: true, admin: { select: { role: true } } },
+          orderBy: { createdAt: 'desc' as const },
+          take: 1,
+        },
+      },
+      orderBy: [{ submissionType: { type: 'asc' } }, { contentOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+  } catch (error) {
+    console.error('Error getting v4 campaign overview:', error);
+    throw error;
+  }
+};
+
 export const updatePostingLink = async (submissionId: string, postingLinks: string[], adminId?: string) => {
   try {
     // Verify submission is approved and v4

@@ -2,6 +2,7 @@ import express from 'express';
 import {
   createV4Submissions,
   getV4SubmissionsController,
+  getV4CampaignOverviewController,
   submitV4ContentController,
   approveV4Submission,
   updatePostingLinkController,
@@ -52,6 +53,9 @@ router.post('/create', createV4Submissions);
 
 // Get V4 submissions for a campaign
 router.get('/submissions', getV4SubmissionsController);
+
+// Lean submissions list for the admin creator-submissions UI
+router.get('/campaign-overview', getV4CampaignOverviewController);
 
 // Get single V4 submission by ID
 router.get('/submission/:id', getV4SubmissionById);

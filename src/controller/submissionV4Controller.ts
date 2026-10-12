@@ -3,6 +3,7 @@ import { FeedbackStatus, PrismaClient, SubmissionStatus } from '@prisma/client';
 import {
   createV4SubmissionsForCreator,
   getV4Submissions,
+  getV4CampaignOverview,
   updatePostingLink,
   addPostingLinkToPostedSubmission,
   submitV4Content,
@@ -363,6 +364,31 @@ export const getV4SubmissionsController = async (req: Request, res: Response) =>
     console.error('Error getting v4 submissions:', error);
     res.status(500).json({
       message: 'Failed to get v4 submissions',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
+/**
+ * Lean submissions list for the admin creator-submissions UI
+ * GET /api/submissions/v4/campaign-overview?campaignId=
+ */
+export const getV4CampaignOverviewController = async (req: Request, res: Response) => {
+  const { campaignId } = req.query;
+
+  try {
+    if (!campaignId) {
+      return res.status(400).json({ message: 'campaignId is required' });
+    }
+
+    const submissions = await getV4CampaignOverview(campaignId as string);
+    queueMissingThumbnails(submissions);
+
+    res.status(200).json({ submissions });
+  } catch (error) {
+    console.error('Error getting v4 campaign overview:', error);
+    res.status(500).json({
+      message: 'Failed to get v4 campaign overview',
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
