@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { createVideoOfTheMonthThumbnail } from '@helper/videoOfTheMonthThumbnail';
+import { createVideoOfTheMonthThumbnail } from '@helper/videoThumbnail';
 import { prisma } from '@/src/prisma/prisma';
 
 // Shape returned to the mobile app for each featured video.

@@ -12,8 +12,18 @@ Ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH ?? (fs.existsSync(systemFfmpegPath)
 
 const THUMBNAIL_TIMEOUT_MS = 30_000;
 
-export const createVideoOfTheMonthThumbnail = async (videoUrl: string, featuredVideoId: string): Promise<string> => {
-  const outputPath = path.join(os.tmpdir(), `featured-video-${randomUUID()}.jpg`);
+interface ThumbnailOptions {
+  name: string;
+  folder: string;
+  width: number;
+  height: number;
+}
+
+export const createVideoThumbnail = async (
+  videoUrl: string,
+  { name, folder, width, height }: ThumbnailOptions,
+): Promise<string> => {
+  const outputPath = path.join(os.tmpdir(), `video-thumbnail-${randomUUID()}.jpg`);
   const encodedVideoUrl = new URL(videoUrl).toString();
 
   try {
@@ -21,7 +31,7 @@ export const createVideoOfTheMonthThumbnail = async (videoUrl: string, featuredV
       let settled = false;
       const command = Ffmpeg(encodedVideoUrl)
         .seekInput(1)
-        .outputOptions(['-frames:v 1', '-vf scale=466:782:force_original_aspect_ratio=decrease', '-q:v 3']);
+        .outputOptions(['-frames:v 1', `-vf scale=${width}:${height}:force_original_aspect_ratio=decrease`, '-q:v 3']);
 
       const finish = (error?: Error) => {
         if (settled) return;
@@ -42,8 +52,16 @@ export const createVideoOfTheMonthThumbnail = async (videoUrl: string, featuredV
         .save(outputPath);
     });
 
-    return await uploadImage(outputPath, `${featuredVideoId}.jpg`, 'videoOfTheMonthThumbnails');
+    return await uploadImage(outputPath, `${name}.jpg`, folder);
   } finally {
     await fs.promises.unlink(outputPath).catch(() => undefined);
   }
 };
+
+export const createVideoOfTheMonthThumbnail = (videoUrl: string, featuredVideoId: string) =>
+  createVideoThumbnail(videoUrl, {
+    name: featuredVideoId,
+    folder: 'videoOfTheMonthThumbnails',
+    width: 466,
+    height: 782,
+  });

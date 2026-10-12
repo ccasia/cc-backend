@@ -103,6 +103,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
           select: {
             id: true,
             url: true,
+            thumbnailUrl: true,
             status: true,
             feedback: true,
             reasons: true,
@@ -141,6 +142,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
           select: {
             id: true,
             url: true,
+            thumbnailUrl: true,
             status: true,
             feedback: true,
             reasons: true,

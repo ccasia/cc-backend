@@ -1395,6 +1395,7 @@ model ManualCreatorEntry {
 model Video {
   id                 String              @id @default(cuid())
   url                String?
+  thumbnailUrl       String?
   submissionId       String?
   campaignId         String?
   createdAt          DateTime            @default(now())
@@ -1424,6 +1425,7 @@ model Video {
 model RawFootage {
   id           String         @id @default(cuid())
   url          String
+  thumbnailUrl String?
   campaignId   String?
   submissionId String?
   createdAt    DateTime       @default(now())
