@@ -46,6 +46,7 @@ import {
   handleSubmissionNotification,
 } from '@services/submissionService';
 import { ensureValidInstagramToken, ensureValidTikTokToken } from '@controllers/socialController';
+import { findSubmissionsWithStoredMetrics } from '@services/storedPostInsightService';
 import { clients, getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
@@ -987,6 +988,10 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       ),
     ]);
 
+    const storedMetricIds = await findSubmissionsWithStoredMetrics(
+      formattedSubmissions.filter((submission) => submission.reportPlatform).map((submission) => submission.id),
+    );
+
     const submissionsWithTokenStatus = formattedSubmissions.map((submission) => {
       let isInstagramTokenValid: boolean | null = null;
       let isTiktokTokenValid: boolean | null = null;
@@ -1005,10 +1010,13 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
         ...submission,
         isInstagramTokenValid,
         isTiktokTokenValid,
+        hasStoredMetrics: storedMetricIds.has(submission.id),
       };
     });
 
     const validSubmissions = submissionsWithTokenStatus.filter((submission) => {
+      if (submission.hasStoredMetrics) return true;
+
       if (submission.reportPlatform === 'Instagram') {
         return submission.isInstagramConnected && submission.isInstagramTokenValid;
       }
