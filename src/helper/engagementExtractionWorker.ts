@@ -9,7 +9,7 @@ import 'dotenv/config';
 import { Worker } from 'bullmq';
 
 import connection from '@configs/redis';
-import { loadExtractionConfig } from '@configs/guestProfileExtractionConfig';
+import { loadExtractionConfig, postPollTimeoutSeconds } from '@configs/guestProfileExtractionConfig';
 import { createBrightDataGateway } from '@services/guestProfileExtraction/brightDataGateway';
 import {
   cleanupExpiredExtractions,
@@ -19,8 +19,10 @@ import {
   type ExtractionDeps,
 } from '@services/guestProfileExtraction/guestProfileExtractionService';
 import { applyExtractionToPendingPitchesSafe } from '@services/guestProfileExtraction/pendingPitchMetrics';
+import { planPostScrapes } from '@services/postMetricsScrape/planPostScrapes';
+import { scrapePostMetrics } from '@services/postMetricsScrape/postMetricsScrapeService';
 import { cacheDiscoveryThumbnail } from '@services/socialMediaService';
-import { enqueueExtraction } from '@utils/queue';
+import { enqueueExtraction, type PostScrapeJobData } from '@utils/queue';
 import { prisma } from '@/src/prisma/prisma';
 
 /**
@@ -36,6 +38,7 @@ import { prisma } from '@/src/prisma/prisma';
 
 const RECONCILE_INTERVAL_MS = 5 * 60_000;
 const HEALTH_INTERVAL_MS = 60_000;
+const RATE_LIMIT_PAUSE_MS = 5 * 60_000;
 
 const config = loadExtractionConfig();
 
@@ -71,6 +74,56 @@ const worker = new Worker(
 
 worker.on('failed', (job, error) => {
   console.error(`[engagement-worker] job ${job?.id} failed:`, error?.message);
+});
+
+/** One Bright Data scrape per approved post, for creators with no connected account. */
+const postScrapeWorker = new Worker(
+  'post-metrics-scrape-queue',
+  async (job) => {
+    const { postingUrlId, campaignId, submissionId } = job.data as PostScrapeJobData;
+    const outcome = await scrapePostMetrics(postingUrlId, {
+      store: prisma as never,
+      gateway: deps.gateway,
+      pollTimeoutMs: postPollTimeoutSeconds() * 1000,
+      discoveryPollTimeoutMs: config.pollTimeoutSeconds * 1000,
+      log: (message, context) => console.log(`[post-scrape] ${message}`, context ?? ''),
+      cacheThumbnail: cacheDiscoveryThumbnail,
+    });
+    console.log(`[post-scrape] ${postingUrlId}: ${outcome}`);
+    // 25+ 429s in 5 minutes blacklist the server IP. Stop starting jobs for a while.
+    if (outcome === 'RATE_LIMITED') pausePostScrapes();
+    // Read by the API's QueueEvents listener to update the campaign's analytics live.
+    return { campaignId, submissionId, postingUrlId, outcome };
+  },
+  { connection, concurrency: 2 },
+);
+
+/** Plans scrapes for each posting-link approval the API's listener queued. Free work, so it runs wider. */
+const postingLinkApprovedWorker = new Worker(
+  'posting-link-approved-queue',
+  async (job) => {
+    const { submissionId } = job.data as { submissionId: string };
+    const result = await planPostScrapes(submissionId);
+    console.log(`[post-scrape] submission ${submissionId}: queued ${result.queued} scrape(s)`);
+    return result;
+  },
+  { connection, concurrency: 5 },
+);
+
+postingLinkApprovedWorker.on('failed', (job, error) => {
+  console.error(`[post-scrape] approval job ${job?.id} failed (attempt ${job?.attemptsMade}):`, error?.message);
+});
+
+function pausePostScrapes(): void {
+  if (postScrapeWorker.isPaused()) return;
+  console.error(`[post-scrape] ALERT Bright Data answered 429; pausing ${RATE_LIMIT_PAUSE_MS / 60_000} minutes`);
+  // `true`: do not wait for active jobs, or this would wait on the job that called it.
+  void postScrapeWorker.pause(true);
+  setTimeout(() => postScrapeWorker.resume(), RATE_LIMIT_PAUSE_MS).unref();
+}
+
+postScrapeWorker.on('failed', (job, error) => {
+  console.error(`[post-scrape] job ${job?.id} failed:`, error?.message);
 });
 
 worker.on('ready', () => {
@@ -143,7 +196,7 @@ setInterval(() => void cleanupExpiredExtractions(deps), 6 * 60 * 60_000).unref()
 
 const shutdown = async (signal: string): Promise<void> => {
   console.log(`[engagement-worker] ${signal} received, closing`);
-  await worker.close();
+  await Promise.all([worker.close(), postScrapeWorker.close(), postingLinkApprovedWorker.close()]);
   process.exit(0);
 };
 

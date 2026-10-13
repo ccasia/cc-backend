@@ -476,6 +476,7 @@ export async function storeDailyPostEngagementResults(
           reach: metrics.reach,
           engagementRate: metrics.engagementRate,
           rawMetrics: result.insight,
+          source: 'api',
         },
       });
 
@@ -828,6 +829,10 @@ export interface LatestPostEngagementSnapshot {
   saved: number;
   reach: number;
   engagementRate: number;
+  /** "api" or "brightdata". Milestone snapshots carry none. */
+  source?: string;
+  /** Our bucket's copy of the post thumbnail, saved when the post was scraped. */
+  thumbnailUrl?: string | null;
 }
 
 /**
@@ -836,7 +841,7 @@ export interface LatestPostEngagementSnapshot {
  * older posts that are outside the daily capture window.
  */
 export async function getLatestCampaignPostEngagement(campaignId: string): Promise<LatestPostEngagementSnapshot[]> {
-  const [dailySnapshots, milestoneSnapshots] = await Promise.all([
+  const [dailySnapshots, milestoneSnapshots, thumbnails] = await Promise.all([
     prisma.dailyPostEngagementSnapshot.findMany({
       where: { campaignId },
       orderBy: { snapshotDate: 'desc' },
@@ -847,7 +852,12 @@ export async function getLatestCampaignPostEngagement(campaignId: string): Promi
       orderBy: { capturedAt: 'desc' },
       distinct: ['postUrl'],
     }),
+    prisma.submissionPostingUrl.findMany({
+      where: { campaignId, thumbnailUrl: { not: null } },
+      select: { postUrl: true, thumbnailUrl: true },
+    }),
   ]);
+  const thumbnailByPost = new Map(thumbnails.map((row) => [row.postUrl, row.thumbnailUrl]));
 
   const latestByPost = new Map<string, LatestPostEngagementSnapshot>();
 
@@ -867,6 +877,7 @@ export async function getLatestCampaignPostEngagement(campaignId: string): Promi
       saved: snapshot.saved,
       reach: snapshot.reach,
       engagementRate: snapshot.engagementRate,
+      source: snapshot.source,
     });
   }
 
@@ -892,7 +903,10 @@ export async function getLatestCampaignPostEngagement(campaignId: string): Promi
     });
   }
 
-  return Array.from(latestByPost.values());
+  return Array.from(latestByPost.values(), (snapshot) => ({
+    ...snapshot,
+    thumbnailUrl: thumbnailByPost.get(snapshot.postUrl) ?? null,
+  }));
 }
 
 /**

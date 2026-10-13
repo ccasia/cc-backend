@@ -132,3 +132,45 @@ real adapters; Apify (`apify/instagram-scraper@0.0.776`,
   7.54% to 7.58%. TikTok has no co-author field; `isCollab` stays unverified.
 - Instagram pinned: Apify reports it; Bright Data does not. The newest-first
   sort kept the pinned Reel out of the sample in this test.
+
+## 7. Campaign analytics post scrape
+
+A creator who has no connected Instagram/TikTok gets no API metrics. Flow:
+
+1. The admin approves the posting link (`approvePostingLinkV4`), or adds a
+   link to a POSTED submission. The controller emits `posting-link:approved`
+   (`src/utils/postingLinkEvents.ts`) and returns.
+2. The listener (`src/helper/postingLinkApprovedListener.ts`, API process)
+   only adds a job to `posting-link-approved-queue`.
+3. The `cc-engagement-worker` process plans the job (`planPostScrapes`). It
+   extracts the links, checks the connection, and queues each unconnected link
+   on `post-metrics-scrape-queue`.
+4. The same worker scrapes each link with one collect-by-URL job. It writes a
+   `DailyPostEngagementSnapshot` with `source = "brightdata"`. When the daily API fetch fails with
+`ACCOUNT_NOT_CONNECTED`, `ACCESS_TOKEN_MISSING` or `TOKEN_EXPIRED`, it queues
+the same scrape, but only for links created in the last 30 days. Older posts
+are never backfilled automatically.
+
+| Platform | dataset_id | Fields read |
+|---|---|---|
+| Instagram | `gd_lk5ns7kz21pck8jpis` | `likes`, `num_comments`, `video_play_count ?? video_view_count ?? views` |
+| TikTok | `gd_lu702nij2f790tmv9h` | `play_count`, `digg_count`, `comment_count`, `share_count ?? 0` |
+
+- **Once per post.** The worker claims `SubmissionPostingUrl.metricsScrapedAt`
+  before it starts the paid job. It releases the claim only when Bright Data
+  definitely started no job.
+- **Reel views.** Collect-by-URL never returns a Reel's views (Posts or
+  Reels dataset; 0 of 4 Reels on 2026-10-12). So a second job runs: a Reels
+  discovery (`url_all_reels`) of the owner's 12 newest Reels, matched by
+  shortcode. Not found → `REEL_VIEWS_NOT_FOUND`, and
+  the admin enters the numbers by hand.
+- Instagram shares and saves are private. They are stored as 0 and the UI
+  shows "–".
+- **Failures.** A FAILED scrape stores `{ code, message, jobIds, partial, at }`
+  in `SubmissionPostingUrl.metricsScrapeFailure`. Analytics lists them
+  (`GET /api/campaign/:id/post-scrapes/failed`) and shows the row with the
+  reason. An admin enters the missing counters
+  (`POST /api/campaign/:id/post-scrapes/:postingUrlId/metrics`); counters the
+  scrape did get are kept.
+- Poll cap: `BRIGHTDATA_POST_POLL_TIMEOUT_SECONDS` (default 180).
+- Certify: `yarn certify-brightdata --post <post-url>=<case> ...`.

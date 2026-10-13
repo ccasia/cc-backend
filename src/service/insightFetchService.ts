@@ -4,6 +4,7 @@ import { getCampaignSubmissionUrls, extractAndStoreSubmissionUrls } from '@servi
 import { normalizeInsightResults, UrlData } from '@utils/insightNormalizationHelper';
 import { getManualCreatorEntries } from '@services/manualCreatorService';
 import { storeDailyPostEngagementResults } from '@services/postEngagementSnapshotService';
+import { queuePostScrape } from '@services/postMetricsScrape/queuePostScrape';
 import { prisma } from '@/src/prisma/prisma';
 
 /**
@@ -162,6 +163,7 @@ async function fetchAndStorePlatformInsights(
     });
 
     const dailySnapshotResult = await storeDailyPostEngagementResults(urls, results, platform);
+    queueScrapeFallbacks(urls, dailySnapshotResult.failures);
 
     // Filter valid results
     const validResults = results.filter((r) => !r.error);
@@ -207,6 +209,35 @@ async function fetchAndStorePlatformInsights(
   } catch (error: any) {
     console.error(`   ❌ Error processing ${platform} insights:`, error.message);
     throw error;
+  }
+}
+
+/** API failures a Bright Data scrape can stand in for: the creator's account cannot be read. */
+const SCRAPE_FALLBACK_CODES = new Set(['ACCOUNT_NOT_CONNECTED', 'ACCESS_TOKEN_MISSING', 'TOKEN_EXPIRED']);
+
+/**
+ * Only recent links fall back, so the first nightly run never backfills every
+ * historical post as paid jobs. `createdAt`, not `postingDate`: each extraction
+ * resets `postingDate` to now.
+ */
+const SCRAPE_FALLBACK_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Queue a one-time scrape for posted links the API could not read. The worker
+ * claims `metricsScrapedAt`, so the daily cron never scrapes a post twice.
+ */
+function queueScrapeFallbacks(urls: any[], failures: { postUrl: string; reason: string }[]): void {
+  const createdAfter = Date.now() - SCRAPE_FALLBACK_MAX_AGE_MS;
+  for (const { postUrl, reason } of failures) {
+    if (!SCRAPE_FALLBACK_CODES.has(classifyRefreshFailure(reason))) continue;
+    const postingUrl = urls.find((url) => url.postUrl === postUrl);
+    if (!postingUrl || postingUrl.metricsScrapedAt || postingUrl.submission?.status !== 'POSTED') continue;
+    if (new Date(postingUrl.createdAt).getTime() < createdAfter) continue;
+    queuePostScrape({
+      postingUrlId: postingUrl.id,
+      campaignId: postingUrl.campaignId,
+      submissionId: postingUrl.submissionId,
+    }).catch((error: Error) => console.error(`   ❌ Failed to queue scrape fallback for ${postUrl}:`, error.message));
   }
 }
 

@@ -123,6 +123,9 @@ import {
   getPostDailyTrendByUrl,
   getCampaignDailyTrends,
   getLatestCampaignPostSnapshots,
+  getPendingCampaignPostScrapes,
+  getFailedCampaignPostScrapes,
+  completeFailedCampaignPostScrape,
   triggerDailyCapture,
 } from '@controllers/postEngagementSnapshotController';
 import { isSuperAdmin, isAdmin, isBdOrSuperadmin } from '@middlewares/onlySuperadmin';
@@ -372,6 +375,15 @@ router.get(
   getLatestCampaignPostSnapshots,
 );
 
+router.get('/:campaignId/post-scrapes/pending', authenticate, checkCampaignAccess, getPendingCampaignPostScrapes);
+router.get('/:campaignId/post-scrapes/failed', authenticate, checkCampaignAccess, getFailedCampaignPostScrapes);
+router.post(
+  '/:campaignId/post-scrapes/:postingUrlId/metrics',
+  authenticate,
+  isAdmin,
+  checkCampaignAccess,
+  completeFailedCampaignPostScrape,
+);
 router.get('/:campaignId/post-engagement-snapshots/daily', authenticate, getCampaignDailyTrends);
 router.get('/:campaignId/post-engagement-snapshots/daily-by-url', authenticate, getPostDailyTrendByUrl);
 router.get('/:campaignId/post-engagement-snapshots/daily/:submissionId', authenticate, getPostDailyTrend);

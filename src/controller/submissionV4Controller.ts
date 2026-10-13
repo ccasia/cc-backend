@@ -33,6 +33,7 @@ import { sendExpoPushToUser } from '../helper/expoPush';
 import { notificationApproveDraft, notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
+import { emitPostingLinkApproved } from '@utils/postingLinkEvents';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
 import { queueMissingThumbnails } from '@services/submissionThumbnailService';
@@ -1440,6 +1441,7 @@ export const addPostingLinkToPostedSubmissionController = async (req: Request, r
 
     // Schedule URL extraction and initial insight fetch (non-blocking)
     scheduleUrlExtractionAndFetch(submissionId, result.content ?? undefined);
+    emitPostingLinkApproved({ submissionId });
 
     if (getIo()) {
       getIo().to(result.campaignId).emit('v4:posting:updated', {
@@ -1608,6 +1610,7 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
         sourceId: submissionId,
         metadata: { submissionId, campaignId: submission.campaignId },
       });
+      emitPostingLinkApproved({ submissionId });
     }
 
     // Emit socket event for real-time updates

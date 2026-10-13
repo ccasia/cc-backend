@@ -118,6 +118,29 @@ const limit = (value: string | undefined): number => {
 };
 
 /**
+ * Collect-by-URL datasets for one post, used to fill campaign analytics for
+ * creators without a connected account. Certify with
+ * `yarn certify-brightdata --post <url>`; see docs/brightdata-setup.md.
+ *
+ * Instagram views come only from the Reels discovery (`SCRAPERS.instagram.posts`).
+ * Collect-by-URL never returned them: the Posts dataset has no view field, and
+ * the Reels dataset returned `views` and `video_play_count` as null on 4 of 4
+ * Reels (measured 2026-10-12: @f1 DeXWsHfGktR, DcGhVHqKcZL, DeXP0Ytj31G;
+ * @jennierubyjane DcpYcekp94O). The discovery returned both on every Reel.
+ */
+export const POST_SCRAPERS: Record<SupportedPlatform, ScraperJob> = {
+  instagram: { datasetId: 'gd_lk5ns7kz21pck8jpis', discoverBy: null },
+  tiktok: { datasetId: 'gd_lu702nij2f790tmv9h', discoverBy: null },
+};
+
+/** Newest Reels the views lookup reads. A post is scraped at approval, so it is almost always among them. */
+export const REEL_VIEWS_LOOKUP_POSTS = 12;
+
+/** How long one post scrape is polled before it is canceled. Single posts finish far faster than discovery. */
+export const postPollTimeoutSeconds = (env: NodeJS.ProcessEnv = process.env): number =>
+  int(env.BRIGHTDATA_POST_POLL_TIMEOUT_SECONDS, 180);
+
+/**
  * Batch size, read on its own.
  *
  * The guest create path also serves the manual mode, which needs no Bright
