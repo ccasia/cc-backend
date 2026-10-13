@@ -1679,6 +1679,8 @@ model CreatorAgreement {
   version               Int?                   @default(1)
   isReceiptRequired     Boolean                @default(false)
   receiptsSubmittedAt   DateTime?
+  // Admin-entered planning budget for this creator, in the agreement's currency. Not the agreed price.
+  budgetAmount          Decimal?               @db.Decimal(12, 2)
   admin                 Admin?                 @relation("CompletedByAdmin", fields: [approvedByAdminId], references: [userId])
   campaign              Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   creditTier            CreditTier?            @relation(fields: [creditTierId], references: [id])

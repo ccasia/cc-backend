@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { bulkSendAgreements } from './agreement.service';
-import { BulkAgreementCreatorInput } from './agreement.types';
+import { bulkSendAgreements, updateAgreementBudget } from './agreement.service';
+import { AgreementError, BulkAgreementCreatorInput } from './agreement.types';
 
 // Each creator's save + send runs inline for now, so cap the batch to keep the request well
 // inside the HTTP timeout. Move the per-creator work onto a queue to lift this.
@@ -104,5 +104,29 @@ export const bulkSendAgreementsHandler = async (req: Request, res: Response) => 
   } catch (error) {
     console.error('Error in bulkSendAgreements:', error);
     return res.status(500).json({ message: 'Error sending agreements' });
+  }
+};
+
+// `budgetAmount` is a non-negative number (or numeric string); null or '' clears it.
+export const updateAgreementBudgetHandler = async (req: Request, res: Response) => {
+  const { budgetAmount } = req.body as { budgetAmount?: number | string | null };
+
+  if (budgetAmount === undefined) return res.status(400).json({ message: 'budgetAmount is required.' });
+
+  const isCleared = budgetAmount === null || budgetAmount === '';
+  const amount = isCleared ? null : Number(budgetAmount);
+
+  if (amount !== null && (!Number.isFinite(amount) || amount < 0)) {
+    return res.status(400).json({ message: 'budgetAmount must be a non-negative number.' });
+  }
+
+  try {
+    const agreement = await updateAgreementBudget(req.params.agreementId, amount);
+    return res.status(200).json({ message: isCleared ? 'Budget cleared' : 'Budget updated', agreement });
+  } catch (error) {
+    if (error instanceof AgreementError) return res.status(error.status).json({ message: error.message });
+
+    console.error('Error in updateAgreementBudget:', error);
+    return res.status(500).json({ message: 'Error updating budget' });
   }
 };
