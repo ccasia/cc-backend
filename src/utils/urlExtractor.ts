@@ -166,6 +166,9 @@ async function extractTikTokData(url: string): Promise<ExtractedUrlData> {
 
   // Check for short links (vm.tiktok.com, vt.tiktok.com)
   if (url.includes('vm.tiktok.com') || url.includes('vt.tiktok.com')) {
+    // Extract short code from URL (e.g., ZS5NQoDLq from https://vt.tiktok.com/ZS5NQoDLq/)
+    const shortCode = url.match(/(?:vm|vt)\.tiktok\.com\/([A-Za-z0-9]+)/)?.[1];
+
     try {
       console.log(`🔄 Resolving TikTok short URL: ${url}`);
       const resolved = await resolveShortUrl(url);
@@ -182,6 +185,8 @@ async function extractTikTokData(url: string): Promise<ExtractedUrlData> {
           type: 'video',
           postUrl: resolved, // Use resolved URL
           mediaId,
+          // Submission content keeps the short link; the post scraper matches it by this code
+          shortCode,
           username,
           isValid: true,
         };
@@ -190,10 +195,6 @@ async function extractTikTokData(url: string): Promise<ExtractedUrlData> {
       console.warn(`⚠️  Could not resolve short URL: ${error.message}, using as-is`);
 
       // Fallback: Store the short URL itself as valid - it can be resolved later by TikTok API
-      // Extract short code from URL (e.g., ZS5NQoDLq from https://vt.tiktok.com/ZS5NQoDLq/)
-      const shortCodeMatch = url.match(/(?:vm|vt)\.tiktok\.com\/([A-Za-z0-9]+)/);
-      const shortCode = shortCodeMatch?.[1];
-
       if (shortCode) {
         return {
           platform: 'TikTok',
