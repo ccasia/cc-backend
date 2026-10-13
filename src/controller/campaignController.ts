@@ -7337,7 +7337,7 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 
     // For the "Receipt required" toggle: whether the round has its own (STANDARD) invoice, and
     // whether its receipts are already billed — once billed, the toggle locks.
-    const [invoices, billedReceipts] = await Promise.all([
+    const [invoices, billedReceipts, outreachPitches] = await Promise.all([
       prisma.invoice.findMany({
         where: { campaignId, invoiceType: 'STANDARD' },
         select: { creatorId: true, round: true },
@@ -7347,7 +7347,16 @@ export const creatorAgreements = async (req: Request, res: Response) => {
         select: { agreementId: true },
         distinct: ['agreementId'],
       }),
+      // Outreach status lives on the creator's pitch, not the agreement. The pitch id lets the
+      // Agreements tab set it through the same endpoint as the master list.
+      prisma.pitch.findMany({
+        where: { campaignId },
+        select: { id: true, userId: true, outreachStatus: true },
+        orderBy: { createdAt: 'asc' },
+      }),
     ]);
+    // Ordered oldest first, so a creator with more than one pitch maps to the latest.
+    const pitchByUser = new Map(outreachPitches.map((pitch) => [pitch.userId, pitch]));
     const invoicedRounds = new Set(invoices.map((invoice) => `${invoice.creatorId}:${invoice.round}`));
     const billedAgreementIds = new Set(billedReceipts.map((receipt) => receipt.agreementId));
 
@@ -7356,6 +7365,8 @@ export const creatorAgreements = async (req: Request, res: Response) => {
         ...agreement,
         hasInvoice: invoicedRounds.has(`${agreement.userId}:${agreement.round}`),
         receiptsBilled: billedAgreementIds.has(agreement.id),
+        pitchId: pitchByUser.get(agreement.userId)?.id ?? null,
+        outreachStatus: pitchByUser.get(agreement.userId)?.outreachStatus ?? null,
       })),
     );
   } catch (error) {

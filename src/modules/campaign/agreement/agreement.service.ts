@@ -1242,3 +1242,17 @@ export const bulkSendAgreements = async (
 
   return results;
 };
+
+// Sets (or clears, with null) the admin's planning budget for one agreement. Planning only: it
+// doesn't touch the agreed amount, credits or the PDF.
+export const updateAgreementBudget = async (agreementId: string, budgetAmount: number | null) => {
+  const agreement = await prisma.creatorAgreement.findUnique({ where: { id: agreementId }, select: { id: true } });
+
+  if (!agreement) throw new AgreementError(404, 'Agreement not found');
+
+  return prisma.creatorAgreement.update({
+    where: { id: agreementId },
+    data: { budgetAmount },
+    select: { id: true, budgetAmount: true },
+  });
+};
