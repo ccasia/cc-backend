@@ -20,7 +20,7 @@ import {
 } from '@services/guestProfileExtraction/guestProfileExtractionService';
 import { applyExtractionToPendingPitchesSafe } from '@services/guestProfileExtraction/pendingPitchMetrics';
 import { planPostScrapes } from '@services/postMetricsScrape/planPostScrapes';
-import { scrapePostMetrics } from '@services/postMetricsScrape/postMetricsScrapeService';
+import { failInterruptedScrapes, scrapePostMetrics } from '@services/postMetricsScrape/postMetricsScrapeService';
 import { cacheDiscoveryThumbnail } from '@services/socialMediaService';
 import { enqueueExtraction, type PostScrapeJobData } from '@utils/queue';
 import { prisma } from '@/src/prisma/prisma';
@@ -76,11 +76,18 @@ worker.on('failed', (job, error) => {
   console.error(`[engagement-worker] job ${job?.id} failed:`, error?.message);
 });
 
+/** Longest a live scrape can run: the post job, then a Reels discovery, plus slack for writes. */
+const POST_SCRAPE_MAX_RUN_MS = (postPollTimeoutSeconds() + config.pollTimeoutSeconds) * 1000 + 5 * 60_000;
+
+/** Links this process is scraping, so a shutdown can mark them FAILED. */
+const activePostScrapes = new Set<string>();
+
 /** One Bright Data scrape per approved post, for creators with no connected account. */
 const postScrapeWorker = new Worker(
   'post-metrics-scrape-queue',
   async (job) => {
     const { postingUrlId, campaignId, submissionId } = job.data as PostScrapeJobData;
+    activePostScrapes.add(postingUrlId);
     const outcome = await scrapePostMetrics(postingUrlId, {
       store: prisma as never,
       gateway: deps.gateway,
@@ -88,8 +95,13 @@ const postScrapeWorker = new Worker(
       discoveryPollTimeoutMs: config.pollTimeoutSeconds * 1000,
       log: (message, context) => console.log(`[post-scrape] ${message}`, context ?? ''),
       cacheThumbnail: cacheDiscoveryThumbnail,
-    });
+    }).finally(() => activePostScrapes.delete(postingUrlId));
     console.log(`[post-scrape] ${postingUrlId}: ${outcome}`);
+    // A stalled job restarted after its worker died. Its claim belongs to that dead run.
+    if (outcome === 'SKIPPED_ALREADY_SCRAPED' && job.attemptsStarted > 1) {
+      const count = await failInterruptedScrapes(prisma as never, { ids: [postingUrlId] });
+      if (count > 0) console.error(`[post-scrape] ALERT ${postingUrlId} was interrupted; marked FAILED`);
+    }
     // 25+ 429s in 5 minutes blacklist the server IP. Stop starting jobs for a while.
     if (outcome === 'RATE_LIMITED') pausePostScrapes();
     // Read by the API's QueueEvents listener to update the campaign's analytics live.
@@ -189,13 +201,32 @@ async function reportHealth(): Promise<void> {
   }
 }
 
+/** Scrapes a killed process left RUNNING. Its BullMQ job re-runs only as SKIPPED_ALREADY_SCRAPED. */
+async function failStalePostScrapes(): Promise<void> {
+  try {
+    const claimedBefore = new Date(Date.now() - POST_SCRAPE_MAX_RUN_MS);
+    const count = await failInterruptedScrapes(prisma as never, { claimedBefore });
+    if (count > 0) console.error(`[post-scrape] ALERT marked ${count} interrupted scrape(s) FAILED`);
+  } catch (error) {
+    console.error('[post-scrape] stale scrape sweep failed:', (error as Error)?.message);
+  }
+}
+
 void reconcileNow();
+void failStalePostScrapes();
 setInterval(() => void reconcileNow(), RECONCILE_INTERVAL_MS).unref();
+setInterval(() => void failStalePostScrapes(), RECONCILE_INTERVAL_MS).unref();
 setInterval(() => void reportHealth(), HEALTH_INTERVAL_MS).unref();
 setInterval(() => void cleanupExpiredExtractions(deps), 6 * 60 * 60_000).unref();
 
 const shutdown = async (signal: string): Promise<void> => {
   console.log(`[engagement-worker] ${signal} received, closing`);
+  // A scrape can run 10 minutes, longer than any stop grace period. Its result is lost either way.
+  if (activePostScrapes.size > 0) {
+    await failInterruptedScrapes(prisma as never, { ids: [...activePostScrapes] }).catch((error: Error) =>
+      console.error('[post-scrape] could not mark interrupted scrapes FAILED:', error.message),
+    );
+  }
   await Promise.all([worker.close(), postScrapeWorker.close(), postingLinkApprovedWorker.close()]);
   process.exit(0);
 };
