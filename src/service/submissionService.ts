@@ -5,7 +5,6 @@ import { PrismaClient } from '@prisma/client';
 import { Request } from 'express';
 import { getTaskId, updateTask } from './kanbanService';
 import { saveNotification } from '@controllers/notificationController';
-import { deductCredits } from './campaignServices';
 import { createInvoiceService } from './invoiceService';
 import { prisma } from '@/src/prisma/prisma';
 
@@ -402,12 +401,7 @@ export const handleCompletedCampaign = async (submissionId: string, adminId?: st
       console.log('⚠️ Invoice amount not found, but continuing with campaign completion...');
       // Don't throw error, just log and continue with marking campaign as done
     } else {
-      console.log('💳 Processing invoice and credits...');
-
-      if (submission.campaign.campaignCredits !== null) {
-        console.log('🔄 Deducting credits...');
-        await deductCredits(submission.campaignId, submission.userId);
-      }
+      console.log('💳 Processing invoice...');
 
       const invoiceItems = await getCreatorInvoiceLists(submission.id);
       console.log('📄 Invoice items:', invoiceItems);
