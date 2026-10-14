@@ -180,6 +180,7 @@ export const createNote = async (
 
   const { note, unpinned } = await prisma.$transaction(async (tx) => {
     let unpinnedNote: NoteDto | null = null;
+
     if (pinned) {
       await lockThread(tx, campaignId, creatorId);
       unpinnedNote = await unpinCurrent(tx, campaignId, creatorId);

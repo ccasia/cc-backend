@@ -1276,22 +1276,22 @@ model VideoOfTheMonth {
 }
 
 model SubmissionPostingUrl {
-  id           String     @id @unique @default(cuid())
-  campaignId   String
-  submissionId String
-  platform     String
-  postUrl      String
-  postingDate  DateTime?
-  shortCode    String?
-  mediaId      String?
+  id                   String     @id @unique @default(cuid())
+  campaignId           String
+  submissionId         String
+  platform             String
+  postUrl              String
+  postingDate          DateTime?
+  shortCode            String?
+  mediaId              String?
   metricsScrapedAt     DateTime?
   metricsScrapeStatus  String?
   metricsScrapeFailure Json?
   thumbnailUrl         String?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  campaign     Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  campaign             Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  submission           Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@unique([submissionId, platform, postUrl])
   @@index([submissionId])
@@ -1403,15 +1403,15 @@ model ManualCreatorEntry {
 }
 
 model Video {
-  id                 String              @id @default(cuid())
+  id                 String         @id @default(cuid())
   url                String?
   thumbnailUrl       String?
   submissionId       String?
   campaignId         String?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime?           @updatedAt
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime?      @updatedAt
   userId             String?
-  status             FeedbackStatus      @default(PENDING)
+  status             FeedbackStatus @default(PENDING)
   adminId            String?
   feedback           String?
   feedbackAt         DateTime?
@@ -1420,7 +1420,8 @@ model Video {
   resubmittedFromId  String?
   feedbackDeadline   DateTime?
   feedbackSentByName String?
-  uploadSessionId    String?             @unique
+  uploadSessionId    String?        @unique
+
   feedbackRecords    Feedback[]
   submissionComments SubmissionComment[]
   admin              User?               @relation("VideoFeedback", fields: [adminId], references: [id])
