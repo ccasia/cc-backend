@@ -366,8 +366,8 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
 };
 
 /**
- * Lean list for the admin creator-submissions UI: every creator's content submissions
- * (videos, photos, raw footage) with only what the cards and viewer render. Agreement
+ * Lean list for the admin creator-submissions UI: content submissions (videos, photos, raw
+ * footage) of creators whose agreement is approved, with only what the cards and viewer render. Agreement
  * forms and feedback history are left out; the viewer reads history from the comment threads.
  */
 export const getV4CampaignOverview = async (campaignId: string) => {
@@ -378,6 +378,12 @@ export const getV4CampaignOverview = async (campaignId: string) => {
         submissionVersion: 'v4',
         campaign: { submissionVersion: 'v4' },
         submissionType: { type: { in: ['VIDEO', 'PHOTO', 'RAW_FOOTAGE'] } },
+        // Creators show up only once their agreement has been approved
+        user: {
+          submission: {
+            some: { campaignId, status: 'APPROVED', submissionType: { type: 'AGREEMENT_FORM' } },
+          },
+        },
       },
       select: {
         id: true,
