@@ -48,12 +48,12 @@ export const getReimbursementsHandler = async (req: Request, res: Response) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { role: true } });
 
-    // Creators only ever see their own receipts; admins pick the creator via userId.
+    // Creators only ever see their own receipts. Admins pass ?userId= for one creator, or leave it
+    // out for the whole campaign (Invoices tab).
     const isStaff = user?.role === 'admin' || user?.role === 'superadmin';
-    const userId = isStaff ? (req.query.userId as string | undefined) : req.userId;
-
-    if (!userId) return res.status(400).json({ message: 'userId is required' });
     if (!isStaff && user?.role !== 'creator') return res.status(403).json({ message: 'Forbidden' });
+
+    const userId = isStaff ? (req.query.userId as string | undefined) : req.userId;
 
     const rounds = await getReimbursements(campaignId, userId);
     return res.status(200).json(rounds);
