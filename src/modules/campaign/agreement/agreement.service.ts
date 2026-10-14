@@ -147,62 +147,54 @@ export const getSentNonGuestUserIds = async (campaignId: string): Promise<string
 
 // Sum credits committed across every sent round for a set of creators. Reads from
 // CreatorAgreement.creditsAssigned (not ShortListedCreator's single cached creditPerVideo) so a
-// creator with rounds on different platforms/tiers is priced correctly.
+// creator with rounds on different platforms/tiers is priced correctly. Legacy rounds saved
+// before creditsAssigned existed fall back to the round's videoCount, then to the shortlist.
 export const sumAssignedCredits = async (campaignId: string, userIds: string[]): Promise<number> => {
   if (!userIds.length) return 0;
 
-  const aggregate = await prisma.creatorAgreement.aggregate({
-    where: { campaignId, isSent: true, userId: { in: userIds } },
-    _sum: { creditsAssigned: true },
-  });
+  const [rounds, shortlisted] = await Promise.all([
+    prisma.creatorAgreement.findMany({
+      where: { campaignId, isSent: true, userId: { in: userIds } },
+      select: { userId: true, creditsAssigned: true, videoCount: true, creditPerVideo: true },
+    }),
+    prisma.shortListedCreator.findMany({
+      where: { campaignId, userId: { in: userIds } },
+      select: { userId: true, ugcVideos: true, creditPerVideo: true },
+    }),
+  ]);
+  const shortlistByUser = new Map(shortlisted.map((item) => [item.userId, item]));
 
-  return aggregate._sum.creditsAssigned ?? 0;
+  return rounds.reduce((sum, round) => {
+    if (round.creditsAssigned != null) return sum + round.creditsAssigned;
+    if (round.videoCount != null) return sum + round.videoCount * (round.creditPerVideo ?? 1);
+    const shortlist = shortlistByUser.get(round.userId);
+    return sum + (shortlist?.ugcVideos ?? 0) * (shortlist?.creditPerVideo ?? 1);
+  }, 0);
 };
 
-// Of the given users, those whose AGREEMENT_FORM submission has actually been approved.
-const getApprovedAgreementUserIds = async (campaignId: string, userIds: string[]): Promise<string[]> => {
-  if (!userIds.length) return [];
-
-  const approved = await prisma.submission.findMany({
-    where: {
-      campaignId,
-      userId: { in: userIds },
-      status: 'APPROVED',
-      submissionType: { type: 'AGREEMENT_FORM' },
-    },
-    select: { userId: true },
-    distinct: ['userId'],
+// Recomputes the campaign's credit counters from its sent agreements. Call it after anything that
+// sends, edits, withdraws or deletes an agreement, so every screen reads the same numbers.
+// Also tells open screens to refetch. Credits are committed the moment an agreement is sent,
+// for every campaign type (credit tier or not, V4 or legacy).
+export const syncCampaignCreditCounters = async (campaignId: string): Promise<number | null> => {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: { campaignCredits: true },
   });
+  if (campaign?.campaignCredits == null) return null;
 
-  return approved.map((submission) => submission.userId);
-};
-
-// Recomputes the campaign's credit totals from its sent agreements.
-//  - onlyApproved: count only creators whose agreement has been approved, not merely sent.
-//  - updateUtilized: also write creditsUtilized (V4 campaigns). Non-V4 campaigns leave it to
-//    deductCredits on posting approval and only refresh the pending side.
-export const recalculateCampaignCredits = async ({
-  campaignId,
-  campaignCredits,
-  onlyApproved,
-  updateUtilized,
-}: {
-  campaignId: string;
-  campaignCredits: number | string | { toString(): string };
-  onlyApproved: boolean;
-  updateUtilized: boolean;
-}): Promise<number> => {
-  const sentUserIds = await getSentNonGuestUserIds(campaignId);
-  const countedUserIds = onlyApproved ? await getApprovedAgreementUserIds(campaignId, sentUserIds) : sentUserIds;
-  const totalAssigned = await sumAssignedCredits(campaignId, countedUserIds);
+  const totalAssigned = await sumAssignedCredits(campaignId, await getSentNonGuestUserIds(campaignId));
 
   await prisma.campaign.update({
     where: { id: campaignId },
     data: {
-      ...(updateUtilized && { creditsUtilized: totalAssigned }),
-      creditsPending: Math.max(0, Number(campaignCredits) - totalAssigned),
+      creditsUtilized: totalAssigned,
+      creditsPending: Math.max(0, Number(campaign.campaignCredits) - totalAssigned),
     },
   });
+
+  // Open agreement tabs refetch the list and the credits summary
+  getIo().to(campaignId).emit('campaign:agreement:updated', { campaignId });
 
   return totalAssigned;
 };
@@ -640,21 +632,14 @@ export const updateAgreementAmount = async (
       const { updateV4Submissions } = require('@services/submissionV4Service');
       const result = await updateV4Submissions(creator.id, campaignId, newVideoCount);
       console.log(`✅ V4 submissions updated: ${result.deleted} deleted, ${result.created} created`);
-
-      // Recalculate campaign credits (V4: both utilized and pending)
-      if (campaign.campaignCredits != null) {
-        const totalAssigned = await recalculateCampaignCredits({
-          campaignId,
-          campaignCredits: campaign.campaignCredits,
-          onlyApproved: false,
-          updateUtilized: true,
-        });
-        console.log(`📊 Campaign credits recalculated: assigned=${totalAssigned}`);
-      }
     } catch (error) {
       console.error('Error updating V4 submissions after credits change:', error);
       // Don't fail the whole request, just log the error
     }
+  }
+
+  if (agreementIsSent && videosChanged) {
+    await syncCampaignCreditCounters(campaignId);
   }
 };
 
@@ -1068,18 +1053,7 @@ export const sendCreatorAgreement = async (
     }
   }
 
-  if (campaign.campaignCredits != null) {
-    // Only count creators whose agreement has actually been approved (AGREEMENT_FORM
-    // submission status === APPROVED) - not merely sent - for dashboard credit math.
-    // Non-v4: creditsUtilized is still only incremented by deductCredits on posting
-    // approval - only the "assigned" (pending) side is gated on agreement approval here.
-    await recalculateCampaignCredits({
-      campaignId,
-      campaignCredits: campaign.campaignCredits,
-      onlyApproved: true,
-      updateUtilized: isV4Campaign,
-    });
-  }
+  await syncCampaignCreditCounters(campaignId);
 
   if (isV4Campaign && !isGuestCreator) {
     try {
