@@ -170,14 +170,12 @@ redis.call('DEL', KEYS[1])
 return 1
 `;
 
+// Compare-and-set on the exact stored string. The new JSON is built in Node:
+// re-encoding with cjson reorders keys and turns empty arrays into objects.
 const SESSION_DRAFT_REBASE_SCRIPT = `
 local current = redis.call('GET', KEYS[1])
-if not current then return 0 end
-local ok, parsed = pcall(cjson.decode, current)
-if not ok or not parsed or parsed.savedBy ~= ARGV[1] then return 0 end
-if not parsed.draftRevision or tonumber(parsed.draftRevision) ~= tonumber(ARGV[2]) then return 0 end
-parsed.basePcrRevision = tonumber(ARGV[3])
-redis.call('SET', KEYS[1], cjson.encode(parsed), 'EX', ARGV[4])
+if not current or current ~= ARGV[1] then return 0 end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
 return 1
 `;
 
@@ -304,14 +302,18 @@ export const rebaseSessionDraft = async (
   draftRevision: number,
   basePcrRevision: number,
 ): Promise<boolean> => {
+  const key = sessionDraftKey(userId, campaignId, editorSessionId);
   try {
+    const raw = await connection.get(key);
+    const current = parseSessionDraft(raw, userId, campaignId, editorSessionId);
+    if (!raw || !current || current.draftRevision !== draftRevision) return false;
+
     const result = await connection.eval(
       SESSION_DRAFT_REBASE_SCRIPT,
       1,
-      sessionDraftKey(userId, campaignId, editorSessionId),
-      userId,
-      String(draftRevision),
-      String(basePcrRevision),
+      key,
+      raw,
+      JSON.stringify({ ...current, basePcrRevision }),
       String(DRAFT_TTL_SECONDS),
     );
 
