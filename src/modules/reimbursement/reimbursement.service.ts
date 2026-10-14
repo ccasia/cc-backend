@@ -402,21 +402,31 @@ export const deleteReceiptFiles = async (fileUrls: string[], campaignId?: string
   }
 };
 
-export const getReimbursements = async (campaignId: string, userId: string) => {
+/**
+ * Reimbursement rounds for a campaign. With `userId`: that creator's rounds (creator screens, and
+ * admins looking at one creator). Without it: every creator's rounds (admin Invoices tab).
+ */
+export const getReimbursements = async (campaignId: string, userId?: string) => {
   const [agreements, invoices] = await Promise.all([
     prisma.creatorAgreement.findMany({
-      where: { campaignId, userId },
-      orderBy: { round: 'asc' },
-      include: { reimbursementReceipts: { orderBy: { order: 'asc' } } },
+      where: { campaignId, ...(userId && { userId }) },
+      orderBy: [{ userId: 'asc' }, { round: 'asc' }],
+      include: {
+        reimbursementReceipts: { orderBy: { order: 'asc' } },
+        user: { select: { id: true, name: true, photoURL: true } },
+      },
     }),
     prisma.invoice.findMany({
-      where: { campaignId, creatorId: userId },
-      select: { id: true, round: true, invoiceType: true, status: true, invoiceNumber: true },
+      where: { campaignId, ...(userId && { creatorId: userId }) },
+      select: { id: true, round: true, creatorId: true, invoiceType: true, status: true, invoiceNumber: true },
     }),
   ]);
 
-  const findInvoice = (round: number, invoiceType: 'STANDARD' | 'REIMBURSEMENT') =>
-    invoices.find((invoice) => invoice.round === round && invoice.invoiceType === invoiceType) ?? null;
+  // Match on creator too — campaign-wide, several creators share the same round numbers
+  const findInvoice = (creatorId: string, round: number, invoiceType: 'STANDARD' | 'REIMBURSEMENT') =>
+    invoices.find(
+      (invoice) => invoice.creatorId === creatorId && invoice.round === round && invoice.invoiceType === invoiceType,
+    ) ?? null;
 
   const reviewerIds = [
     ...new Set(
@@ -434,14 +444,17 @@ export const getReimbursements = async (campaignId: string, userId: string) => {
   return agreements.map((agreement) => ({
     agreementId: agreement.id,
     round: agreement.round,
+    user: agreement.user,
+    // The creator's fee for this round (Invoices tab drawer: "Content fee")
+    agreementAmount: parseFloat(agreement.amount ?? '') || 0,
     required: agreement.isReceiptRequired,
     submittedAt: agreement.receiptsSubmittedAt,
     currency: agreement.currency || 'MYR',
     isSeeding: agreement.isSeeding,
-    invoiceId: findInvoice(agreement.round, 'STANDARD')?.id ?? null,
+    invoiceId: findInvoice(agreement.userId, agreement.round, 'STANDARD')?.id ?? null,
     // Lets the toggle warn before an existing invoice is regenerated (draft) or supplemented
-    invoice: findInvoice(agreement.round, 'STANDARD'),
-    reimbursementInvoice: findInvoice(agreement.round, 'REIMBURSEMENT'),
+    invoice: findInvoice(agreement.userId, agreement.round, 'STANDARD'),
+    reimbursementInvoice: findInvoice(agreement.userId, agreement.round, 'REIMBURSEMENT'),
     billed: isBilled(agreement),
     receipts: agreement.reimbursementReceipts.map((receipt) => ({
       ...receipt,

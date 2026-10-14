@@ -191,8 +191,9 @@ export const getAllInvoices = async (req: Request, res: Response) => {
         select: {
           id: true,
           invoiceNumber: true,
-          invoiceType: true, 
+          invoiceType: true,
           parentInvoiceId: true,
+          reimbursements: true,
           amount: true,
           status: true,
           createdAt: true,
@@ -389,8 +390,9 @@ export const getAllInvoices = async (req: Request, res: Response) => {
         select: {
           id: true,
           invoiceNumber: true,
-          invoiceType: true, 
+          invoiceType: true,
           parentInvoiceId: true,
+          reimbursements: true,
           amount: true,
           status: true,
           createdAt: true,
