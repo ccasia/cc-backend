@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { logAdminChange } from '@services/campaignServices';
 import { moveBookmarks, moveDiscoveryProfiles } from '@services/creatorDiscoveryProfileService';
 import { prisma } from '@/src/prisma/prisma';
-import { syncCampaignCredits } from '@modules/campaign/agreement/agreement.service';
+import { syncCampaignCreditCounters } from '@modules/campaign/agreement/agreement.service';
 
 type SwapUser = Prisma.UserGetPayload<{ include: { creator: true } }>;
 interface SwapUsers {
@@ -562,7 +562,7 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
     // Log admin activity
     const adminLogMessage = `Swapped guest creator ${guestUser.name} with platform creator ${platformUser.name} for campaign "${campaign.name}"`;
     logAdminChange(adminLogMessage, adminId, req);
-    await syncCampaignCredits(campaignId);
+    await syncCampaignCreditCounters(campaignId);
 
     return res.status(200).json({
       message: 'Successfully swapped guest creator with platform creator.',

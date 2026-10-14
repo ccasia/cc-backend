@@ -102,11 +102,10 @@ import {
 import { buildCreatorRatingEventId, shouldEmitCreatorRatingCompleted } from '@utils/creatorRatingReveal';
 import {
   getSentNonGuestUserIds,
-  recalculateCampaignCredits,
   resolvePlatform,
   sendCreatorAgreement,
   sumAssignedCredits,
-  syncCampaignCredits,
+  syncCampaignCreditCounters,
   updateAgreementAmount,
 } from '@modules/campaign/agreement/agreement.service';
 import { AgreementError } from '@modules/campaign/agreement/agreement.types';
@@ -6856,7 +6855,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             id: agreement.id,
           },
         });
-        await syncCampaignCredits(pitch.campaignId);
+        await syncCampaignCreditCounters(pitch.campaignId);
       }
       const message = `Rejected a pitch sent by  ${existingPitch.user.name} for campaign - ${pitch.campaign.name} `;
       logAdminChange(message, adminId, req);
@@ -7624,14 +7623,7 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
       return perCreatorResults;
     });
 
-    if (campaign.campaignCredits != null) {
-      await recalculateCampaignCredits({
-        campaignId,
-        campaignCredits: campaign.campaignCredits,
-        onlyApproved: false,
-        updateUtilized: campaign.submissionVersion === 'v4',
-      });
-    }
+    await syncCampaignCreditCounters(campaignId);
 
     for (const result of results) {
       const { title, message } = notificationAdditionalAgreement(campaign.name, {
@@ -8495,28 +8487,7 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       if (shortlistedCreator) {
         console.log(`Processing shortlisted creator: ${shortlistedCreator.id}`);
 
-        if (shortlistedCreator.ugcVideos) {
-          // Re-read inside tx to clamp without going negative. Use creditPerVideo when present
-          // so tier campaigns return the correct credit amount, not just the video count.
-          const current = await tx.campaign.findUnique({
-            where: { id: campaign.id },
-            select: { creditsUtilized: true, creditsPending: true, campaignCredits: true },
-          });
-          const perVideo = shortlistedCreator.creditPerVideo ?? 1;
-          const creditsToReturn = shortlistedCreator.ugcVideos * perVideo;
-          const newUtilized = Math.max(0, (current?.creditsUtilized ?? 0) - creditsToReturn);
-          const budget = current?.campaignCredits ?? 0;
-          const newPending = Math.min(budget, (current?.creditsPending ?? 0) + creditsToReturn);
-
-          await tx.campaign.update({
-            where: { id: campaign.id },
-            data: {
-              creditsUtilized: newUtilized,
-              creditsPending: newPending,
-            },
-          });
-          console.log(`Updated campaign credits for shortlisted creator`);
-        }
+        // Credit counters are recounted from the remaining sent agreements after the transaction.
 
         // Delete the shortlisted creator record
         await tx.shortListedCreator.delete({
@@ -8655,7 +8626,7 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       pitchId: campaign.pitch?.[0]?.id,
       action: 'remove',
     });
-    await syncCampaignCredits(campaignId);
+    await syncCampaignCreditCounters(campaignId);
 
     return res.status(200).json({ message: 'Creator has been successfully withdrawn from the campaign.' });
   } catch (error) {
@@ -12742,87 +12713,26 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 };
 
 /**
- * Syncs campaign credits based on shortlisted creators with an approved agreement.
- * This recalculates creditsUtilized based on actual data and updates creditsPending accordingly.
- *
- * Formula:
- * - creditsUtilized = sum of ugcVideos (or ugcVideos * creditPerVideo for credit-tier campaigns)
- *   for shortlisted creators (non-guest) whose AGREEMENT_FORM submission is APPROVED
- * - creditsPending = campaignCredits - creditsUtilized
+ * Recounts creditsUtilized / creditsPending from the campaign's sent agreements
+ * (see syncCampaignCreditCounters) and returns the fresh counters.
  */
 export const syncCampaignCredits = async (req: Request, res: Response) => {
   const { campaignId } = req.params;
 
   try {
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
-      include: {
-        creatorAgreement: true,
-        shortlisted: {
-          include: {
-            user: {
-              include: {
-                creator: { select: { isGuest: true } },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!campaign) {
+    const exists = await prisma.campaign.findUnique({ where: { id: campaignId }, select: { id: true } });
+    if (!exists) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    // Calculate utilized credits: sum of ugcVideos for shortlisted non-guest creators with sent agreements
-    // For credit tier campaigns, multiply ugcVideos by creditPerVideo
-    const sentAgreementUserIds = new Set(
-      campaign.creatorAgreement.filter((a) => a.isSent === true && a.userId).map((a) => a.userId as string),
-    );
+    await syncCampaignCreditCounters(campaignId);
 
-    const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
-      const isGuest = creator.user?.creator?.isGuest === true;
-      const hasAgreementSent = !!creator.userId && sentAgreementUserIds.has(creator.userId);
-
-      if (!isGuest && hasAgreementSent) {
-        const videos = creator.ugcVideos || 0;
-        // For credit tier campaigns, multiply by creditPerVideo
-        if (campaign.isCreditTier) {
-          const perVideo = creator.creditPerVideo || 1;
-          return total + videos * perVideo;
-        }
-        return total + videos;
-      }
-      return total;
-    }, 0);
-
-    // Calculate pending credits
-    const campaignCredits = campaign.campaignCredits || 0;
-    const creditsPending = Math.max(0, campaignCredits - creditsUtilized);
-
-    // Update campaign with synced credits
-    const updatedCampaign = await prisma.campaign.update({
+    const credits = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      data: {
-        creditsUtilized,
-        creditsPending,
-      },
-      select: {
-        id: true,
-        campaignCredits: true,
-        creditsUtilized: true,
-        creditsPending: true,
-      },
+      select: { id: true, campaignCredits: true, creditsUtilized: true, creditsPending: true },
     });
 
-    console.log(
-      `📊 Campaign credits synced for ${campaignId}: campaignCredits=${campaignCredits}, utilized=${creditsUtilized}, pending=${creditsPending}`,
-    );
-
-    return res.status(200).json({
-      message: 'Credits synced successfully',
-      credits: updatedCampaign,
-    });
+    return res.status(200).json({ message: 'Credits synced successfully', credits });
   } catch (error) {
     console.error('Error syncing campaign credits:', error);
     return res.status(500).json({ message: 'Error syncing credits', error: error.message });

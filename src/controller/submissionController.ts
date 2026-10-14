@@ -35,7 +35,6 @@ import {
 } from '@configs/nodemailer.config';
 import { createNewRowData } from '@services/google_sheets/sheets';
 import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
-import { deductCredits } from '@services/campaignServices';
 import { buildAgreementUploadFileName } from '@utils/submissionAgreement';
 import { getCurrentDraftVideos, normalizeVideoDraftHistory } from '@helper/draftSubmissionStatus';
 import { buildDraftVideoUploadPaths } from '@helper/draftVideoUploadName';
@@ -1909,10 +1908,6 @@ export const adminManagePosting = async (req: Request, res: Response) => {
           },
         });
 
-        if (submission.campaign.campaignCredits !== null) {
-          await deductCredits(approvedSubmission.campaignId, approvedSubmission.userId, tx as PrismaClient);
-        }
-
         if (taskInReview && doneColumnId) {
           await tx.task.update({
             where: { id: taskInReview.id },
@@ -2679,10 +2674,6 @@ export const adminManageVideos = async (req: Request, res: Response) => {
           const invoiceAmount = approveSubmission.user.creatorAgreement.find(
             (elem: any) => elem.campaignId === approveSubmission.campaign.id && elem.round === 1,
           )?.amount;
-
-          if (approveSubmission.campaign.campaignCredits !== null) {
-            await deductCredits(approveSubmission.campaignId, approveSubmission.userId, tx as PrismaClient);
-          }
 
           const invoiceItems = await getCreatorInvoiceLists(approveSubmission.id, tx as PrismaClient);
 

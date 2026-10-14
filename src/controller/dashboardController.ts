@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../prisma/prisma';
-import { syncCampaignCredits } from '@modules/campaign/agreement/agreement.service';
+import { syncCampaignCreditCounters } from '@modules/campaign/agreement/agreement.service';
 
 /**
  * Returns assigned campaign IDs for CS users.
@@ -726,7 +726,7 @@ export const deleteDashboardAgreement = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const deleted = await prisma.creatorAgreement.delete({ where: { id } });
-    await syncCampaignCredits(deleted.campaignId);
+    await syncCampaignCreditCounters(deleted.campaignId);
     return res.status(200).json({ success: true, message: 'Agreement rejected and removed' });
   } catch (error: any) {
     console.error('Error deleting agreement:', error);

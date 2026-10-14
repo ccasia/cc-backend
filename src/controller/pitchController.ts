@@ -21,7 +21,7 @@ import {
 import { clients, getIo } from '../config/socket';
 import { awardXp, onShortlisted, progressAchievement } from '@/src/modules/gamification';
 import { prisma } from '@/src/prisma/prisma';
-import { syncCampaignCredits } from '@modules/campaign/agreement/agreement.service';
+import { syncCampaignCreditCounters } from '@modules/campaign/agreement/agreement.service';
 
 const LATEST_SCRAPE_EVIDENCE = {
   guestCreatorMetricAudits: {
@@ -1237,7 +1237,7 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
       },
     });
 
-    await syncCampaignCredits(pitch.campaignId);
+    await syncCampaignCreditCounters(pitch.campaignId);
 
     // Create notification for creator
     const notification = await saveNotification({

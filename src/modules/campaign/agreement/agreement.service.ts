@@ -180,74 +180,37 @@ export const sumAssignedCredits = async (campaignId: string, userIds: string[]):
   }, 0);
 };
 
-// Of the given users, those whose AGREEMENT_FORM submission has actually been approved.
-const getApprovedAgreementUserIds = async (campaignId: string, userIds: string[]): Promise<string[]> => {
-  if (!userIds.length) return [];
-
-  const approved = await prisma.submission.findMany({
-    where: {
-      campaignId,
-      userId: { in: userIds },
-      status: 'APPROVED',
-      submissionType: { type: 'AGREEMENT_FORM' },
-    },
-    select: { userId: true },
-    distinct: ['userId'],
-  });
-
-  return approved.map((submission) => submission.userId);
-};
-
-// Recomputes the campaign's credit totals from its sent agreements.
-//  - onlyApproved: count only creators whose agreement has been approved, not merely sent.
-//  - updateUtilized: also write creditsUtilized (V4 campaigns). Non-V4 campaigns leave it to
-//    deductCredits on posting approval and only refresh the pending side.
-export const recalculateCampaignCredits = async ({
-  campaignId,
-  campaignCredits,
-  onlyApproved,
-  updateUtilized,
-}: {
-  campaignId: string;
-  campaignCredits: number | string | { toString(): string };
-  onlyApproved: boolean;
-  updateUtilized: boolean;
-}): Promise<number> => {
-  const sentUserIds = await getSentNonGuestUserIds(campaignId);
-  const countedUserIds = onlyApproved ? await getApprovedAgreementUserIds(campaignId, sentUserIds) : sentUserIds;
-  const totalAssigned = await sumAssignedCredits(campaignId, countedUserIds);
-
-  await prisma.campaign.update({
-    where: { id: campaignId },
-    data: {
-      ...(updateUtilized && { creditsUtilized: totalAssigned }),
-      creditsPending: Math.max(0, Number(campaignCredits) - totalAssigned),
-    },
-  });
-
-  getIo()?.to(campaignId).emit('campaign:credits:updated', { campaignId });
-
-  return totalAssigned;
-};
-
-// Re-syncs credit totals after agreements are removed outside the send flow (withdraw, reject, delete).
-// Best-effort: callers run it after their change is committed, so a failure here must not fail the request.
-export const syncCampaignCredits = async (campaignId: string) => {
+// Recomputes the campaign's credit counters from its sent agreements. Call it after anything that
+// sends, edits, withdraws or deletes an agreement, so every screen reads the same numbers.
+// Credits are committed the moment an agreement is sent, for every campaign type (credit tier
+// or not, V4 or legacy). Best-effort: callers run it after their change is committed, so a
+// failure here must not fail the request.
+export const syncCampaignCreditCounters = async (campaignId: string): Promise<number | null> => {
   try {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { campaignCredits: true, submissionVersion: true },
+      select: { campaignCredits: true },
     });
-    if (campaign?.campaignCredits == null) return;
+    if (campaign?.campaignCredits == null) return null;
 
-    await recalculateCampaignCredits({
-      campaignId,
-      campaignCredits: campaign.campaignCredits,
-      onlyApproved: false,
-      updateUtilized: campaign.submissionVersion === 'v4',
+    const totalAssigned = await sumAssignedCredits(campaignId, await getSentNonGuestUserIds(campaignId));
+
+    await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        creditsUtilized: totalAssigned,
+        creditsPending: Math.max(0, Number(campaign.campaignCredits) - totalAssigned),
+      },
     });
+
+    // Open screens refetch the campaign counters and the agreement list
+    getIo()?.to(campaignId).emit('campaign:credits:updated', { campaignId });
+    getIo()?.to(campaignId).emit('campaign:agreement:updated', { campaignId });
+
+    return totalAssigned;
   } catch (error) {
     console.error(`Failed to sync credits for campaign ${campaignId}:`, error);
+    return null;
   }
 };
 
@@ -677,21 +640,14 @@ export const updateAgreementAmount = async (
       const { updateV4Submissions } = require('@services/submissionV4Service');
       const result = await updateV4Submissions(creator.id, campaignId, newVideoCount);
       console.log(`✅ V4 submissions updated: ${result.deleted} deleted, ${result.created} created`);
-
-      // Recalculate campaign credits (V4: both utilized and pending)
-      if (campaign.campaignCredits != null) {
-        const totalAssigned = await recalculateCampaignCredits({
-          campaignId,
-          campaignCredits: campaign.campaignCredits,
-          onlyApproved: false,
-          updateUtilized: true,
-        });
-        console.log(`📊 Campaign credits recalculated: assigned=${totalAssigned}`);
-      }
     } catch (error) {
       console.error('Error updating V4 submissions after credits change:', error);
       // Don't fail the whole request, just log the error
     }
+  }
+
+  if (agreementIsSent && videosChanged) {
+    await syncCampaignCreditCounters(campaignId);
   }
 };
 
@@ -1105,16 +1061,7 @@ export const sendCreatorAgreement = async (
     }
   }
 
-  if (campaign.campaignCredits != null) {
-    // Count every sent agreement, matching the budget check above and the Edit Amount path.
-    // Non-v4: creditsUtilized is still only incremented by deductCredits on posting approval.
-    await recalculateCampaignCredits({
-      campaignId,
-      campaignCredits: campaign.campaignCredits,
-      onlyApproved: false,
-      updateUtilized: isV4Campaign,
-    });
-  }
+  await syncCampaignCreditCounters(campaignId);
 
   if (isV4Campaign && !isGuestCreator) {
     try {
