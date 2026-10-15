@@ -147,13 +147,12 @@ export const getSentNonGuestUserIds = async (campaignId: string): Promise<string
 
 // Sum credits committed across every sent round for a set of creators. Reads from
 // CreatorAgreement.creditsAssigned (not ShortListedCreator's single cached creditPerVideo) so a
-// creator with rounds on different platforms/tiers is priced correctly.
-// Older agreements predate creditsAssigned (null), so fall back to the round's videoCount, then to
-// the ShortListedCreator snapshot for creators with a single legacy round.
+// creator with rounds on different platforms/tiers is priced correctly. Legacy rounds saved
+// before creditsAssigned existed fall back to the round's videoCount, then to the shortlist.
 export const sumAssignedCredits = async (campaignId: string, userIds: string[]): Promise<number> => {
   if (!userIds.length) return 0;
 
-  const [agreements, shortlisted] = await Promise.all([
+  const [rounds, shortlisted] = await Promise.all([
     prisma.creatorAgreement.findMany({
       where: { campaignId, isSent: true, userId: { in: userIds } },
       select: { userId: true, creditsAssigned: true, videoCount: true, creditPerVideo: true },
@@ -163,55 +162,41 @@ export const sumAssignedCredits = async (campaignId: string, userIds: string[]):
       select: { userId: true, ugcVideos: true, creditPerVideo: true },
     }),
   ]);
+  const shortlistByUser = new Map(shortlisted.map((item) => [item.userId, item]));
 
-  const shortlistedByUser = new Map(shortlisted.map((s) => [s.userId, s]));
-  const roundsByUser = agreements.reduce<Record<string, number>>((acc, a) => {
-    acc[a.userId] = (acc[a.userId] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  return agreements.reduce((total, a) => {
-    if (a.creditsAssigned != null) return total + a.creditsAssigned;
-    if (a.videoCount != null) return total + a.videoCount * (a.creditPerVideo ?? 1);
-    if (roundsByUser[a.userId] > 1) return total;
-
-    const sc = shortlistedByUser.get(a.userId);
-    return total + (sc?.ugcVideos ?? 0) * (sc?.creditPerVideo ?? 1);
+  return rounds.reduce((sum, round) => {
+    if (round.creditsAssigned != null) return sum + round.creditsAssigned;
+    if (round.videoCount != null) return sum + round.videoCount * (round.creditPerVideo ?? 1);
+    const shortlist = shortlistByUser.get(round.userId);
+    return sum + (shortlist?.ugcVideos ?? 0) * (shortlist?.creditPerVideo ?? 1);
   }, 0);
 };
 
 // Recomputes the campaign's credit counters from its sent agreements. Call it after anything that
 // sends, edits, withdraws or deletes an agreement, so every screen reads the same numbers.
-// Credits are committed the moment an agreement is sent, for every campaign type (credit tier
-// or not, V4 or legacy). Best-effort: callers run it after their change is committed, so a
-// failure here must not fail the request.
+// Also tells open screens to refetch. Credits are committed the moment an agreement is sent,
+// for every campaign type (credit tier or not, V4 or legacy).
 export const syncCampaignCreditCounters = async (campaignId: string): Promise<number | null> => {
-  try {
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
-      select: { campaignCredits: true },
-    });
-    if (campaign?.campaignCredits == null) return null;
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: { campaignCredits: true },
+  });
+  if (campaign?.campaignCredits == null) return null;
 
-    const totalAssigned = await sumAssignedCredits(campaignId, await getSentNonGuestUserIds(campaignId));
+  const totalAssigned = await sumAssignedCredits(campaignId, await getSentNonGuestUserIds(campaignId));
 
-    await prisma.campaign.update({
-      where: { id: campaignId },
-      data: {
-        creditsUtilized: totalAssigned,
-        creditsPending: Math.max(0, Number(campaign.campaignCredits) - totalAssigned),
-      },
-    });
+  await prisma.campaign.update({
+    where: { id: campaignId },
+    data: {
+      creditsUtilized: totalAssigned,
+      creditsPending: Math.max(0, Number(campaign.campaignCredits) - totalAssigned),
+    },
+  });
 
-    // Open screens refetch the campaign counters and the agreement list
-    getIo()?.to(campaignId).emit('campaign:credits:updated', { campaignId });
-    getIo()?.to(campaignId).emit('campaign:agreement:updated', { campaignId });
+  // Open agreement tabs refetch the list and the credits summary
+  getIo().to(campaignId).emit('campaign:agreement:updated', { campaignId });
 
-    return totalAssigned;
-  } catch (error) {
-    console.error(`Failed to sync credits for campaign ${campaignId}:`, error);
-    return null;
-  }
+  return totalAssigned;
 };
 
 const getCurrencySymbol = (currencyCode: string) => {
@@ -584,6 +569,7 @@ export const updateAgreementAmount = async (
           creatorId: creator.id,
           campaignId: campaignId,
           round,
+          invoiceType: 'STANDARD',
         },
       });
 
@@ -596,12 +582,18 @@ export const updateAgreementAmount = async (
             { invoiceStatus: existingInvoice.status, invoiceNumber: existingInvoice.invoiceNumber },
           );
         }
+        // The fee changes; any reimbursement lines on the invoice stay part of the total
+        const reimbursementLines = Array.isArray(existingInvoice.reimbursements)
+          ? (existingInvoice.reimbursements as { amount?: number }[])
+          : [];
+        const reimbursementTotal = reimbursementLines.reduce((sum, line) => sum + (Number(line?.amount) || 0), 0);
+
         await prisma.invoice.update({
           where: {
             id: existingInvoice.id,
           },
           data: {
-            amount: parseFloat(String(paymentAmount)),
+            amount: parseFloat(String(paymentAmount)) + reimbursementTotal,
           },
         });
         console.log(`Updated invoice ${existingInvoice.invoiceNumber} amount from ${oldAmount} to ${newAmount}`);
@@ -1223,4 +1215,18 @@ export const bulkSendAgreements = async (
   }
 
   return results;
+};
+
+// Sets (or clears, with null) the admin's planning budget for one agreement. Planning only: it
+// doesn't touch the agreed amount, credits or the PDF.
+export const updateAgreementBudget = async (agreementId: string, budgetAmount: number | null) => {
+  const agreement = await prisma.creatorAgreement.findUnique({ where: { id: agreementId }, select: { id: true } });
+
+  if (!agreement) throw new AgreementError(404, 'Agreement not found');
+
+  return prisma.creatorAgreement.update({
+    where: { id: agreementId },
+    data: { budgetAmount },
+    select: { id: true, budgetAmount: true },
+  });
 };

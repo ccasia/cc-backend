@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient, LogisticStatus } from '@prisma/client';
 import amqplib, { ChannelModel } from 'amqplib';
 import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
+import { softDeleteCommentRecord } from '../service/submissionCommentService';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
 import { clients } from '../server';
 import { saveNotification } from './notificationController';
@@ -10,7 +11,7 @@ import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { completeLogisticService } from '@services/logisticsService';
 import { selectCurrentAgreementSubmission, selectAgreementSubmissions } from '@utils/submissionAgreement';
 import { getIo } from '../config/socket';
-import { normalizePostingLinks, joinPostingLinksToContent } from '../utils/postingLinkValidation';
+import { PostingLinkError, normalizePostingLinks, joinPostingLinksToContent } from '../utils/postingLinkValidation';
 import { scheduleUrlExtractionAndFetch } from './submissionV4Controller';
 import { awardXp, onSubmissionSubmitted } from '@/src/modules/gamification';
 import { prisma } from '@/src/prisma/prisma';
@@ -675,6 +676,10 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error updating creator posting link:', error);
 
+    if (error instanceof PostingLinkError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         return res.status(404).json({ message: error.message });
@@ -763,6 +768,7 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
             submissionComment: {
               include: {
                 replies: {
+                  where: { deletedAt: null },
                   include: {
                     user: {
                       select: {
@@ -1052,11 +1058,13 @@ export const deleteMyReply = async (req: Request, res: Response) => {
         parentId: true,
         submissionId: true,
         videoId: true,
+        deletedAt: true,
         submission: { select: { campaignId: true } },
       },
     });
 
     if (!comment) return res.status(404).json({ error: 'Comment not found' });
+    if (comment.deletedAt) return res.status(200).json({ success: true });
     if (comment.userId !== creatorId) {
       return res.status(403).json({ error: 'You can only delete your own replies' });
     }
@@ -1066,7 +1074,8 @@ export const deleteMyReply = async (req: Request, res: Response) => {
 
     const deleteCampaignId = comment.submission?.campaignId;
 
-    await prisma.submissionComment.delete({ where: { id: commentId } });
+    // Soft delete, so the admin thread shows "Message deleted" where the reply was
+    await softDeleteCommentRecord(commentId);
 
     if (deleteCampaignId && getIo()) {
       getIo().to(deleteCampaignId).emit('v4:comment:deleted', {

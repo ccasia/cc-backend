@@ -28,6 +28,7 @@ import {
   getInstagramAudienceDemographics,
 } from '@services/socialMediaService';
 import { batchRequests } from '@helper/batchRequests';
+import { getStoredPostInsight } from '@services/storedPostInsightService';
 import { onMediaKitConnected } from '@/src/modules/gamification';
 import crypto from 'crypto';
 import connection from '../config/redis';
@@ -2072,6 +2073,32 @@ function calculateCampaignComparison(
   return comparison;
 }
 
+/** Stored snapshot metrics in the media-insight shape, for posts the live API cannot read. Null when none exist. */
+async function storedInsightResponse(
+  platform: 'Instagram' | 'TikTok',
+  userId: string,
+  url: unknown,
+  campaignId: unknown,
+) {
+  if (typeof url !== 'string' || typeof campaignId !== 'string' || !campaignId) return null;
+  try {
+    const stored = await getStoredPostInsight(platform, userId, url, campaignId);
+    if (!stored) return null;
+    const { campaignInsights, ...post } = stored;
+    const campaignAverages = calculateCampaignAverages(campaignInsights);
+    return {
+      ...post,
+      campaignAverages,
+      campaignComparison: calculateCampaignComparison(post.insight, campaignAverages, campaignInsights.length),
+      campaignPostsCount: campaignInsights.length,
+      hasCampaignData: true,
+    };
+  } catch (error) {
+    console.error(`[mediaInsight] stored ${platform} fallback failed:`, (error as Error)?.message);
+    return null;
+  }
+}
+
 async function backfillPersistedInstagramThumbnails(instagramUserId: string, creatorId: string): Promise<void> {
   try {
     const existingVideos = await prisma.instagramVideo.findMany({
@@ -2233,7 +2260,8 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
   if (!url) return res.status(404).json({ message: 'Query missing: url' });
 
   if (process.env.MOCK_INSIGHTS === '1') {
-    return res.json(buildMockInsight(String(url), 'Instagram'));
+    const stored = await storedInsightResponse('Instagram', userId, url, campaignId);
+    return res.json(stored ?? buildMockInsight(String(url), 'Instagram'));
   }
 
   try {
@@ -2251,6 +2279,8 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     try {
       accessToken = await ensureValidInstagramToken(user.id);
     } catch (tokenError) {
+      const stored = await storedInsightResponse('Instagram', user.id, url, campaignId);
+      if (stored) return res.status(200).json(stored);
       console.log('ERROR', tokenError);
       return res.status(400).json({
         message: tokenError.message,
@@ -2275,6 +2305,8 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     const video = videos.find((item: any) => item?.shortcode === shortCode);
 
     if (!video) {
+      const stored = await storedInsightResponse('Instagram', user.id, url, campaignId);
+      if (stored) return res.status(200).json(stored);
       console.error('Shortcode not found:', { shortCode, url, videoCount: videos.length });
 
       return res.status(404).json({
@@ -2528,7 +2560,8 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
   if (!url) return res.status(404).json({ message: 'Query missing: url' });
 
   if (process.env.MOCK_INSIGHTS === '1') {
-    return res.json(buildMockInsight(String(url), 'TikTok'));
+    const stored = await storedInsightResponse('TikTok', userId, url, campaignId);
+    return res.json(stored ?? buildMockInsight(String(url), 'TikTok'));
   }
 
   try {
@@ -2545,6 +2578,8 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     try {
       accessToken = await ensureValidTikTokToken(user.id);
     } catch (tokenError) {
+      const stored = await storedInsightResponse('TikTok', user.id, url, campaignId);
+      if (stored) return res.status(200).json(stored);
       return res.status(400).json({
         message: tokenError.message,
         requiresReconnection: true,
@@ -2560,6 +2595,8 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
     } catch (testError) {
+      const stored = await storedInsightResponse('TikTok', user.id, url, campaignId);
+      if (stored) return res.status(200).json(stored);
       console.error('Token test failed even after refresh:', testError.response?.status, testError.response?.data);
       return res.status(400).json({
         message: 'TikTok token is invalid. Please reconnect your TikTok account.',
@@ -2586,6 +2623,8 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     const videos = videoResponse?.data?.videos;
 
     if (!videos || videos.length === 0) {
+      const stored = await storedInsightResponse('TikTok', user.id, url, campaignId);
+      if (stored) return res.status(200).json(stored);
       return res
         .status(404)
         .json({ message: `Submission posting link: ${url}. Video not found or not accessible with current creator.` });

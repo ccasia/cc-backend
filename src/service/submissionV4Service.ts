@@ -1,7 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { V4SubmissionCreateData } from '../types/submissionV4Types';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
-import { MAX_POSTING_LINKS, joinPostingLinksToContent } from '../utils/postingLinkValidation';
+import {
+  MAX_POSTING_LINKS,
+  PostingLinkError,
+  normalizePostingLink,
+  joinPostingLinksToContent,
+} from '../utils/postingLinkValidation';
 import { onSubmissionSubmitted } from '@/src/modules/gamification';
 import { prisma } from '@/src/prisma/prisma';
 
@@ -79,16 +84,31 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             email: true,
             status: true,
             photoURL: true,
+            creator: {
+              select: {
+                instagram: true,
+                tiktok: true,
+                instagramUser: { select: { username: true } },
+                tiktokUser: { select: { username: true } },
+                discoveryProfiles: { select: { platform: true, handle: true } },
+              },
+            },
+            shortlisted: {
+              where: { campaignId },
+              select: { selectedPlatform: true },
+            },
           },
         },
         video: {
           select: {
             id: true,
             url: true,
+            thumbnailUrl: true,
             status: true,
             feedback: true,
             reasons: true,
             feedbackAt: true,
+            feedbackDeadline: true,
             createdAt: true,
             adminId: true,
             resubmittedFromId: true,
@@ -123,6 +143,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
           select: {
             id: true,
             url: true,
+            thumbnailUrl: true,
             status: true,
             feedback: true,
             reasons: true,
@@ -150,6 +171,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             submissionComment: {
               include: {
                 replies: {
+                  where: { deletedAt: null },
                   include: {
                     user: {
                       select: {
@@ -229,6 +251,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             submissionComment: {
               include: {
                 replies: {
+                  where: { deletedAt: null },
                   include: {
                     user: {
                       select: {
@@ -342,6 +365,88 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
   }
 };
 
+/**
+ * Lean list for the admin creator-submissions UI: content submissions (videos, photos, raw
+ * footage) of creators whose agreement is approved, with only what the cards and viewer render. Agreement
+ * forms and feedback history are left out; the viewer reads history from the comment threads.
+ */
+export const getV4CampaignOverview = async (campaignId: string) => {
+  try {
+    return await prisma.submission.findMany({
+      where: {
+        campaignId,
+        submissionVersion: 'v4',
+        campaign: { submissionVersion: 'v4' },
+        submissionType: { type: { in: ['VIDEO', 'PHOTO', 'RAW_FOOTAGE'] } },
+        // Creators show up only once their agreement has been approved
+        user: {
+          submission: {
+            some: { campaignId, status: 'APPROVED', submissionType: { type: 'AGREEMENT_FORM' } },
+          },
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        caption: true,
+        content: true,
+        videos: true,
+        contentOrder: true,
+        submissionDate: true,
+        submissionType: { select: { type: true } },
+        campaign: { select: { id: true, name: true, campaignType: true } },
+        // Set when an admin added the posting link on the creator's behalf
+        admin: { select: { userId: true, user: { select: { name: true } } } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            photoURL: true,
+            creator: {
+              select: {
+                instagram: true,
+                tiktok: true,
+                instagramUser: { select: { username: true } },
+                tiktokUser: { select: { username: true } },
+                discoveryProfiles: { select: { platform: true, handle: true } },
+              },
+            },
+            shortlisted: {
+              where: { campaignId },
+              select: { selectedPlatform: true },
+            },
+          },
+        },
+        video: {
+          select: {
+            id: true,
+            url: true,
+            thumbnailUrl: true,
+            status: true,
+            feedback: true,
+            feedbackDeadline: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' as const },
+          take: V4_ACTIVE_VIDEO_VERSIONS_LIMIT,
+        },
+        photos: { select: { id: true, url: true, status: true, createdAt: true } },
+        rawFootages: { select: { id: true, url: true, thumbnailUrl: true, status: true, createdAt: true } },
+        feedback: {
+          where: { type: 'REQUEST', admin: { role: 'client' } },
+          select: { type: true, reasons: true, admin: { select: { role: true } } },
+          orderBy: { createdAt: 'desc' as const },
+          take: 1,
+        },
+      },
+      orderBy: [{ submissionType: { type: 'asc' } }, { contentOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+  } catch (error) {
+    console.error('Error getting v4 campaign overview:', error);
+    throw error;
+  }
+};
+
 export const updatePostingLink = async (submissionId: string, postingLinks: string[], adminId?: string) => {
   try {
     // Verify submission is approved and v4
@@ -369,7 +474,7 @@ export const updatePostingLink = async (submissionId: string, postingLinks: stri
 
     // Check if campaign type allows posting links
     if (submission.campaign?.campaignType === 'ugc') {
-      throw new Error('Posting links are not required for UGC (No posting) campaigns');
+      throw new PostingLinkError('Posting links are not required for UGC (No posting) campaigns');
     }
 
     // Check if posting link can be added based on approval status
@@ -377,7 +482,7 @@ export const updatePostingLink = async (submissionId: string, postingLinks: stri
     const videoStatus = submission.video[0]?.status || 'PENDING';
 
     if (!canAddPostingLink(submission.status, videoStatus as any)) {
-      throw new Error(
+      throw new PostingLinkError(
         `Cannot add posting link. Video must be fully approved first. Current status: ${submission.status}, Video status: ${videoStatus}`,
       );
     }
@@ -440,16 +545,16 @@ export const addPostingLinkToPostedSubmission = async (submissionId: string, new
       throw new Error(`This submission already has the maximum of ${MAX_POSTING_LINKS} posting links`);
     }
 
-    const trimmed = newLink.trim();
-
+    // Same TikTok / Instagram rules as every other posting link
+    let trimmed: string;
     try {
-      // eslint-disable-next-line no-new
-      new URL(trimmed);
-    } catch {
-      throw new Error('Invalid posting link URL');
+      trimmed = normalizePostingLink(newLink);
+    } catch (error) {
+      if (error instanceof PostingLinkError) throw new PostingLinkError(`The link ${error.message}`);
+      throw error;
     }
 
-    if (existingLinks.includes(trimmed)) {
+    if (existingLinks.includes(trimmed) || existingLinks.includes(newLink.trim())) {
       throw new Error('This posting link has already been added');
     }
 

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Entity, FeedbackStatus, Photo, PrismaClient, SubmissionStatus } from '@prisma/client';
+import { Entity, FeedbackStatus, Photo, Prisma, PrismaClient, SubmissionStatus } from '@prisma/client';
 import { uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
 import { saveNotification } from './notificationController';
 import { activeProcesses } from '../server';
@@ -44,13 +44,12 @@ import {
   handleKanbanSubmission,
   handleSubmissionNotification,
 } from '@services/submissionService';
-import { ensureValidInstagramToken, ensureValidTikTokToken } from '@controllers/socialController';
+import { findSubmissionsWithStoredMetrics } from '@services/storedPostInsightService';
 import { clients, getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
-
 
 const INSTAGRAM_POST_REGEX = /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|reel|tv)\/[A-Za-z0-9_-]+/i;
 const TIKTOK_POST_REGEX = /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[^/]+\/(?:video|photo)\/\d+/i;
@@ -823,9 +822,149 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
   }
 };
 
+const STAFF_ROLES = ['admin', 'superadmin', 'finance'];
+const COMPANY_ROLES = ['client', 'client_demo'];
+
+/** Which submissions the signed-in user may see: staff see all, clients their company, others their own. */
+async function getSubmissionScope(userId: string): Promise<Prisma.SubmissionWhereInput | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, client: { select: { companyId: true } } },
+  });
+  if (!user) return null;
+  if (STAFF_ROLES.includes(user.role)) return {};
+  if (COMPANY_ROLES.includes(user.role)) {
+    return user.client?.companyId ? { campaign: { companyId: user.client.companyId } } : null;
+  }
+  return { userId };
+}
+
+/**
+ * Token validity from stored expiry only, so the list never calls Instagram or TikTok.
+ * The report page still refreshes the token for real when it opens.
+ */
+async function readStoredTokenValidity(userIds: string[]) {
+  const creators = await prisma.creator.findMany({
+    where: { userId: { in: userIds } },
+    select: {
+      userId: true,
+      isFacebookConnected: true,
+      isTiktokConnected: true,
+      tiktokData: true,
+      instagramUser: { select: { accessToken: true, expiresIn: true } },
+    },
+  });
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  return new Map(
+    creators.map((creator) => {
+      const instagram = creator.instagramUser;
+      // An expired Instagram long-lived token cannot be refreshed
+      const instagramValid =
+        creator.isFacebookConnected &&
+        !!instagram?.accessToken &&
+        (!instagram.expiresIn || nowSeconds < instagram.expiresIn);
+
+      // An expired TikTok access token is refreshed with the refresh token
+      const tiktok = creator.tiktokData as unknown as {
+        access_token?: unknown;
+        refresh_token?: unknown;
+        expires_in?: number;
+      } | null;
+      const tiktokValid =
+        creator.isTiktokConnected &&
+        !!tiktok?.access_token &&
+        (!tiktok.expires_in || nowSeconds < tiktok.expires_in || !!tiktok.refresh_token);
+
+      return [creator.userId, { instagram: instagramValid, tiktok: tiktokValid }];
+    }),
+  );
+}
+
+/** Posted submissions for the Content Performance Report, with only the fields the table reads. */
+async function getReportSubmissions(scope: Prisma.SubmissionWhereInput) {
+  const submissions = await prisma.submission.findMany({
+    where: { ...scope, content: { not: null } },
+    select: {
+      id: true,
+      content: true,
+      updatedAt: true,
+      campaignId: true,
+      submissionPostingUrls: { select: { postingDate: true }, orderBy: { createdAt: 'asc' } },
+      video: { select: { url: true }, take: 1 },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          photoURL: true,
+          creator: {
+            select: {
+              id: true,
+              instagram: true,
+              tiktok: true,
+              isFacebookConnected: true,
+              isTiktokConnected: true,
+              creditTier: { select: { name: true, creditsPerVideo: true } },
+            },
+          },
+        },
+      },
+      campaign: {
+        select: {
+          name: true,
+          isCreditTier: true,
+          company: { select: { id: true } },
+          campaignBrief: { select: { images: true } },
+        },
+      },
+    },
+  });
+
+  const reportable = submissions
+    .map((submission) => ({ ...submission, reportPlatform: getSubmissionReportPlatform(submission.content) }))
+    .filter((submission) => submission.reportPlatform);
+
+  const [tokenValidity, storedMetricIds] = await Promise.all([
+    readStoredTokenValidity([...new Set(reportable.map((submission) => submission.user.id))]),
+    findSubmissionsWithStoredMetrics(reportable.map((submission) => submission.id)),
+  ]);
+
+  return reportable
+    .map(({ submissionPostingUrls, video, ...submission }) => {
+      const isInstagram = submission.reportPlatform === 'Instagram';
+      const validity = tokenValidity.get(submission.user.id);
+      return {
+        ...submission,
+        userId: submission.user.id,
+        // When the post went live, not when the submission row last changed
+        postingDate: submissionPostingUrls.find((url) => url.postingDate)?.postingDate ?? null,
+        video: video[0]?.url || null,
+        isInstagramConnected: submission.user.creator?.isFacebookConnected || false,
+        isTiktokConnected: submission.user.creator?.isTiktokConnected || false,
+        isInstagramTokenValid: isInstagram ? !!validity?.instagram : null,
+        isTiktokTokenValid: isInstagram ? null : !!validity?.tiktok,
+        hasStoredMetrics: storedMetricIds.has(submission.id),
+      };
+    })
+    .filter(
+      (submission) =>
+        submission.hasStoredMetrics ||
+        (submission.reportPlatform === 'Instagram' ? submission.isInstagramTokenValid : submission.isTiktokTokenValid),
+    );
+}
+
 export const getAllSubmissions = async (req: Request, res: Response) => {
   try {
+    const scope = await getSubmissionScope(req.userId as string);
+    if (!scope) return res.status(403).json({ message: 'Forbidden' });
+
     const onlyValidSocialInsights = String(req.query.onlyValidSocialInsights || '').toLowerCase() === 'true';
+    if (onlyValidSocialInsights) {
+      return res.status(200).json({ submissions: await getReportSubmissions(scope) });
+    }
+
+    // The full list feeds the staff analytics pages only
+    if (Object.keys(scope).length > 0) return res.status(403).json({ message: 'Forbidden' });
 
     const submissions = await prisma.submission.findMany({
       include: {
@@ -836,7 +975,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
         },
         feedback: {
           include: {
-            admin: true,
+            admin: { select: { id: true, name: true } },
           },
         },
         dependentOn: true,
@@ -923,11 +1062,6 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       content: submission.content || null,
       user: submission.user,
       userId: submission.user.id,
-      isInstagramConnected: submission.user.creator?.isFacebookConnected || false,
-      isTiktokConnected: submission.user.creator?.isTiktokConnected || false,
-      reportPlatform: getSubmissionReportPlatform(submission.content),
-      isInstagramTokenValid: null as boolean | null,
-      isTiktokTokenValid: null as boolean | null,
       campaign: submission.campaign,
       campaignId: submission.campaignId,
       feedback: submission.feedback,
@@ -935,91 +1069,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       approvedByAdmin: submission.admin?.user,
     }));
 
-    if (!onlyValidSocialInsights) {
-      return res.status(200).json({ submissions: formattedSubmissions });
-    }
-
-    const instagramTokenValidity = new Map<string, boolean>();
-    const tiktokTokenValidity = new Map<string, boolean>();
-
-    const instagramUserIds = new Set<string>();
-    const tiktokUserIds = new Set<string>();
-
-    formattedSubmissions.forEach((submission) => {
-      if (submission.reportPlatform === 'Instagram' && submission.isInstagramConnected) {
-        instagramUserIds.add(submission.userId);
-      }
-
-      if (submission.reportPlatform === 'TikTok' && submission.isTiktokConnected) {
-        tiktokUserIds.add(submission.userId);
-      }
-    });
-
-    await Promise.all([
-      Promise.all(
-        Array.from(instagramUserIds).map(async (userId) => {
-          try {
-            await ensureValidInstagramToken(userId);
-            instagramTokenValidity.set(userId, true);
-          } catch (error: any) {
-            instagramTokenValidity.set(userId, false);
-            console.warn('[SubmissionReports] Instagram token validation failed', {
-              userId,
-              message: error?.message,
-            });
-          }
-        }),
-      ),
-      Promise.all(
-        Array.from(tiktokUserIds).map(async (userId) => {
-          try {
-            await ensureValidTikTokToken(userId);
-            tiktokTokenValidity.set(userId, true);
-          } catch (error: any) {
-            tiktokTokenValidity.set(userId, false);
-            console.warn('[SubmissionReports] TikTok token validation failed', {
-              userId,
-              message: error?.message,
-            });
-          }
-        }),
-      ),
-    ]);
-
-    const submissionsWithTokenStatus = formattedSubmissions.map((submission) => {
-      let isInstagramTokenValid: boolean | null = null;
-      let isTiktokTokenValid: boolean | null = null;
-
-      if (submission.reportPlatform === 'Instagram') {
-        isInstagramTokenValid = submission.isInstagramConnected
-          ? instagramTokenValidity.get(submission.userId) || false
-          : false;
-      }
-
-      if (submission.reportPlatform === 'TikTok') {
-        isTiktokTokenValid = submission.isTiktokConnected ? tiktokTokenValidity.get(submission.userId) || false : false;
-      }
-
-      return {
-        ...submission,
-        isInstagramTokenValid,
-        isTiktokTokenValid,
-      };
-    });
-
-    const validSubmissions = submissionsWithTokenStatus.filter((submission) => {
-      if (submission.reportPlatform === 'Instagram') {
-        return submission.isInstagramConnected && submission.isInstagramTokenValid;
-      }
-
-      if (submission.reportPlatform === 'TikTok') {
-        return submission.isTiktokConnected && submission.isTiktokTokenValid;
-      }
-
-      return true;
-    });
-
-    return res.status(200).json({ submissions: validSubmissions });
+    return res.status(200).json({ submissions: formattedSubmissions });
   } catch (error) {
     return res.status(500).json({ message: 'Failed to retrieve submissions', error });
   }

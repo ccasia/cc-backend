@@ -111,6 +111,7 @@ import {
 import { AgreementError } from '@modules/campaign/agreement/agreement.types';
 import { clients, getIo } from '../config/socket';
 import { awardXp, onPitchSubmitted, onShortlisted, progressAchievement } from '@/src/modules/gamification';
+import { deleteCreatorReceipts, deleteReceiptFiles } from '@/src/modules/reimbursement/reimbursement.service';
 import {
   CampaignCreationDraftLockedError,
   CampaignCreationDraftConflictError,
@@ -7338,7 +7339,40 @@ export const creatorAgreements = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json(agreements);
+    // For the "Receipt required" toggle: whether the round has its own (STANDARD) invoice, and
+    // whether its receipts are already billed — once billed, the toggle locks.
+    const [invoices, billedReceipts, outreachPitches] = await Promise.all([
+      prisma.invoice.findMany({
+        where: { campaignId, invoiceType: 'STANDARD' },
+        select: { creatorId: true, round: true },
+      }),
+      prisma.reimbursementReceipt.findMany({
+        where: { campaignId, invoiceId: { not: null } },
+        select: { agreementId: true },
+        distinct: ['agreementId'],
+      }),
+      // Outreach status lives on the creator's pitch, not the agreement. The pitch id lets the
+      // Agreements tab set it through the same endpoint as the master list.
+      prisma.pitch.findMany({
+        where: { campaignId },
+        select: { id: true, userId: true, outreachStatus: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+    // Ordered oldest first, so a creator with more than one pitch maps to the latest.
+    const pitchByUser = new Map(outreachPitches.map((pitch) => [pitch.userId, pitch]));
+    const invoicedRounds = new Set(invoices.map((invoice) => `${invoice.creatorId}:${invoice.round}`));
+    const billedAgreementIds = new Set(billedReceipts.map((receipt) => receipt.agreementId));
+
+    return res.status(200).json(
+      agreements.map((agreement) => ({
+        ...agreement,
+        hasInvoice: invoicedRounds.has(`${agreement.userId}:${agreement.round}`),
+        receiptsBilled: billedAgreementIds.has(agreement.id),
+        pitchId: pitchByUser.get(agreement.userId)?.id ?? null,
+        outreachStatus: pitchByUser.get(agreement.userId)?.outreachStatus ?? null,
+      })),
+    );
   } catch (error) {
     console.error('Error fetching/creating agreements:', error);
     return res.status(400).json(error);
@@ -8472,6 +8506,9 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
     console.log(`Found campaign: ${campaign.name}, thread ID: ${threadId}`);
     console.log(`Creator has ${campaign.pitch?.length || 0} pitches for this campaign`);
 
+    // Receipt files are deleted only after the transaction commits (see below)
+    let receiptFileUrls: string[] = [];
+
     await prisma.$transaction(async (tx) => {
       // First check if creator is shortlisted
       const shortlistedCreator = await tx.shortListedCreator.findFirst({
@@ -8568,6 +8605,9 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
         }
       }
 
+      // Withdraw reimbursement receipts before their agreement rounds go (rolls back with the tx)
+      receiptFileUrls = await deleteCreatorReceipts(campaign.id, user.id, tx);
+
       // Delete all agreement rounds for this creator on this campaign, if any exist
       try {
         await tx.creatorAgreement.deleteMany({
@@ -8599,6 +8639,11 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       // their pitches in other campaigns all hang off this User and Creator.
       // Only this campaign's records are removed above, as for any creator.
     });
+
+    await syncCampaignCreditCounters(campaign.id);
+
+    // Transaction committed — safe to drop the receipt files from storage now
+    await deleteReceiptFiles(receiptFileUrls, campaign.id, user.id);
 
     const adminLogMessage = `Withdrew Creator "${user.name}" From - ${campaign.name} `;
     logAdminChange(adminLogMessage, adminId, req);

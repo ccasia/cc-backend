@@ -44,6 +44,7 @@ import { xeroWebhookQueue } from '@utils/queue';
 
 import { users } from '@utils/activeUsers';
 import { mobileRouter } from '@routes/mobile';
+import { canAccessCampaignNotes, notesRoom } from '@modules/creator-note/creator-note.service';
 
 import jwt from 'jsonwebtoken';
 import { QueueEvents } from 'bullmq';
@@ -103,27 +104,30 @@ app.disable('x-powered-by');
 
 app.set('trust proxy', true);
 
-app.use(
-  session({
-    name: 'sid',
-    secret: process.env.SESSION_SECRET!,
-    resave: false,
-    saveUninitialized: false,
-    proxy: process.env.NODE_ENV === 'production',
+const sessionMiddleware = session({
+  name: 'sid',
+  secret: process.env.SESSION_SECRET!,
+  resave: false,
+  saveUninitialized: false,
+  proxy: process.env.NODE_ENV === 'production',
 
-    cookie: {
-      secure: process.env.CROSS_SITE_COOKIES === 'true' || process.env.NODE_ENV === 'production',
-      sameSite: process.env.CROSS_SITE_COOKIES === 'true' ? 'none' : 'lax',
-      maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
-      httpOnly: true,
-    },
-    store: new PrismaSessionStore(prisma, {
-      checkPeriod: 2 * 60 * 1000,
-      dbRecordIdIsSessionId: true,
-      dbRecordIdFunction: undefined,
-    }),
+  cookie: {
+    secure: process.env.CROSS_SITE_COOKIES === 'true' || process.env.NODE_ENV === 'production',
+    sameSite: process.env.CROSS_SITE_COOKIES === 'true' ? 'none' : 'lax',
+    maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
+    httpOnly: true,
+  },
+  store: new PrismaSessionStore(prisma, {
+    checkPeriod: 2 * 60 * 1000,
+    dbRecordIdIsSessionId: true,
+    dbRecordIdFunction: undefined,
   }),
-);
+});
+
+app.use(sessionMiddleware);
+// Socket handshakes carry the same `sid` cookie; load the session so web
+// (cookie-auth) sockets get an identity in the io.use auth middleware below.
+io.engine.use(sessionMiddleware);
 
 app.use(passport.initialize());
 app.use(passport.session());
@@ -277,6 +281,24 @@ io.use(async (socket: Socket, next) => {
     const token = socket.handshake.auth?.token as string | undefined;
 
     if (!token) {
+      // Web clients use cookie sessions, which sessionMiddleware loads onto the
+      // handshake request. No session means an anonymous socket, as before.
+      // A failed lookup leaves the socket anonymous rather than rejecting it.
+      const sessionUserId = (socket.request as Request).session?.userid as string | undefined;
+
+      if (sessionUserId) {
+        try {
+          const sessionUser = await prisma.user.findUnique({
+            where: { id: sessionUserId },
+            select: { id: true, status: true },
+          });
+
+          if (sessionUser && sessionUser.status !== 'deleted') socket.data.userId = sessionUser.id;
+        } catch (error) {
+          console.error('Error resolving socket session user:', error);
+        }
+      }
+
       return next();
     }
 
@@ -329,6 +351,23 @@ io.on('connection', (socket) => {
 
   socket.on('leave-campaign', (campaignId: string) => {
     if (campaignId) socket.leave(campaignId);
+  });
+
+  // Admin-only creator notes room. The plain campaign room above is joined by
+  // clients too, so notes are never emitted there. Unauthorised joins are ignored.
+  socket.on('join-campaign-notes', async (campaignId: string) => {
+    const userId = socket.data.userId as string | undefined;
+    if (!userId || typeof campaignId !== 'string' || !campaignId) return;
+
+    try {
+      if (await canAccessCampaignNotes(userId, campaignId)) socket.join(notesRoom(campaignId));
+    } catch (error) {
+      console.error('Error joining creator notes room:', error);
+    }
+  });
+
+  socket.on('leave-campaign-notes', (campaignId: string) => {
+    if (typeof campaignId === 'string' && campaignId) socket.leave(notesRoom(campaignId));
   });
 
   socket.on('cancel-processing', (data) => {

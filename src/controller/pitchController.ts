@@ -20,6 +20,7 @@ import {
 } from '@utils/campaignMembershipEvents';
 import { clients, getIo } from '../config/socket';
 import { awardXp, onShortlisted, progressAchievement } from '@/src/modules/gamification';
+import { deleteCreatorReceipts, deleteReceiptFiles } from '@/src/modules/reimbursement/reimbursement.service';
 import { prisma } from '@/src/prisma/prisma';
 import { syncCampaignCreditCounters } from '@modules/campaign/agreement/agreement.service';
 
@@ -1214,6 +1215,9 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
       },
     });
 
+    // Withdraw any reimbursement receipts (before their agreements go); files are removed below
+    const receiptFileUrls = await deleteCreatorReceipts(pitch.campaignId, pitch.userId);
+
     // Delete any existing creator agreement for this campaign
     await prisma.creatorAgreement.deleteMany({
       where: {
@@ -1237,7 +1241,11 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
       },
     });
 
+    // The withdrawn creator's sent agreements no longer use credits
     await syncCampaignCreditCounters(pitch.campaignId);
+
+    // All DB deletes done — now drop the receipt files from storage
+    await deleteReceiptFiles(receiptFileUrls, pitch.campaignId, pitch.userId);
 
     // Create notification for creator
     const notification = await saveNotification({

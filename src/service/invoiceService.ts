@@ -1,4 +1,4 @@
-import { Event, PrismaClient, InvoiceStatus, Invoice, Prisma } from '@prisma/client';
+import { Event, PrismaClient, InvoiceStatus, Invoice, InvoiceType, Prisma } from '@prisma/client';
 import dayjs from 'dayjs';
 import { accessGoogleSheetAPI } from './google_sheets/sheets';
 
@@ -73,14 +73,27 @@ export async function generateUniqueInvoiceNumber() {
   throw new Error('Failed to generate a unique invoice number');
 }
 
+export type InvoiceReimbursementLine = {
+  receiptId: string;
+  order: number;
+  description: string;
+  amount: number;
+  currency: string;
+  fileUrl: string;
+};
+
 export const createInvoiceService = async (
   data: any,
   userId: any,
   amount: any,
   invoiceItems?: { type: string; count: number }[],
-  tx?: PrismaClient,
+  tx?: PrismaClient | Prisma.TransactionClient,
   adminId?: string,
+  reimbursements?: InvoiceReimbursementLine[],
+  options?: { invoiceType?: InvoiceType; parentInvoiceId?: string },
 ) => {
+  const isReimbursementInvoice = options?.invoiceType === 'REIMBURSEMENT';
+
   const invoiceTo = {
     id: '1',
     name: 'Cult Creative',
@@ -93,14 +106,24 @@ export const createInvoiceService = async (
   };
 
   // get item from aggremant form
-  const item = {
-    title: 'Posting on social media',
-    description: 'Posting on social media',
-    service: 'Posting on social media',
-    quantity: 1,
-    price: amount,
-    total: amount,
-  };
+  const item = isReimbursementInvoice
+    ? // A reimbursement invoice has no fee line; its receipts are the only billed lines
+      {
+        title: 'Reimbursement',
+        description: 'Reimbursement',
+        service: 'Reimbursement',
+        quantity: 1,
+        price: 0,
+        total: 0,
+      }
+    : {
+        title: 'Posting on social media',
+        description: 'Posting on social media',
+        service: 'Posting on social media',
+        quantity: 1,
+        price: amount,
+        total: amount,
+      };
 
   const invoiceFrom = {
     id: data.user.id,
@@ -112,6 +135,8 @@ export const createInvoiceService = async (
     addressType: 'Home',
     primary: false,
   };
+
+  const reimbursementTotal = (reimbursements ?? []).reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
 
   const bankInfo = {
     bankName: data.user.paymentForm.bankName,
@@ -139,7 +164,10 @@ export const createInvoiceService = async (
               invoiceFrom: invoiceFrom,
               invoiceTo,
               task: item,
-              amount: parseFloat(amount) || 0,
+              // Total = agreement fee + every approved reimbursement line
+              amount: (isReimbursementInvoice ? 0 : parseFloat(amount) || 0) + reimbursementTotal,
+              ...(options?.invoiceType && { invoiceType: options.invoiceType }),
+              ...(options?.parentInvoiceId && { parentInvoiceId: options.parentInvoiceId }),
               round: data.round ?? 1,
               bankAcc: bankInfo,
               user: {
@@ -155,6 +183,9 @@ export const createInvoiceService = async (
               ...(invoiceItems?.length && {
                 deliverables: invoiceItems,
               }),
+              ...(reimbursements?.length && {
+                reimbursements: reimbursements as unknown as Prisma.InputJsonValue,
+              }),
             },
           },
         },
@@ -163,7 +194,10 @@ export const createInvoiceService = async (
         },
       });
 
-      const createdInvoice = invoice.find((item) => item.creatorId === data.user.id);
+      // Match on the number we just generated — a creator can hold one invoice per round
+      const createdInvoice =
+        invoice.find((item) => item.invoiceNumber === invoiceNumber) ??
+        invoice.find((item) => item.creatorId === data.user.id);
 
       // Log invoice generation in campaign logs for Invoice Actions tab
       if (createdInvoice && data.campaignId && adminId) {
@@ -577,7 +611,9 @@ export const createXeroInvoiceLocal = async (
     const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
       accountID: accounts.body.accounts[0].accountID,
       accountCode: '50930',
-      description: `${clientName} ${campaignName}`,
+      description: item.xeroDescription
+        ? `${clientName} ${campaignName} – ${item.xeroDescription}`
+        : `${clientName} ${campaignName}`,
       quantity: item.quantity,
       unitAmount: item.total,
       taxType: 'NONE',

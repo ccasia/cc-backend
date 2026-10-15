@@ -54,9 +54,9 @@ const processVideo = async (
         '-pix_fmt yuv420p',
         '-preset ultrafast',
         '-map 0:v:0',
-        '-map 0:v:0',
         '-map 0:a:0?',
         '-threads 4',
+        '-movflags +faststart',
       ])
       .save(outputPath)
       .on('progress', (progress) => {

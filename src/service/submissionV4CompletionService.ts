@@ -265,6 +265,23 @@ export const checkV4SubmissionCompletion = async (
  * Handle V4 campaign completion - mark as done and generate invoice
  * This should be called whenever a V4 submission status changes to a potentially completing status
  */
+/**
+ * A round is reimbursement-ready when it doesn't require receipts, or the creator has
+ * submitted at least one receipt and every one of them is approved.
+ */
+export const isReimbursementReady = (agreement: {
+  isReceiptRequired: boolean;
+  receiptsSubmittedAt: Date | null;
+  reimbursementReceipts: { status: string }[];
+}): boolean => {
+  if (!agreement.isReceiptRequired) return true;
+  if (!agreement.receiptsSubmittedAt) return false;
+
+  const receipts = agreement.reimbursementReceipts;
+
+  return receipts.length > 0 && receipts.every((receipt) => receipt.status === 'APPROVED');
+};
+
 export const handleV4CompletedCampaign = async (
   campaignId: string,
   userId: string,
@@ -297,6 +314,7 @@ export const handleV4CompletedCampaign = async (
             paymentForm: true,
             creatorAgreement: {
               where: { campaignId, round: targetRound },
+              include: { reimbursementReceipts: { orderBy: { order: 'asc' } } },
             },
           },
         },
@@ -320,7 +338,7 @@ export const handleV4CompletedCampaign = async (
 
     // Check if this round was already invoiced, to prevent duplicates (not the blanket
     const existingInvoice = await prisma.invoice.findFirst({
-      where: { campaignId, creatorId: userId, round: targetRound },
+      where: { campaignId, creatorId: userId, round: targetRound, invoiceType: 'STANDARD' },
       select: { id: true },
     });
 
@@ -334,6 +352,17 @@ export const handleV4CompletedCampaign = async (
     if (!creatorAgreement) {
       throw new Error('Creator agreement not found');
     }
+
+    // Receipt-required rounds hold the whole completion (invoice included) until every
+    // submitted receipt is approved — the fee and reimbursements go out on one invoice.
+    if (!isReimbursementReady(creatorAgreement)) {
+      console.log(`⏳ Round ${targetRound} waiting for reimbursement receipts to be approved`);
+      return false;
+    }
+
+    const approvedReceipts = creatorAgreement.isReceiptRequired
+      ? creatorAgreement.reimbursementReceipts.filter((receipt) => receipt.status === 'APPROVED')
+      : [];
 
     let invoice: any;
 
@@ -351,7 +380,22 @@ export const handleV4CompletedCampaign = async (
         undefined, // invoiceItems - V4 doesn't use detailed items
         undefined, // tx - not in transaction
         adminId,
+        approvedReceipts.map((receipt) => ({
+          receiptId: receipt.id,
+          order: receipt.order,
+          description: receipt.description,
+          amount: receipt.amount,
+          currency: receipt.currency,
+          fileUrl: receipt.fileUrl,
+        })),
       );
+
+      if (invoice?.id && approvedReceipts.length) {
+        await prisma.reimbursementReceipt.updateMany({
+          where: { id: { in: approvedReceipts.map((receipt) => receipt.id) } },
+          data: { invoiceId: invoice.id },
+        });
+      }
 
       getIo().to(campaignId).emit('v4:invoice:generated', {
         campaignId,

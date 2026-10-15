@@ -32,7 +32,7 @@ import {
 const router = Router();
 
 router.get('/', authenticate, getSubmissionByCampaignCreatorId);
-router.get('/getAllsubmission', getAllSubmissions);
+router.get('/getAllsubmission', authenticate, getAllSubmissions);
 router.get('/deliverables/:userId/:campaignId', authenticate, getDeliverables);
 
 router.post('/submitAgreement', authenticate, agreementSubmission);

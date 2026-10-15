@@ -383,6 +383,34 @@ async function runScrape(postingUrlId: string, deps: PostScrapeDeps, note: Failu
   return 'SCRAPED';
 }
 
+/**
+ * A scrape whose worker died stays RUNNING forever: the claim blocks every
+ * retry, so analytics shimmers and then shows nothing. Mark it FAILED so an
+ * admin can enter the numbers. Never re-scraped here: its jobs may be billed.
+ *
+ * `ids` targets this process's own scrapes on shutdown. `claimedBefore` finds
+ * scrapes older than any live run, left by a process that was killed.
+ */
+export async function failInterruptedScrapes(
+  store: Pick<PostScrapeStore, 'submissionPostingUrl'>,
+  filter: { ids: string[] } | { claimedBefore: Date },
+  now: Date = new Date(),
+): Promise<number> {
+  const failure: ScrapeFailure = {
+    code: 'ERROR',
+    message: 'The worker stopped during this scrape, so its result was lost.',
+    jobIds: [],
+    partial: null,
+    at: now.toISOString(),
+  };
+  const target = 'ids' in filter ? { id: { in: filter.ids } } : { metricsScrapedAt: { lt: filter.claimedBefore } };
+  const { count } = await store.submissionPostingUrl.updateMany({
+    where: { ...target, metricsScrapeStatus: 'RUNNING' },
+    data: { metricsScrapeStatus: 'FAILED', metricsScrapeFailure: failure },
+  });
+  return count;
+}
+
 export type ManualMetricsInput = Partial<Record<keyof PostMetrics, number>>;
 
 export type ManualCompletionResult =

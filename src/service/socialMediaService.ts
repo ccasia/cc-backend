@@ -3,9 +3,14 @@ import { encryptToken } from '@helper/encrypt';
 import axios from 'axios';
 import crypto from 'crypto';
 import dayjs from 'dayjs';
+import https from 'https';
 import path from 'path';
 
 const INSTAGRAM_THUMBNAIL_FOLDER = 'instagram-thumbnails';
+
+// Node tries IPv6 and IPv4 for only 250ms each. A far CDN edge (Bright Data hands
+// out US hosts) can take longer to connect, so both fail with an empty ETIMEDOUT.
+const thumbnailAgent = new https.Agent({ autoSelectFamilyAttemptTimeout: 2000 });
 
 const getUrlExtension = (url?: string): string => {
   if (!url) return '.jpg';
@@ -35,6 +40,7 @@ const uploadInstagramThumbnailFromUrl = async (sourceUrl: string, destination: s
     const response = await axios.get(sourceUrl, {
       responseType: 'arraybuffer',
       timeout: 10000,
+      httpsAgent: thumbnailAgent,
     });
 
     const contentType = response.headers?.['content-type'] || 'image/jpeg';
@@ -68,6 +74,7 @@ const uploadInstagramThumbnailFromUrl = async (sourceUrl: string, destination: s
       sourceUrl,
       destination,
       message: error?.message,
+      code: error?.code,
       status: error?.response?.status,
     });
     return null;
