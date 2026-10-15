@@ -1092,6 +1092,9 @@ model Pitch {
   /// Why that run gave no metrics, e.g. INSUFFICIENT_DATA. While set, an admin
   /// may enter Followers and ER by hand.
   metricsFailureCode        String?
+  /// When the pitch last moved to SENT_TO_CLIENT / AWAITING_APPROVAL. Set by the
+  /// "Pitch_set_sent_to_client_at" DB trigger, not app code. Null on older rows.
+  sentToClientAt            DateTime?
   approvalRequestCreators   ApprovalRequestCreator[]
   guestCreatorMetricAudits  GuestCreatorMetricAudit[]
   Notification              Notification[]

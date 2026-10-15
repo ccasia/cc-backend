@@ -35,12 +35,13 @@ const clientCampaignWhere = (userId: string, clientId: string): Prisma.CampaignW
 const countBy = <T>(items: T[], key: (item: T) => string) =>
   items.reduce((map, item) => map.set(key(item), (map.get(key(item)) ?? 0) + 1), new Map<string, number>());
 
-const getCompanyCredits = async (companyId: string | null) => {
-  if (!companyId) return { packageName: null, validUntil: null, total: 0 };
+const getCompanyCredits = async (companyId: string | null): Promise<ClientHomeCredits> => {
+  if (!companyId) return { packageName: null, validUntil: null, total: 0, assigned: 0, used: 0 };
 
   const subscriptions = await prisma.subscription.findMany({
     where: { companyId, status: 'ACTIVE' },
     select: {
+      id: true,
       totalCredits: true,
       creditsUsed: true,
       expiredAt: true,
@@ -54,10 +55,19 @@ const getCompanyCredits = async (companyId: string | null) => {
   const tracking = subscriptions.find((sub) => (sub.totalCredits || 0) > sub.creditsUsed) ?? null;
   const named = tracking ?? subscriptions[0];
 
+  // Every campaign funded by these packages, not just the ones this client user can see,
+  // so total - assigned is what's actually left on the packages.
+  const funded = await prisma.campaign.aggregate({
+    where: { subscriptionId: { in: subscriptions.map((sub) => sub.id) } },
+    _sum: { campaignCredits: true, creditsUtilized: true },
+  });
+
   return {
     packageName: named ? (named.package?.name ?? named.customPackage?.customName ?? null) : null,
     validUntil: tracking?.expiredAt ?? null,
     total: subscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0),
+    assigned: funded._sum.campaignCredits ?? 0,
+    used: funded._sum.creditsUtilized ?? 0,
   };
 };
 
@@ -112,7 +122,7 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
     }),
     prisma.pitch.findMany({
       where: { campaignId: { in: campaignIds }, status: { in: SHORTLIST_PITCH_STATUSES } },
-      select: { campaignId: true, status: true, createdAt: true },
+      select: { campaignId: true, status: true, createdAt: true, sentToClientAt: true },
     }),
     prisma.submissionType.findMany({ select: { id: true, type: true } }),
     prisma.submission.groupBy({
@@ -191,7 +201,7 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
   const taskCampaignIds = campaigns.filter((c) => !CLOSED_STATUSES.includes(c.status)).map((c) => c.id);
 
   for (const campaignId of taskCampaignIds) {
-    // Pitches have no "sent to client" timestamp, so createdAt is the closest available.
+    // sentToClientAt is set by a DB trigger; rows from before it existed fall back to createdAt.
     const waiting = pitches.filter((p) => p.campaignId === campaignId && WAITING_ON_CLIENT.includes(p.status!));
     if (waiting.length) {
       tasks.push(
@@ -201,7 +211,7 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
           title: 'Confirm your creator shortlist',
           detail: `${plural(waiting.length, 'creator')} proposed`,
           count: waiting.length,
-          sentAt: earliest(waiting.map((p) => p.createdAt)),
+          sentAt: earliest(waiting.map((p) => p.sentToClientAt ?? p.createdAt)),
         }),
       );
     }
@@ -222,15 +232,9 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
     }
   }
 
-  const credits: ClientHomeCredits = {
-    ...companyCredits,
-    assigned: campaigns.reduce((sum, c) => sum + (c.campaignCredits ?? 0), 0),
-    used: campaigns.reduce((sum, c) => sum + (c.creditsUtilized ?? 0), 0),
-  };
-
   return {
     greetingName: user.name?.trim().split(/\s+/)[0] || null,
-    credits,
+    credits: companyCredits,
     campaigns: homeCampaigns,
     tasks,
   };
