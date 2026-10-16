@@ -3,6 +3,7 @@ import { QueueEvents } from 'bullmq';
 import connection from '@configs/redis';
 import { getIo } from '@configs/socket';
 import { enqueuePostingLinkApproved, postMetricsScrapeQueue } from '@utils/queue';
+import { isPrimaryInstance } from '@utils/instance';
 import {
   POSTING_LINK_APPROVED_EVENT,
   postingLinkEvents,
@@ -54,25 +55,29 @@ const emitToCampaign = (event: string, payload: ScrapeJobResult): void => {
   }
 };
 
-const planEvents = new QueueEvents('posting-link-approved-queue', { connection });
-const scrapeEvents = new QueueEvents('post-metrics-scrape-queue', { connection });
+// Every API copy would receive these queue events, so only the primary copy relays them.
+// The approval handler above stays on every copy: the approving request can land on any of them.
+if (isPrimaryInstance) {
+  const planEvents = new QueueEvents('posting-link-approved-queue', { connection });
+  const scrapeEvents = new QueueEvents('post-metrics-scrape-queue', { connection });
 
-planEvents.on('completed', ({ returnvalue }) => {
-  const result = readResult(returnvalue);
-  if (result.queued) emitToCampaign(POST_SCRAPE_QUEUED_EVENT, result);
-});
+  planEvents.on('completed', ({ returnvalue }) => {
+    const result = readResult(returnvalue);
+    if (result.queued) emitToCampaign(POST_SCRAPE_QUEUED_EVENT, result);
+  });
 
-scrapeEvents.on('completed', ({ returnvalue }) => {
-  const { campaignId, submissionId, outcome } = readResult(returnvalue);
-  emitToCampaign(POST_SCRAPE_FINISHED_EVENT, { campaignId, submissionId, outcome });
-});
+  scrapeEvents.on('completed', ({ returnvalue }) => {
+    const { campaignId, submissionId, outcome } = readResult(returnvalue);
+    emitToCampaign(POST_SCRAPE_FINISHED_EVENT, { campaignId, submissionId, outcome });
+  });
 
-scrapeEvents.on('failed', async ({ jobId }) => {
-  try {
-    const job = await postMetricsScrapeQueue.getJob(jobId);
-    const { campaignId, submissionId } = (job?.data ?? {}) as ScrapeJobResult;
-    emitToCampaign(POST_SCRAPE_FINISHED_EVENT, { campaignId, submissionId, outcome: 'FAILED' });
-  } catch (error) {
-    console.error(`❌ Could not report failed post scrape ${jobId}:`, (error as Error).message);
-  }
-});
+  scrapeEvents.on('failed', async ({ jobId }) => {
+    try {
+      const job = await postMetricsScrapeQueue.getJob(jobId);
+      const { campaignId, submissionId } = (job?.data ?? {}) as ScrapeJobResult;
+      emitToCampaign(POST_SCRAPE_FINISHED_EVENT, { campaignId, submissionId, outcome: 'FAILED' });
+    } catch (error) {
+      console.error(`❌ Could not report failed post scrape ${jobId}:`, (error as Error).message);
+    }
+  });
+}

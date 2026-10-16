@@ -13,7 +13,7 @@ import { ProgressUpdate, runFfmpegCompression } from '../lib/ffmpeg';
 const worker = new Worker(
   'compression-queue',
   async (job) => {
-    const { uploadSessionId, rawObjectPath, submissionId, videoId } = job.data as {
+    const { uploadSessionId, rawObjectPath, submissionId, videoId, campaignId } = job.data as {
       uploadSessionId: string;
       rawObjectPath: string;
       userId: string;
@@ -44,6 +44,7 @@ const worker = new Worker(
           submissionId,
           progress: progress.percent,
           uploadSessionId,
+          campaignId,
           etaSeconds: progress.etaSeconds,
         });
       });
@@ -88,7 +89,14 @@ const worker = new Worker(
       // });
 
       // return uploadSessionId;
-      return { uploadSessionId, progress: 100, submissionId, video: video, caption: newSubmission.caption };
+      return {
+        uploadSessionId,
+        campaignId,
+        progress: 100,
+        submissionId,
+        video: video,
+        caption: newSubmission.caption,
+      };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await prisma.uploadSession.update({
