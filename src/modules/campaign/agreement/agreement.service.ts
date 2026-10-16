@@ -149,10 +149,13 @@ export const getSentNonGuestUserIds = async (campaignId: string): Promise<string
 // CreatorAgreement.creditsAssigned (not ShortListedCreator's single cached creditPerVideo) so a
 // creator with rounds on different platforms/tiers is priced correctly. Legacy rounds saved
 // before creditsAssigned existed fall back to the round's videoCount, then to the shortlist.
+// Non-tier campaigns always charge 1 credit per video, so those fallbacks ignore any stale
+// creditPerVideo; otherwise a legacy round's cost drifts with whatever the shortlist holds now.
 export const sumAssignedCredits = async (campaignId: string, userIds: string[]): Promise<number> => {
   if (!userIds.length) return 0;
 
-  const [rounds, shortlisted] = await Promise.all([
+  const [campaign, rounds, shortlisted] = await Promise.all([
+    prisma.campaign.findUnique({ where: { id: campaignId }, select: { isCreditTier: true } }),
     prisma.creatorAgreement.findMany({
       where: { campaignId, isSent: true, userId: { in: userIds } },
       select: { userId: true, creditsAssigned: true, videoCount: true, creditPerVideo: true },
@@ -163,12 +166,13 @@ export const sumAssignedCredits = async (campaignId: string, userIds: string[]):
     }),
   ]);
   const shortlistByUser = new Map(shortlisted.map((item) => [item.userId, item]));
+  const perVideo = (value: number | null | undefined) => (campaign?.isCreditTier ? (value ?? 1) : 1);
 
   return rounds.reduce((sum, round) => {
     if (round.creditsAssigned != null) return sum + round.creditsAssigned;
-    if (round.videoCount != null) return sum + round.videoCount * (round.creditPerVideo ?? 1);
+    if (round.videoCount != null) return sum + round.videoCount * perVideo(round.creditPerVideo);
     const shortlist = shortlistByUser.get(round.userId);
-    return sum + (shortlist?.ugcVideos ?? 0) * (shortlist?.creditPerVideo ?? 1);
+    return sum + (shortlist?.ugcVideos ?? 0) * perVideo(shortlist?.creditPerVideo);
   }, 0);
 };
 
