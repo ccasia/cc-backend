@@ -35,6 +35,8 @@ const mapping: any = {
   POSTING: 'Posting',
 };
 
+const isCronInstance = process.env.NODE_APP_INSTANCE === '0';
+
 new CronJob(
   '0 0 * * *', // cronTime
   async function () {
@@ -102,7 +104,7 @@ new CronJob(
     });
   },
   null, // onComplete
-  true, // start
+  isCronInstance, // start
   'Asia/Kuala_Lumpur', // timeZone
 );
 
@@ -220,7 +222,7 @@ new CronJob(
     }
   },
   null,
-  true,
+  isCronInstance,
   'Asia/Kuala_Lumpur',
 );
 
@@ -245,7 +247,7 @@ new CronJob(
     }
   },
   null, // onComplete
-  true, // start
+  isCronInstance, // start
   'Asia/Kuala_Lumpur',
 );
 
@@ -269,7 +271,7 @@ new CronJob(
     }
   },
   null, // onComplete
-  true, // start
+  isCronInstance, // start
   'Asia/Kuala_Lumpur',
 );
 
@@ -295,7 +297,7 @@ new CronJob(
     }
   },
   null, // onComplete
-  true, // start
+  isCronInstance, // start
   'Asia/Kuala_Lumpur',
 );
 
@@ -318,7 +320,7 @@ new CronJob(
     }
   },
   null, // onComplete
-  true, // start
+  isCronInstance, // start
   'Asia/Kuala_Lumpur',
 );
 
@@ -339,6 +341,6 @@ new CronJob(
     }
   },
   null, // onComplete
-  true, // start
+  isCronInstance, // start
   'Asia/Kuala_Lumpur',
 );
