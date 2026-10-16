@@ -94,7 +94,7 @@ import getCountry from '@utils/getCountry';
 import { sendShortlistEmailToClients, ShortlistedCreatorInput } from '@services/notificationService';
 import { calculateAverageMetrics } from '@utils/averagingMetrics';
 import { computeChanges, FieldMapping } from '@utils/campaignLogDiff';
-import { campaignHasClient } from '@utils/campaignFlow';
+import { campaignHasClient, isClientUser } from '@utils/campaignFlow';
 import {
   CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT,
   createCreatorCampaignMembershipUpdatedPayload,
@@ -1030,6 +1030,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             });
           }),
         );
+        if (isClientCampaign && !admins.some(isClientUser)) {
+          throw new Error('Client campaigns need at least one client user as a campaign manager.');
+        }
         const clientManagerUsers = await Promise.all(
           clientManagers.map(async (cm: any) => {
             if (cm?.id) {
@@ -1618,6 +1621,8 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
     needAds,
   } = rawData;
 
+  const isClientCampaign = rawData?.isClientCampaign === true;
+
   try {
     const campaign = await prisma.$transaction(
       async (tx) => {
@@ -1653,6 +1658,10 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
             }),
           ),
         );
+
+        if (isClientCampaign && !admins.some(isClientUser)) {
+          throw new Error('Client campaigns need at least one client user as a campaign manager.');
+        }
 
         // Upload any newly provided campaign cover images
         const uploadedImageUrls: string[] = [];
@@ -5520,7 +5529,8 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
 };
 
 export const editCampaignFinalise = async (req: Request, res: Response) => {
-  const { campaignId, campaignManagers, campaignType, deliverables, isCreditTier, isNdaRequired } = req.body;
+  const { campaignId, campaignManagers, campaignType, deliverables, isCreditTier, isNdaRequired, isClientCampaign } =
+    req.body;
 
   const adminId = req.userId;
 
@@ -5564,6 +5574,20 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
 
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    // Older frontends don't send isClientCampaign — only enforce when the toggle is explicitly on
+    if (isClientCampaign === true) {
+      const managerIds = (campaignManagers || []).map((m: any) => m?.id).filter(Boolean);
+      const managerUsers = await prisma.user.findMany({
+        where: { id: { in: managerIds } },
+        select: { role: true, client: { select: { id: true } } },
+      });
+      if (!managerUsers.some(isClientUser)) {
+        return res
+          .status(400)
+          .json({ message: 'Client campaigns need at least one client user as a campaign manager.' });
+      }
     }
 
     const previousCampaignType = campaign.campaignType;
