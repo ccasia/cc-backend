@@ -28,7 +28,7 @@ const RECEIVED_STATUSES: SubmissionStatus[] = [
 const APPROVED_STATUSES: SubmissionStatus[] = ['CLIENT_APPROVED', 'APPROVE_LINK', 'APPROVED', 'POSTED'];
 
 /** Same campaign scope as getClientCampaigns. */
-const clientCampaignWhere = (userId: string, clientId: string): Prisma.CampaignWhereInput => ({
+export const clientCampaignWhere = (userId: string, clientId: string): Prisma.CampaignWhereInput => ({
   OR: [{ campaignAdmin: { some: { adminId: userId } } }, { campaignClients: { some: { clientId } } }],
 });
 

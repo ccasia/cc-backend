@@ -10,6 +10,7 @@ import campaignAgreementRoute from '../modules/campaign/agreement/agreement.rout
 import reimbursementRoute from '../modules/reimbursement/reimbursement.route';
 import clientHomeRoute from '../modules/client-home/client-home.route';
 import creatorNoteRoute from '../modules/creator-note/creator-note.route';
+import campaignOverviewRoute from '../modules/campaign/overview/overview.route';
 import notificationRoute from './notificationRoute';
 import pushTokenRoute from './pushTokenRoute';
 import draftRoute from './draftRoute';
@@ -69,6 +70,7 @@ router.use('/event', eventRoute);
 // Mounted before the generic /campaign router so its paths are matched first.
 router.use('/campaign/agreement', campaignAgreementRoute);
 router.use('/campaign/:campaignId/creator-notes', creatorNoteRoute);
+router.use('/campaign/:campaignId/overview', campaignOverviewRoute);
 router.use('/campaign', campaignRoute);
 router.use('/campaign-creation-drafts', campaignCreationDraftRoute);
 router.use('/notification', notificationRoute);
