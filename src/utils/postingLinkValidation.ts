@@ -5,27 +5,30 @@ export class PostingLinkError extends Error {}
 
 const TIKTOK_HOSTS = ['tiktok.com', 'www.tiktok.com', 'm.tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com'];
 const INSTAGRAM_HOSTS = ['instagram.com', 'www.instagram.com', 'm.instagram.com'];
+const XHS_HOSTS = ['xiaohongshu.com', 'www.xiaohongshu.com'];
+const XHS_SHORT_HOSTS = ['xhslink.com', 'www.xhslink.com', 'xhslink.cn', 'www.xhslink.cn'];
 
-const KNOWN_HOST_WITHOUT_SCHEME = /^(?:(?:www|m|vm|vt)\.)?(?:tiktok|instagram)\.com(?:[/?#]|$)/i;
+const KNOWN_HOST_WITHOUT_SCHEME = /^(?:(?:www|m|vm|vt)\.)?(?:(?:tiktok|instagram|xiaohongshu)\.com|xhslink\.(?:com|cn))(?:[/?#]|$)/i;
 const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
 
 const TIKTOK_POST_PATH = /^\/@[^/]+\/(?:video|photo)\/\d+/;
 const TIKTOK_SHORT_PATH = /^\/t\/[\w-]+/;
 const INSTAGRAM_POST_PATH = /^\/(?:[\w.]+\/)?(?:p|reels?|tv)\/[\w-]+/;
+const XHS_POST_PATH = /^\/(?:explore|discovery\/item|user\/profile\/\w+)\/\w+/;
 
 /**
- * Validates one TikTok / Instagram post link and returns it normalised: https:// added when
+ * Validates one TikTok / Instagram / Xiaohongshu post link and returns it normalised: https:// added when
  * missing, http upgraded. Throws PostingLinkError with a message the user can act on.
  */
 export function normalizePostingLink(rawLink: string): string {
   let value = rawLink.trim();
 
   const notALink = new PostingLinkError(
-    "isn't a TikTok or Instagram link. Paste the post's link, e.g. https://www.tiktok.com/@name/video/123.",
+    "isn't a TikTok, Instagram or Xiaohongshu link. Paste the post's link, e.g. https://www.tiktok.com/@name/video/123.",
   );
 
   if (/\s/.test(value)) {
-    if (/(?:tiktok|instagram)\.com/i.test(value)) {
+    if (/(?:(?:tiktok|instagram|xiaohongshu)\.com|xhslink\.(?:com|cn))/i.test(value)) {
       throw new PostingLinkError('has a space in it. Paste just the link.');
     }
     throw notALink;
@@ -64,8 +67,18 @@ export function normalizePostingLink(rawLink: string): string {
         'is an Instagram link but not to a post. Open the post or reel and copy its link (it has /p/ or /reel/ in it).',
       );
     }
+  } else if (XHS_HOSTS.includes(host)) {
+    if (!XHS_POST_PATH.test(path)) {
+      throw new PostingLinkError(
+        'is a Xiaohongshu link but not to a post. Open the post and copy its link (it has /explore/ in it).',
+      );
+    }
+  } else if (XHS_SHORT_HOSTS.includes(host)) {
+    if (path.length <= 1) {
+      throw new PostingLinkError("is an xhslink link but not to a post. Copy the post's share link.");
+    }
   } else {
-    throw new PostingLinkError(`is from ${host}. Only TikTok and Instagram links are accepted.`);
+    throw new PostingLinkError(`is from ${host}. Only TikTok, Instagram and Xiaohongshu links are accepted.`);
   }
 
   return url.toString();
