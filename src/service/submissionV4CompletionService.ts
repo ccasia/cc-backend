@@ -1,6 +1,6 @@
 import { createInvoiceService } from './invoiceService';
 import { saveNotification } from '../controller/notificationController';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import {
   CREATOR_CAMPAIGN_COMPLETED_EVENT,
   createCreatorCampaignCompletedPayload,
@@ -422,10 +422,8 @@ export const handleV4CompletedCampaign = async (
     // Notify the creator's app so the campaign moves from Active to Done in real time
     const completedPayload = createCreatorCampaignCompletedPayload({ userId, campaignId });
 
-    const creatorSocketId = clients.get(userId);
-
-    if (creatorSocketId) {
-      getIo().to(creatorSocketId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
+    if (userId) {
+      getIo().to(userId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
     }
     getIo().to(campaignId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
 
@@ -440,8 +438,8 @@ export const handleV4CompletedCampaign = async (
         entityId: campaignId,
       });
 
-      if (creatorSocketId) {
-        getIo().to(creatorSocketId).emit('notification', creatorNotification);
+      if (userId) {
+        getIo().to(userId).emit('notification', creatorNotification);
       }
     } else if (creatorAgreement?.isSeeding) {
       const creatorNotification = await saveNotification({
@@ -452,8 +450,8 @@ export const handleV4CompletedCampaign = async (
         entityId: campaignId,
       });
 
-      if (creatorSocketId) {
-        getIo().to(creatorSocketId).emit('notification', creatorNotification);
+      if (userId) {
+        getIo().to(userId).emit('notification', creatorNotification);
       }
     }
 

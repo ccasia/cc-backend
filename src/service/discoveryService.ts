@@ -10,7 +10,7 @@ import { refreshTikTokToken } from '@services/socialMediaService';
 import { resolvePlatformContentMatchesFromApi } from '@helper/discovery/platformContentResolver';
 
 import { hydrateMissingInstagramData, hydrateMissingTikTokData } from '@helper/discovery/hydration';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import {
   ageRangeToBirthDateRange,
   extractHashtags,
@@ -1188,11 +1188,9 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
         userId: creatorInvite.userId,
       });
 
-      const creatorSocketId = clients.get(creatorInvite.userId);
-
-      if (creatorSocketId) {
-        getIo().to(creatorSocketId).emit('notification', creatorNotification);
-        getIo().to(creatorSocketId).emit('pitchUpdate');
+      if (creatorInvite.userId) {
+        getIo().to(creatorInvite.userId).emit('notification', creatorNotification);
+        getIo().to(creatorInvite.userId).emit('pitchUpdate');
       }
     }
   }

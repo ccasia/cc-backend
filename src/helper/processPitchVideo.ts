@@ -6,7 +6,7 @@ import ffprobePath from '@ffprobe-installer/ffprobe';
 import Ffmpeg from 'fluent-ffmpeg';
 import { uploadPitchVideo } from '@configs/cloudStorage.config';
 import fs from 'fs';
-import { getIo, clients } from '../config/socket';
+import { getIo } from '../config/socket';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -47,7 +47,7 @@ const processVideo = async (
           const duration = await getVideoDuration(inputPath);
           if (duration) {
             const percentComplete = (timemarkInSeconds / duration) * 100;
-            getIo().to(clients.get(userId)).emit('video-upload', { campaignId: campaignId, progress: percentComplete });
+            getIo().to(userId).emit('video-upload', { campaignId: campaignId, progress: percentComplete });
           }
         }
       })
@@ -66,12 +66,12 @@ const processVideo = async (
           fileName,
           'pitchVideo',
           (data: number) => {
-            getIo().to(clients.get(userId)).emit('video-upload', { campaignId: campaignId, progress: data });
+            getIo().to(userId).emit('video-upload', { campaignId: campaignId, progress: data });
           },
           size as number,
         );
 
-        getIo().to(clients.get(userId)).emit('video-upload-done', { campaignId: campaignId, video: a, size });
+        getIo().to(userId).emit('video-upload-done', { campaignId: campaignId, video: a, size });
 
         fs.unlinkSync(inputPath);
         fs.unlinkSync(outputPath);

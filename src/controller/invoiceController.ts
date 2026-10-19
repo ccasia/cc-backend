@@ -40,7 +40,7 @@ import { bulkInvoiceQueue, enqueueInvoiceApproval } from '@utils/queue';
 import { APPROVABLE_INVOICE_STATUSES, BILLED_INVOICE_STATUSES, noXeroBillWhere } from '@utils/xeroInvoice';
 import { xero } from '@configs/xero';
 import { getFreshXeroTokenSet } from '@services/xeroClientService';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
 const MAX_INVOICE_NUMBER_RETRIES = 8;
@@ -1133,7 +1133,7 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         sendPush: status === 'paid',
       });
 
-      getIo().to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+      getIo().to(invoice.creatorId).emit('notification', creatorNotification);
     }
 
     // Keep notifying campaign admins of the status change (In-App).
@@ -1149,7 +1149,7 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         sendPush: false,
       });
 
-      getIo().to(clients.get(admin.adminId)).emit('notification', notification);
+      getIo().to(admin.adminId).emit('notification', notification);
     }
   } catch (error) {
     res.status(500).json({ error: 'Something went wrong' });
@@ -1448,7 +1448,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
         sendPush: false,
       });
 
-      getIo().to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+      getIo().to(invoice.creatorId).emit('notification', creatorNotification);
     }
 
     return res.status(200).json(invoice);

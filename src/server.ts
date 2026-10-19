@@ -488,10 +488,11 @@ if (isPrimaryInstance) {
 
   queueEvents.on('completed', ({ returnvalue }) => {
     console.log(returnvalue);
-    const { submissionId, uploadSessionId, campaignId, video } = returnvalue as unknown as {
+    const { submissionId, uploadSessionId, campaignId, creatorId, video } = returnvalue as unknown as {
       submissionId: string;
       uploadSessionId: string;
       campaignId?: string;
+      creatorId?: string;
       video: Video;
     };
 
@@ -501,6 +502,17 @@ if (isPrimaryInstance) {
     // Creators join campaign rooms too, so other members get the completion without the video.
     if (campaignId) {
       getIo().to(campaignId).except(uploadRoom).emit('status', { submissionId, uploadSessionId, progress: 100 });
+
+      // Same event the old draft worker sent; v4 submission lists refetch on it.
+      getIo().to(campaignId).emit('v4:content:processed', {
+        submissionId,
+        campaignId,
+        hasVideo: true,
+        hasPhotos: false,
+        hasRawFootage: false,
+        processedAt: new Date().toISOString(),
+        creatorId,
+      });
     }
   });
 }
