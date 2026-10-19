@@ -4,7 +4,6 @@ import amqplib, { ChannelModel } from 'amqplib';
 import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
 import { softDeleteCommentRecord } from '../service/submissionCommentService';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
-import { clients } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
@@ -528,9 +527,8 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         entityId: submission.campaign.id,
       });
 
-      const adminSocketId = clients.get(adminUserId);
-      if (adminSocketId) {
-        getIo().to(adminSocketId).emit('notification', notification);
+      if (adminUserId) {
+        getIo().to(adminUserId).emit('notification', notification);
       }
     }
 

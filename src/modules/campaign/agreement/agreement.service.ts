@@ -2,7 +2,7 @@ import dayjs from 'dayjs';
 import { Prisma, SocialPlatform } from '@prisma/client';
 import { prisma } from '@/src/prisma/prisma';
 import { uploadAgreementForm } from '@configs/cloudStorage.config';
-import { clients, getIo } from '@configs/socket';
+import { getIo } from '@configs/socket';
 import { notificationSignature } from '@helper/notification';
 import { saveNotification } from '@controllers/notificationController';
 import { logAdminChange, logChange } from '@services/campaignServices';
@@ -1083,7 +1083,7 @@ export const sendCreatorAgreement = async (
 
   const { title, message } = notificationSignature(campaign.name);
 
-  const notification = await saveNotification({
+  await saveNotification({
     userId: isUserExist.id,
     title: title,
     message: message,
@@ -1112,12 +1112,8 @@ export const sendCreatorAgreement = async (
       }),
     );
 
-  const socketId = clients.get(isUserExist.id);
-
-  if (socketId) {
-    getIo().to(socketId).emit('notification', notification);
-    getIo().to(socketId).emit('agreementReady');
-  }
+  // One toast per send: the payload above carries campaignId/submissionId for "View"; the saved row feeds the bell list.
+  getIo().to(isUserExist.id).emit('agreementReady');
 
   await prisma.campaignLog.create({
     data: {

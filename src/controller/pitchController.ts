@@ -18,7 +18,7 @@ import {
   CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT,
   createCreatorCampaignMembershipUpdatedPayload,
 } from '@utils/campaignMembershipEvents';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import { awardXp, onShortlisted, progressAchievement } from '@/src/modules/gamification';
 import { deleteCreatorReceipts, deleteReceiptFiles } from '@/src/modules/reimbursement/reimbursement.service';
 import { prisma } from '@/src/prisma/prisma';
@@ -58,10 +58,8 @@ const emitCreatorCampaignMembershipUpdated = ({
     pitchId,
     action,
   });
-  const creatorSocketId = clients.get(userId);
-
-  if (creatorSocketId) {
-    getIo().to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+  if (userId) {
+    getIo().to(userId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
   }
 
   getIo().to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
@@ -452,9 +450,8 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
           entityId: pitch.campaignId,
         });
 
-        const clientSocketId = clients.get(clientUser.admin.userId);
-        if (clientSocketId) {
-          getIo().to(clientSocketId).emit('notification', notification);
+        if (clientUser.admin.userId) {
+          getIo().to(clientUser.admin.userId).emit('notification', notification);
         }
       }
 
@@ -494,10 +491,9 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         entityId: pitch.campaignId,
       });
 
-      const creatorSocketId = clients.get(pitch.userId);
-      if (creatorSocketId) {
-        getIo().to(creatorSocketId).emit('notification', creatorNotification);
-        getIo().to(creatorSocketId).emit('pitchUpdate');
+      if (pitch.userId) {
+        getIo().to(pitch.userId).emit('notification', creatorNotification);
+        getIo().to(pitch.userId).emit('pitchUpdate');
       }
 
       // Log campaign activity for admin pitch approval
@@ -599,10 +595,9 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
       entityId: pitch.campaignId,
     });
 
-    const socketId = clients.get(pitch.userId);
-    if (socketId) {
-      getIo().to(socketId).emit('notification', notification);
-      getIo().to(socketId).emit('pitchUpdate');
+    if (pitch.userId) {
+      getIo().to(pitch.userId).emit('notification', notification);
+      getIo().to(pitch.userId).emit('pitchUpdate');
     }
 
     // Fetch the updated pitch to return in response
@@ -754,11 +749,9 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         userId: pitch.userId,
       });
 
-      const creatorSocketId = clients.get(pitch.userId);
-
-      if (creatorSocketId) {
-        getIo().to(creatorSocketId).emit('notification', creatorNotification);
-        getIo().to(creatorSocketId).emit('pitchUpdate');
+      if (pitch.userId) {
+        getIo().to(pitch.userId).emit('notification', creatorNotification);
+        getIo().to(pitch.userId).emit('pitchUpdate');
       }
     }
 
@@ -971,10 +964,8 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         userId: adminUser.admin.userId,
       });
 
-      const adminSocketId = clients.get(adminUser.admin.userId);
-
-      if (adminSocketId) {
-        getIo().to(adminSocketId).emit('notification', notification);
+      if (adminUser.admin.userId) {
+        getIo().to(adminUser.admin.userId).emit('notification', notification);
       }
     }
 
@@ -1108,10 +1099,8 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
       userId: pitch.userId,
     });
 
-    const creatorSocketId = clients.get(pitch.userId);
-
-    if (creatorSocketId) {
-      getIo().to(creatorSocketId).emit('notification', creatorNotification);
+    if (pitch.userId) {
+      getIo().to(pitch.userId).emit('notification', creatorNotification);
     }
 
     // Create notification for admin
@@ -1129,10 +1118,8 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
         userId: adminUser.admin.userId,
       });
 
-      const adminSocketId = clients.get(adminUser.admin.userId);
-
-      if (adminSocketId) {
-        getIo().to(adminSocketId).emit('notification', adminNotification);
+      if (adminUser.admin.userId) {
+        getIo().to(adminUser.admin.userId).emit('notification', adminNotification);
       }
     }
 
@@ -1256,10 +1243,9 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
       entityId: pitch.campaignId,
     });
 
-    const socketId = clients.get(pitch.userId);
-    if (socketId) {
-      getIo().to(socketId).emit('notification', notification);
-      getIo().to(socketId).emit('pitchUpdate');
+    if (pitch.userId) {
+      getIo().to(pitch.userId).emit('notification', notification);
+      getIo().to(pitch.userId).emit('pitchUpdate');
     }
 
     // Create campaign log

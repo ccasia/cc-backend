@@ -37,7 +37,7 @@ import { missingInvoices } from '@constants/missing-invoices';
 import { creatorAgreements } from './campaignController';
 import { bulkInvoiceQueue, invoiceQueue } from '@utils/queue';
 import { xero } from '@configs/xero';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
 const MAX_INVOICE_NUMBER_RETRIES = 8;
@@ -1120,7 +1120,7 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         sendPush: status === 'paid',
       });
 
-      getIo().to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+      getIo().to(invoice.creatorId).emit('notification', creatorNotification);
     }
 
     // Keep notifying campaign admins of the status change (In-App).
@@ -1136,7 +1136,7 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         sendPush: false,
       });
 
-      getIo().to(clients.get(admin.adminId)).emit('notification', notification);
+      getIo().to(admin.adminId).emit('notification', notification);
     }
   } catch (error) {
     res.status(500).json({ error: 'Something went wrong' });
@@ -1373,7 +1373,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
         sendPush: false,
       });
 
-      getIo().to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+      getIo().to(invoice.creatorId).emit('notification', creatorNotification);
     }
 
     const creatorUser = invoice.creator.user;

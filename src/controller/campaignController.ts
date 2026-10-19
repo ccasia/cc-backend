@@ -109,7 +109,7 @@ import {
   updateAgreementAmount,
 } from '@modules/campaign/agreement/agreement.service';
 import { AgreementError } from '@modules/campaign/agreement/agreement.types';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import { awardXp, onPitchSubmitted, onShortlisted, progressAchievement } from '@/src/modules/gamification';
 import { deleteCreatorReceipts, deleteReceiptFiles } from '@/src/modules/reimbursement/reimbursement.service';
 import {
@@ -146,10 +146,8 @@ const emitCreatorCampaignMembershipUpdated = ({
     pitchId,
     action,
   });
-  const creatorSocketId = clients.get(userId);
-
-  if (creatorSocketId) {
-    getIo().to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+  if (userId) {
+    getIo().to(userId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
   }
 
   getIo().to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
@@ -740,7 +738,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               },
             });
 
-            getIo().to(clients.get(admin.id)).emit('notification', data);
+            getIo().to(admin.id).emit('notification', data);
             return createdAdminRel;
           }),
         );
@@ -1416,7 +1414,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               },
               include: { userNotification: { select: { userId: true } } },
             });
-            getIo().to(clients.get(admin.id)).emit('notification', data);
+            getIo().to(admin.id).emit('notification', data);
             return createdAdminRel;
           }),
         );
@@ -2029,7 +2027,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
                 },
                 include: { userNotification: { select: { userId: true } } },
               });
-              if (clients.get(admin.id)) getIo().to(clients.get(admin.id)).emit('notification', notif);
+              getIo().to(admin.id).emit('notification', notif);
             }),
         );
 
@@ -3330,7 +3328,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             entityId: campaign?.id as string,
           });
 
-          getIo().to(clients.get(manager)).emit('notification', notification);
+          getIo().to(userId).emit('notification', notification);
         }
       });
     }
@@ -4676,7 +4674,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
           entity: 'Status',
           entityId: updatedCampaign.id,
         });
-        getIo().to(clients.get(value.userId)).emit('notification', data);
+        getIo().to(value.userId).emit('notification', data);
       });
     }
 
@@ -4691,7 +4689,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
           entity: 'Status',
           entityId: updatedCampaign.id,
         });
-        getIo().to(clients.get(admin.adminId)).emit('notification', data);
+        getIo().to(admin.adminId).emit('notification', data);
       }
     }
 
@@ -4886,7 +4884,7 @@ export const closeCampaign = async (req: Request, res: Response) => {
         entity: 'Campaign',
         entityId: result.campaign.id,
       });
-      getIo().to(clients.get(item.adminId)).emit('notification', data);
+      getIo().to(item.adminId).emit('notification', data);
     });
 
     // Step 7: Log admin activity
@@ -6677,11 +6675,9 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             entity: 'Shortlist',
           });
 
-          const socketId = clients.get(pitch.userId);
-
-          if (socketId) {
-            getIo().to(socketId).emit('notification', data);
-            getIo().to(socketId).emit('shortlisted', {
+          if (pitch.userId) {
+            getIo().to(pitch.userId).emit('notification', data);
+            getIo().to(pitch.userId).emit('shortlisted', {
               message: 'shortlisted',
               campaignId: pitch.campaign.id,
               campaignName: pitch.campaign.name,
@@ -6714,9 +6710,8 @@ export const changePitchStatus = async (req: Request, res: Response) => {
               entityId: pitch.campaignId,
             });
 
-            const adminSocketId = clients.get(admin.admin.userId);
-            if (adminSocketId) {
-              getIo().to(adminSocketId).emit('notification', notification);
+            if (admin.admin.userId) {
+              getIo().to(admin.admin.userId).emit('notification', notification);
             }
           }
 
@@ -6886,7 +6881,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
       logAdminChange(message, adminId, req);
     }
 
-    getIo().to(clients.get(existingPitch.userId)).emit('pitchUpdate');
+    getIo().to(existingPitch.userId).emit('pitchUpdate');
 
     return res.status(200).json({ message: 'Successfully changed.' });
   } catch (error) {
@@ -7696,10 +7691,9 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
         entityId: campaignId,
         submissionId: result.submissionId,
       });
-      const socketId = clients.get(result.userId);
-      if (socketId) {
-        getIo().to(socketId).emit('notification', notification);
-        getIo().to(socketId).emit('agreementReady');
+      if (result.userId) {
+        getIo().to(result.userId).emit('notification', notification);
+        getIo().to(result.userId).emit('agreementReady');
       }
     }
 
@@ -8820,15 +8814,13 @@ export const resendAgreement = async (req: Request, res: Response) => {
 
     const { title, message } = notificationSignature(campaign.name);
 
-    const notification = await saveNotification({
+    await saveNotification({
       userId: userId,
       title: title,
       message: message,
       entity: 'Agreement',
       entityId: campaignId,
     });
-
-    const socketId = clients.get(userId);
 
     const agreementSubmission = await prisma.submission.findFirst({
       where: {
@@ -8843,7 +8835,7 @@ export const resendAgreement = async (req: Request, res: Response) => {
     });
 
     getIo()
-      .to(socketId)
+      .to(userId)
       .emit(
         'notification',
         notificationSignature(campaign.name, {
@@ -8852,10 +8844,7 @@ export const resendAgreement = async (req: Request, res: Response) => {
         }),
       );
 
-    if (socketId) {
-      getIo().to(socketId).emit('notification', notification);
-      getIo().to(clients.get(userId)).emit('agreementReady');
-    }
+    getIo().to(userId).emit('agreementReady');
 
     return res.status(200).json({ message: 'Agreement resent successfully.' });
   } catch (error) {
@@ -8949,11 +8938,10 @@ export const submitAgreementV3 = async (req: Request, res: Response) => {
         entity: 'Agreement',
         entityId: pitch.campaignId as string,
       });
-      const socketId = clients.get(a.admin.userId);
-      if (socketId) {
-        getIo().to(socketId).emit('notification', notification);
-        getIo().to(socketId).emit('agreementReady');
-        getIo().to(socketId).emit('pitchUpdate');
+      if (a.admin.userId) {
+        getIo().to(a.admin.userId).emit('notification', notification);
+        getIo().to(a.admin.userId).emit('agreementReady');
+        getIo().to(a.admin.userId).emit('pitchUpdate');
       }
     }
 
@@ -9105,11 +9093,10 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             const image: any = campaign.campaignBrief?.images;
             shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image[0]);
 
-            const socketId = clients.get(creator.id);
-            if (socketId) {
-              getIo().to(socketId).emit('notification', notification);
+            if (creator.id) {
+              getIo().to(creator.id).emit('notification', notification);
               // Emit shortlisted event with campaign data for popup
-              getIo().to(socketId).emit('shortlisted', {
+              getIo().to(creator.id).emit('shortlisted', {
                 message: 'shortlisted',
                 campaignId: campaign.id,
                 campaignName: campaign.name,
@@ -9351,11 +9338,10 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
           const image: any = campaign.campaignBrief?.images;
           shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image[0]);
 
-          const socketId = clients.get(creator.id);
-          if (socketId) {
-            getIo().to(socketId).emit('notification', notification);
+          if (creator.id) {
+            getIo().to(creator.id).emit('notification', notification);
             // Emit shortlisted event with campaign data for popup
-            getIo().to(socketId).emit('shortlisted', {
+            getIo().to(creator.id).emit('shortlisted', {
               message: 'shortlisted',
               campaignId: campaign.id,
               campaignName: campaign.name,
@@ -10180,11 +10166,9 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
           entityId: campaign.id,
           campaignId: campaign.id,
         });
-        const socketId = clients.get(adminUser.id);
-
-        if (socketId) {
-          getIo().to(socketId).emit('notification', notification);
-          console.log(`Sent real-time notification to user ${adminUser.id} on socket ${socketId}`);
+        if (adminUser.id) {
+          getIo().to(adminUser.id).emit('notification', notification);
+          console.log(`Sent real-time notification to user ${adminUser.id}`);
         }
       }
     }
@@ -11563,9 +11547,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     // Nudge each shortlisted creator's app to refetch "Your Campaigns" in real-time.
     // The mobile useMyCampaignsRealtime hook listens for 'pitchUpdate' and invalidates the list.
     for (const creator of creators) {
-      const creatorSocketId = clients.get(creator.id);
-      if (creatorSocketId) {
-        getIo().to(creatorSocketId).emit('pitchUpdate');
+      if (creator.id) {
+        getIo().to(creator.id).emit('pitchUpdate');
       }
     }
 
@@ -11665,7 +11648,6 @@ export const rateCreator = async (req: Request, res: Response) => {
     }
 
     if (shortlistedCreator.userId && shouldEmitCreatorRatingCompleted(shortlistedCreator, updated)) {
-      const creatorSocketId = clients.get(shortlistedCreator.userId);
       const payload = {
         userId: shortlistedCreator.userId,
         campaignId: shortlistedCreator.campaignId,
@@ -11673,8 +11655,8 @@ export const rateCreator = async (req: Request, res: Response) => {
         updatedAt: new Date().toISOString(),
       };
 
-      if (creatorSocketId) {
-        getIo().to(creatorSocketId).emit('creator:rating-completed', payload);
+      if (shortlistedCreator.userId) {
+        getIo().to(shortlistedCreator.userId).emit('creator:rating-completed', payload);
       }
     }
 

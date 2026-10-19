@@ -17,7 +17,7 @@ import {
 } from '@helper/notification';
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
-import { clients, getIo } from './socket';
+import { getIo } from './socket';
 import { snapshotLeaderboard } from '../modules/gamification';
 import { publishDueReleaseNotes } from '@modules/release-note';
 import { reconcileStuckLogistics } from '../service/logisticsService';
@@ -99,7 +99,7 @@ new CronJob(
           entityId: submission.campaignId,
         });
 
-        getIo().to(clients.get(submission.userId)).emit('notification', data);
+        getIo().to(submission.userId).emit('notification', data);
       }
     });
   },
@@ -133,8 +133,7 @@ new CronJob(
         entityId: campaignId,
         submissionId,
       });
-      const socket = clients.get(userId);
-      if (socket) getIo().to(socket).emit('notification', data);
+      if (userId) getIo().to(userId).emit('notification', data);
     };
 
     try {
