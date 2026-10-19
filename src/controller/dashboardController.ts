@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../prisma/prisma';
 import { syncCampaignCreditCounters } from '@modules/campaign/agreement/agreement.service';
+import { campaignHasClient } from '@utils/campaignFlow';
 
 /**
  * Returns assigned campaign IDs for CS users.
@@ -29,6 +30,28 @@ async function getAssignedCampaignIds(userId: string): Promise<string[] | null> 
   });
 
   return assigned.map((a) => a.campaignId);
+}
+
+/** Campaign admins with just enough to tell whether a client is attached (see campaignHasClient). */
+const CAMPAIGN_ADMIN_CLIENT_SELECT = {
+  select: {
+    admin: {
+      select: {
+        user: { select: { role: true } },
+        role: { select: { name: true } },
+      },
+    },
+  },
+} as const;
+
+/** Swaps each submission's campaign admins for a `hasClient` flag, so the admin submission viewer can open from the dashboard. */
+function withCampaignHasClient<C extends Parameters<typeof campaignHasClient>[0], S extends { campaign: C }>(
+  submissions: S[],
+) {
+  return submissions.map(({ campaign: { campaignAdmin, ...campaign }, ...submission }) => ({
+    ...submission,
+    campaign: { ...campaign, hasClient: campaignHasClient({ campaignAdmin }) },
+  }));
 }
 
 /**
@@ -570,7 +593,7 @@ export const getDashboardClientFeedbacks = async (req: Request, res: Response) =
           select: { type: true },
         },
         campaign: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, submissionVersion: true, campaignAdmin: CAMPAIGN_ADMIN_CLIENT_SELECT },
         },
         user: {
           select: { id: true, name: true, photoURL: true },
@@ -578,7 +601,7 @@ export const getDashboardClientFeedbacks = async (req: Request, res: Response) =
       },
     });
 
-    return res.status(200).json(submissions);
+    return res.status(200).json(withCampaignHasClient(submissions));
   } catch (error: any) {
     console.error('Error fetching client feedbacks:', error);
     return res.status(500).json({
@@ -699,7 +722,7 @@ export const getDashboardDraftsPending = async (req: Request, res: Response) => 
           select: { type: true },
         },
         campaign: {
-          select: { id: true, name: true, submissionVersion: true },
+          select: { id: true, name: true, submissionVersion: true, campaignAdmin: CAMPAIGN_ADMIN_CLIENT_SELECT },
         },
         user: {
           select: { id: true, name: true, photoURL: true },
@@ -707,7 +730,7 @@ export const getDashboardDraftsPending = async (req: Request, res: Response) => 
       },
     });
 
-    return res.status(200).json(submissions);
+    return res.status(200).json(withCampaignHasClient(submissions));
   } catch (error: any) {
     console.error('Error fetching pending drafts:', error);
     return res.status(500).json({
