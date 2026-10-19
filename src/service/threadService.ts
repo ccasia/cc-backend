@@ -7,7 +7,7 @@ import {
   parseOwnedObjectPath,
   uploadAttachmentStream,
 } from '@configs/cloudStorage.config';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import { notificationCSMChat, notificationGroupChat } from '@helper/notification';
 import { saveNotification } from '@controllers/notificationController';
 import { prisma } from '@/src/prisma/prisma';
@@ -187,7 +187,6 @@ export const sendMessageService = async ({
     const uniqueFileName = `${userId}-${Date.now()}-${randomUUID()}-${safeName}`;
 
     if (file.mimetype.startsWith('video/')) {
-      const senderSocketId = clients.get(userId);
       fileUrl = await uploadAttachmentStream({
         tempFilePath: file.tempFilePath,
         fileName: uniqueFileName,
@@ -195,8 +194,8 @@ export const sendMessageService = async ({
         contentType: file.mimetype,
         size: file.size,
         progressCallback:
-          clientNonce && senderSocketId
-            ? (percent) => getIo().to(senderSocketId).emit('attachmentProgress', { clientNonce, percent })
+          clientNonce && userId
+            ? (percent) => getIo().to(userId).emit('attachmentProgress', { clientNonce, percent })
             : undefined,
       });
     } else {
@@ -291,7 +290,7 @@ export const sendMessageService = async ({
         threadId: datas.data.id,
         ...(isCampaign ? { entityId: datas.data.campaign!.id } : {}),
       });
-      getIo().to(clients.get(recipientId)).emit('notification', notification);
+      getIo().to(recipientId).emit('notification', notification);
     }
   };
   await notifyAll();
@@ -323,7 +322,7 @@ export const sendMessageService = async ({
 
   for (const recipientId of recipientIds) {
     const count = unreadCountMap.get(recipientId) || 0;
-    getIo().to(clients.get(recipientId)).emit('messageCount', { count, name: sender?.user.name });
+    getIo().to(recipientId).emit('messageCount', { count, name: sender?.user.name });
   }
 
   return datas.message;

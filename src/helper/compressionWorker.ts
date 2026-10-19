@@ -13,7 +13,7 @@ import { ProgressUpdate, runFfmpegCompression } from '../lib/ffmpeg';
 const worker = new Worker(
   'compression-queue',
   async (job) => {
-    const { uploadSessionId, rawObjectPath, submissionId, videoId, campaignId } = job.data as {
+    const { uploadSessionId, rawObjectPath, submissionId, videoId, campaignId, userId } = job.data as {
       uploadSessionId: string;
       rawObjectPath: string;
       userId: string;
@@ -92,6 +92,7 @@ const worker = new Worker(
       return {
         uploadSessionId,
         campaignId,
+        creatorId: userId,
         progress: 100,
         submissionId,
         video: video,

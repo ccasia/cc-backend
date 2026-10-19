@@ -32,7 +32,7 @@ import { getStoredPostInsight } from '@services/storedPostInsightService';
 import { onMediaKitConnected } from '@/src/modules/gamification';
 import crypto from 'crypto';
 import connection from '../config/redis';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
 // Type definitions
@@ -373,9 +373,8 @@ export const instagramMobileCallback = async (req: Request, res: Response) => {
 
     onMediaKitConnected(userId, 'instagram');
 
-    const creatorSocketId = clients.get(userId);
-    if (creatorSocketId) {
-      getIo().to(creatorSocketId).emit('media-kit:updated', {
+    if (userId) {
+      getIo().to(userId).emit('media-kit:updated', {
         platform: 'instagram',
         status: 'success',
         timestamp: new Date().toISOString(),
@@ -578,9 +577,8 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       }
     }
 
-    const creatorSocketId = clients.get(userId);
-    if (creatorSocketId) {
-      getIo().to(creatorSocketId).emit('media-kit:updated', {
+    if (userId) {
+      getIo().to(userId).emit('media-kit:updated', {
         platform: 'tiktok',
         status: 'success',
         timestamp: new Date().toISOString(),

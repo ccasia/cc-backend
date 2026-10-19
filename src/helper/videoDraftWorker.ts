@@ -22,7 +22,7 @@ import {
   pairUploadedDraftsWithRevisionRequests,
   previousDraftUrlsForReplacement,
 } from './draftSubmissionStatus';
-import { getIo, clients } from '../config/socket';
+import { getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 import { convertHeicToJpeg } from '@helper/heicToJpeg';
 
@@ -64,7 +64,7 @@ const processVideo = async (
         const percentage = Math.round(progress.percent as number);
         if (getIo()) {
           getIo()
-            .to(clients.get(userid))
+            .to(userid)
             .emit('progress', {
               progress: percentage,
               submissionId: submissionId,
@@ -78,7 +78,7 @@ const processVideo = async (
       .on('end', async () => {
         if (getIo()) {
           getIo()
-            .to(clients.get(userid))
+            .to(userid)
             .emit('progress', {
               progress: 100,
               submissionId: submissionId,
@@ -325,7 +325,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
   }
 
   if (getIo()) {
-    getIo().to(clients.get(submission.userId)).emit('updateSubmission');
+    getIo().to(submission.userId).emit('updateSubmission');
   }
 };
 
@@ -456,7 +456,7 @@ async function deleteFileIfExists(filePath: string) {
                   content.folder,
                   (data: number) => {
                     getIo()
-                      ?.to(clients.get(content.userid)!)
+                      ?.to(content.userid)
                       .emit('progress', {
                         progress: Math.ceil(data),
                         submissionId: submission.id,
@@ -685,7 +685,7 @@ async function deleteFileIfExists(filePath: string) {
                       content.folder,
                       (data: number) => {
                         getIo()
-                          ?.to(clients.get(content.userid)!)
+                          ?.to(content.userid)
                           .emit('progress', {
                             progress: Math.ceil(data),
                             submissionId: submission.id,
@@ -738,7 +738,7 @@ async function deleteFileIfExists(filePath: string) {
                       content.folder,
                       (data: number) => {
                         getIo()
-                          ?.to(clients.get(content.userid)!)
+                          ?.to(content.userid)
                           .emit('progress', {
                             progress: Math.ceil(data),
                             submissionId: submission.id,
@@ -954,7 +954,7 @@ async function deleteFileIfExists(filePath: string) {
 
             for (const item of content.admins) {
               if (item.admin && item.admin.user && item.admin.user.id) {
-                getIo().to(clients.get(item.admin.user.id)).emit('newSubmission');
+                getIo().to(item.admin.user.id).emit('newSubmission');
               } else {
                 console.warn('[videoDraftWorker] Skipping admin notification: missing admin or user for item:', item);
               }
@@ -967,7 +967,7 @@ async function deleteFileIfExists(filePath: string) {
             });
 
             for (const admin of allSuperadmins) {
-              getIo().to(clients.get(admin.id)).emit('newSubmission');
+              getIo().to(admin.id).emit('newSubmission');
             }
           } catch (error) {
             console.error('Error processing submission:', error);

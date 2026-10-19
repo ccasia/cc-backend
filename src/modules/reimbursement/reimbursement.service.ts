@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { Prisma, ReimbursementStatus } from '@prisma/client';
 import { prisma } from '@/src/prisma/prisma';
-import { clients, getIo } from '@configs/socket';
+import { getIo } from '@configs/socket';
 import { uploadAttachments, deleteGcsObjectByPublicUrl } from '@configs/cloudStorage.config';
 import { saveNotification } from '@controllers/notificationController';
 import { logChange } from '@services/campaignServices';
@@ -152,8 +152,7 @@ const emitUpdate = (campaignId: string, userId: string, round: number) => {
 
   getIo().to(campaignId).emit('v4:reimbursement:updated', payload);
 
-  const creatorSocketId = clients.get(userId);
-  if (creatorSocketId) getIo().to(creatorSocketId).emit('v4:reimbursement:updated', payload);
+  if (userId) getIo().to(userId).emit('v4:reimbursement:updated', payload);
 };
 
 const notifyUser = async (userId: string, campaignId: string, title: string, message: string) => {
@@ -165,8 +164,7 @@ const notifyUser = async (userId: string, campaignId: string, title: string, mes
     entityId: campaignId,
   });
 
-  const socketId = clients.get(userId);
-  if (socketId) getIo().to(socketId).emit('notification', notification);
+  if (userId) getIo().to(userId).emit('notification', notification);
 };
 
 const notifyCampaignAdmins = async (campaignId: string, title: string, message: string) => {
@@ -256,8 +254,7 @@ const createReimbursementInvoice = async (agreementId: string, parentInvoiceId: 
     entityId: agreement.campaignId,
   });
 
-  const creatorSocketId = clients.get(agreement.userId);
-  if (creatorSocketId) getIo().to(creatorSocketId).emit('notification', notification);
+  if (agreement.userId) getIo().to(agreement.userId).emit('notification', notification);
 
   getIo().to(agreement.campaignId).emit('v4:invoice:generated', {
     campaignId: agreement.campaignId,

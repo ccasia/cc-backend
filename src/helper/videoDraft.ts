@@ -22,7 +22,7 @@ import {
   pairUploadedDraftsWithRevisionRequests,
   previousDraftUrlsForReplacement,
 } from './draftSubmissionStatus';
-import { getIo, clients } from '../config/socket';
+import { getIo } from '../config/socket';
 import { onSubmissionSubmitted } from '@/src/modules/gamification';
 import { prisma } from '@/src/prisma/prisma';
 import { convertHeicToJpeg } from '@helper/heicToJpeg';
@@ -65,7 +65,7 @@ export const processVideo = async (
         const percentage = Math.round(progress.percent as number);
         if (getIo()) {
           getIo()
-            .to(clients.get(userid))
+            .to(userid)
             .emit('progress', {
               progress: percentage,
               submissionId: submissionId,
@@ -79,7 +79,7 @@ export const processVideo = async (
       .on('end', async () => {
         if (getIo()) {
           getIo()
-            .to(clients.get(userid))
+            .to(userid)
             .emit('progress', {
               progress: 100,
               submissionId: submissionId,
@@ -274,9 +274,8 @@ const checkCurrentSubmission = async (submissionId: string) => {
   }
 
   if (getIo()) {
-    const creatorSocketId = clients.get(submission.userId);
-    if (creatorSocketId) {
-      getIo().to(creatorSocketId).emit('updateSubmission');
+    if (submission.userId) {
+      getIo().to(submission.userId).emit('updateSubmission');
     }
   }
 };
@@ -373,7 +372,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
                   content.folder,
                   (data: number) => {
                     getIo()
-                      ?.to(clients.get(content.userid)!)
+                      ?.to(content.userid)
                       .emit('progress', {
                         progress: Math.ceil(data),
                         submissionId: submission.id,
@@ -563,7 +562,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
                     content.folder,
                     (data: number) => {
                       getIo()
-                        ?.to(clients.get(content.userid)!)
+                        ?.to(content.userid)
                         .emit('progress', {
                           progress: Math.ceil(data),
                           submissionId: submission.id,
@@ -736,7 +735,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
             });
 
             for (const admin of allSuperadmins) {
-              getIo().to(clients.get(admin.id)).emit('newSubmission');
+              getIo().to(admin.id).emit('newSubmission');
             }
           } catch (error) {
             console.error('Error processing submission:', error);
