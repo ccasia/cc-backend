@@ -27,5 +27,11 @@ module.exports = {
       script: 'helper/verificationCodeWorker.js', // wherever your BullMQ worker entrypoint is
       instances: 1, // usually keep workers at 1 instance unless designed for horizontal scaling
     },
+    {
+      name: 'cronjobs',
+      script: 'config/cronjob.js', // wherever your BullMQ worker entrypoint is
+      instances: 1, // usually keep workers at 1 instance unless designed for horizontal scaling
+      exec_mode: 'fork',
+    },
   ],
 };

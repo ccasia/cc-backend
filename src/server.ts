@@ -9,10 +9,10 @@ import cookieParser from 'cookie-parser';
 import fileUpload from 'express-fileupload';
 import { Video } from '@prisma/client';
 
-import '@configs/cronjob';
+// import '@configs/cronjob';
 import http from 'http';
 import { handleSendMessage, fetchMessagesFromThread, markMessagesService } from '@services/threadService';
-import { authenticate } from '@middlewares/authenticate';
+
 import { Socket } from 'socket.io';
 
 import '@helper/processPitchVideo';

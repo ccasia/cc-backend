@@ -1,12 +1,10 @@
 import { CronJob } from 'cron';
 
-import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import LocalizedFormat from 'dayjs/plugin/localizedFormat';
 import { saveNotification } from '@controllers/notificationController';
-import { notifications } from '@constants/reminders';
 
 // import { clients, io } from '../server';
 import {
@@ -17,13 +15,12 @@ import {
 } from '@helper/notification';
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
-import { getIo } from './socket';
+import { emitter } from './socketEmitter';
 import { snapshotLeaderboard } from '../modules/gamification';
 import { publishDueReleaseNotes } from '@modules/release-note';
 import { sendArchetypeQuizPushForToday } from '@modules/archetype-quiz';
 import { reconcileStuckLogistics } from '../service/logisticsService';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 dayjs.extend(LocalizedFormat);
 dayjs.extend(utc);
@@ -35,8 +32,6 @@ const mapping: any = {
   FINAL_DRAFT: 'Draft',
   POSTING: 'Posting',
 };
-
-const isCronInstance = process.env.NODE_APP_INSTANCE === '0';
 
 new CronJob(
   '0 0 * * *', // cronTime
@@ -100,12 +95,12 @@ new CronJob(
           entityId: submission.campaignId,
         });
 
-        getIo().to(submission.userId).emit('notification', data);
+        emitter.to(submission.userId).emit('notification', data);
       }
     });
   },
   null, // onComplete
-  isCronInstance, // start
+  true, // start
   'Asia/Kuala_Lumpur', // timeZone
 );
 
@@ -134,7 +129,7 @@ new CronJob(
         entityId: campaignId,
         submissionId,
       });
-      if (userId) getIo().to(userId).emit('notification', data);
+      if (userId) emitter.to(userId).emit('notification', data);
     };
 
     try {
@@ -222,7 +217,7 @@ new CronJob(
     }
   },
   null,
-  isCronInstance,
+  true,
   'Asia/Kuala_Lumpur',
 );
 
@@ -247,7 +242,7 @@ new CronJob(
     }
   },
   null, // onComplete
-  isCronInstance, // start
+  true, // start
   'Asia/Kuala_Lumpur',
 );
 
@@ -271,7 +266,7 @@ new CronJob(
     }
   },
   null, // onComplete
-  isCronInstance, // start
+  true, // start
   'Asia/Kuala_Lumpur',
 );
 
@@ -297,7 +292,7 @@ new CronJob(
     }
   },
   null, // onComplete
-  isCronInstance, // start
+  true, // start
   'Asia/Kuala_Lumpur',
 );
 
@@ -320,7 +315,7 @@ new CronJob(
     }
   },
   null, // onComplete
-  isCronInstance, // start
+  true, // start
   'Asia/Kuala_Lumpur',
 );
 
@@ -341,7 +336,7 @@ new CronJob(
     }
   },
   null, // onComplete
-  isCronInstance, // start
+  true, // start
   'Asia/Kuala_Lumpur',
 );
 
@@ -365,6 +360,6 @@ new CronJob(
     }
   },
   null, // onComplete
-  isCronInstance, // start
+  true, // start
   'Asia/Kuala_Lumpur',
 );
