@@ -6,7 +6,6 @@ import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import LocalizedFormat from 'dayjs/plugin/localizedFormat';
 import { saveNotification } from '@controllers/notificationController';
-import { notifications } from '@constants/reminders';
 
 // import { clients, io } from '../server';
 import {
