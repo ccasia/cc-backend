@@ -20,8 +20,6 @@ import {
   refreshTikTokToken,
   withCachedInstagramThumbnail,
   cacheInstagramThumbnail,
-  getInstagramEngagementRateOverTime,
-  getInstagramMonthlyInteractions,
   getTikTokEngagementRateOverTime,
   getTikTokMonthlyInteractions,
   getTikTokMediaObject,
@@ -1182,7 +1180,7 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
   try {
     const data = await getInstagramAccessToken(code as string);
 
-    await prisma.$transaction(async (tx) => {
+    const creatorId = await prisma.$transaction(async (tx) => {
       const user = await tx.creator.findUnique({
         where: {
           userId: userId,
@@ -1214,7 +1212,18 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
           isFacebookConnected: true,
         },
       });
+
+      return user.id;
     });
+
+    // Without this the row holds only a token, and followers and ER stay empty
+    // until someone opens the media kit page.
+    try {
+      const accessToken = await ensureValidInstagramToken(userId);
+      await syncInstagramMediaKit(creatorId, userId, accessToken);
+    } catch (syncError: any) {
+      console.error('[InstagramConnect] Media kit sync failed', { userId, creatorId, message: syncError?.message });
+    }
 
     onMediaKitConnected(userId, 'instagram');
 
@@ -1249,6 +1258,190 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
   }
 };
 
+// Fetches the Instagram overview, insights and top media, then saves them to the media kit.
+export const syncInstagramMediaKit = async (creatorId: string, userId: string, accessToken: string) => {
+  const overview = await getInstagramOverviewService(accessToken);
+  const medias = await getInstagramMediaObject(accessToken, overview.user_id);
+  const insightData = await getInstagramUserInsight(accessToken, overview.user_id);
+
+  console.log('[InstagramMediaKit] Instagram API fetch summary', {
+    userId,
+    creatorId,
+    instagramUserId: overview.user_id,
+    profileUsername: overview.username || null,
+    followerCount: overview.followers_count || 0,
+    mediaCount: overview.media_count || 0,
+    sortedVideosCount: medias?.sortedVideos?.length || 0,
+    totalLikes: medias?.totalLikes || 0,
+    totalComments: medias?.totalComments || 0,
+    totalReach: insightData?.totals?.reach || 0,
+    totalShares: insightData?.totals?.shares || 0,
+    totalSaves: insightData?.totals?.saves || 0,
+  });
+
+  const averageLikes = medias.averageLikes || 0;
+  const averageComments = medias.averageComments || 0;
+  const averageShares = overview.media_count ? insightData.totals.shares / overview.media_count : 0;
+  const averageSaves = overview.media_count ? insightData.totals.saves / overview.media_count : 0;
+
+  const instagramViews = insightData.totals.reach || 0;
+  const instagramInteractions =
+    (insightData.totals.likes || 0) +
+    (insightData.totals.comments || 0) +
+    (insightData.totals.shares || 0) +
+    (insightData.totals.saves || 0);
+
+  const engagementRate = instagramViews ? (instagramInteractions / instagramViews) * 100 : 0;
+
+  const instagramUser = await prisma.instagramUser.upsert({
+    where: {
+      creatorId,
+    },
+    update: {
+      profile_picture_url: overview.profile_picture_url,
+      biography: overview.biography,
+      followers_count: overview.followers_count,
+      follows_count: overview.follows_count,
+      media_count: overview.media_count,
+      totalLikes: medias.totalLikes,
+      totalComments: medias.totalComments,
+      totalShares: insightData.totals.shares,
+      totalSaves: insightData.totals.saves,
+      averageLikes,
+      averageComments,
+      averageShares,
+      averageSaves,
+      insightData: {
+        since: insightData.since,
+        until: insightData.until,
+        totals: insightData.totals,
+        raw: insightData.raw,
+      },
+      engagement_rate: engagementRate,
+      username: overview.username,
+      lastUpdated: new Date(),
+    },
+    create: {
+      creatorId,
+      user_id: overview.user_id,
+      profile_picture_url: overview.profile_picture_url,
+      biography: overview.biography,
+      followers_count: overview.followers_count,
+      follows_count: overview.follows_count,
+      media_count: overview.media_count,
+      username: overview.username,
+      totalLikes: medias.totalLikes,
+      totalComments: medias.totalComments,
+      totalShares: insightData.totals.shares,
+      totalSaves: insightData.totals.saves,
+      averageLikes,
+      averageComments,
+      averageShares,
+      averageSaves,
+      insightData: {
+        since: insightData.since,
+        until: insightData.until,
+        totals: insightData.totals,
+        raw: insightData.raw,
+      },
+      engagement_rate: engagementRate,
+      lastUpdated: new Date(),
+    },
+  });
+
+  // Update creator's credit tier after Instagram follower data changes
+  try {
+    const { updateCreatorTier } = require('@services/creditTierService');
+    await updateCreatorTier(userId);
+  } catch (tierError) {
+    console.error('Failed to update credit tier after Instagram media kit refresh:', tierError);
+    // Non-blocking - don't fail the request if tier update fails
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.creator.update({
+      where: {
+        id: creatorId,
+      },
+      data: {
+        instagram: instagramUser.username,
+      },
+    });
+  });
+
+  const cachedSortedVideos = await Promise.all(
+    (medias.sortedVideos || []).map((media: any) => withCachedInstagramThumbnail(media, creatorId)),
+  );
+
+  const topInstagramVideoIds = cachedSortedVideos
+    .map((media: any) => media?.id || null)
+    .filter((id: any): id is string => id !== null);
+
+  if (topInstagramVideoIds.length > 0) {
+    await prisma.instagramVideo.deleteMany({
+      where: {
+        instagramUserId: instagramUser.id,
+        OR: [
+          { video_id: null },
+          {
+            video_id: {
+              notIn: topInstagramVideoIds,
+            },
+          },
+        ],
+      },
+    });
+  } else {
+    await prisma.instagramVideo.deleteMany({
+      where: {
+        instagramUserId: instagramUser.id,
+      },
+    });
+  }
+
+  for (const media of cachedSortedVideos) {
+    const videoId = media.id;
+
+    await (prisma.instagramVideo as any).upsert({
+      where: {
+        video_id: videoId,
+      },
+      update: {
+        video_id: videoId,
+        comments_count: media.comments_count,
+        like_count: media.like_count,
+        view_count: media.video_views ?? null,
+        media_type: media.media_type,
+        media_url: media.media_url,
+        thumbnail_url: media.thumbnail_url,
+        caption: media.caption,
+        permalink: media.permalink,
+        datePosted: dayjs(media.timestamp).toDate(),
+        shortCode: media.shortcode,
+      },
+      create: {
+        video_id: videoId,
+        comments_count: media.comments_count,
+        like_count: media.like_count,
+        view_count: media.video_views ?? null,
+        media_type: media.media_type,
+        media_url: media.media_url,
+        thumbnail_url: media.thumbnail_url,
+        caption: media.caption,
+        permalink: media.permalink,
+        shortCode: media.shortcode,
+        datePosted: dayjs(media.timestamp).toDate(),
+        instagramUserId: instagramUser.id,
+      },
+    });
+  }
+
+  // Opportunistic backfill for existing DB rows that still have expiring Instagram URLs.
+  void backfillPersistedInstagramThumbnails(instagramUser.id, creatorId);
+
+  return { instagramUser, medias: { ...medias, sortedVideos: cachedSortedVideos } };
+};
+
 export const getInstagramMediaKit = async (req: Request, res: Response) => {
   const { userId } = req.params;
 
@@ -1281,215 +1474,9 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       });
     }
 
-    const overview = await getInstagramOverviewService(accessToken);
-    const medias = await getInstagramMediaObject(accessToken, overview.user_id);
-    const insightData = await getInstagramUserInsight(accessToken, overview.user_id);
+    const { instagramUser, medias } = await syncInstagramMediaKit(creator.id, userId, accessToken);
 
-    console.log('[InstagramMediaKit] Instagram API fetch summary', {
-      userId,
-      creatorId: creator.id,
-      instagramUserId: overview.user_id,
-      profileUsername: overview.username || null,
-      followerCount: overview.followers_count || 0,
-      mediaCount: overview.media_count || 0,
-      sortedVideosCount: medias?.sortedVideos?.length || 0,
-      totalLikes: medias?.totalLikes || 0,
-      totalComments: medias?.totalComments || 0,
-      totalReach: insightData?.totals?.reach || 0,
-      totalShares: insightData?.totals?.shares || 0,
-      totalSaves: insightData?.totals?.saves || 0,
-    });
-
-    const averageLikes = medias.averageLikes || 0;
-    const averageComments = medias.averageComments || 0;
-    const averageShares = overview.media_count ? insightData.totals.shares / overview.media_count : 0;
-    const averageSaves = overview.media_count ? insightData.totals.saves / overview.media_count : 0;
-
-    const instagramViews = insightData.totals.reach || 0;
-    const instagramInteractions =
-      (insightData.totals.likes || 0) +
-      (insightData.totals.comments || 0) +
-      (insightData.totals.shares || 0) +
-      (insightData.totals.saves || 0);
-
-    const engagementRate = instagramViews ? (instagramInteractions / instagramViews) * 100 : 0;
-
-    // Get analytics data for charts with error handling
-    let analytics: {
-      engagementRates: number[];
-      months: string[];
-      monthlyInteractions: { month: string; interactions: number }[];
-    } = {
-      engagementRates: [],
-      months: [],
-      monthlyInteractions: [],
-    };
-
-    try {
-      const engagementAnalytics = await getInstagramEngagementRateOverTime(accessToken);
-      const monthlyAnalytics = await getInstagramMonthlyInteractions(accessToken);
-
-      analytics = {
-        engagementRates: engagementAnalytics.engagementRates,
-        months: engagementAnalytics.months,
-        monthlyInteractions: monthlyAnalytics.monthlyData,
-      };
-    } catch (analyticsError) {
-      console.error('Failed to fetch Instagram analytics:', analyticsError);
-      // analytics remains as empty arrays - frontend will use fallback
-    }
-
-    const instagramUser = await prisma.instagramUser.upsert({
-      where: {
-        creatorId: creator.id,
-      },
-      update: {
-        profile_picture_url: overview.profile_picture_url,
-        biography: overview.biography,
-        followers_count: overview.followers_count,
-        follows_count: overview.follows_count,
-        media_count: overview.media_count,
-        totalLikes: medias.totalLikes,
-        totalComments: medias.totalComments,
-        totalShares: insightData.totals.shares,
-        totalSaves: insightData.totals.saves,
-        averageLikes,
-        averageComments,
-        averageShares,
-        averageSaves,
-        insightData: {
-          since: insightData.since,
-          until: insightData.until,
-          totals: insightData.totals,
-          raw: insightData.raw,
-        },
-        engagement_rate: engagementRate,
-        username: overview.username,
-      },
-      create: {
-        creatorId: creator.id,
-        user_id: overview.user_id,
-        profile_picture_url: overview.profile_picture_url,
-        biography: overview.biography,
-        followers_count: overview.followers_count,
-        follows_count: overview.follows_count,
-        media_count: overview.media_count,
-        username: overview.username,
-        totalLikes: medias.totalLikes,
-        totalComments: medias.totalComments,
-        totalShares: insightData.totals.shares,
-        totalSaves: insightData.totals.saves,
-        averageLikes,
-        averageComments,
-        averageShares,
-        averageSaves,
-        insightData: {
-          since: insightData.since,
-          until: insightData.until,
-          totals: insightData.totals,
-          raw: insightData.raw,
-        },
-        engagement_rate: engagementRate,
-      },
-    });
-
-    // Update creator's credit tier after Instagram follower data changes
-    try {
-      const { updateCreatorTier } = require('@services/creditTierService');
-      await updateCreatorTier(userId);
-    } catch (tierError) {
-      console.error('Failed to update credit tier after Instagram media kit refresh:', tierError);
-      // Non-blocking - don't fail the request if tier update fails
-    }
-
-    await prisma.$transaction(async (tx) => {
-      await tx.creator.update({
-        where: {
-          id: creator.id,
-        },
-        data: {
-          instagram: instagramUser.username,
-        },
-      });
-    });
-
-    const cachedSortedVideos = await Promise.all(
-      (medias.sortedVideos || []).map((media: any) => withCachedInstagramThumbnail(media, creator.id)),
-    );
-
-    const topInstagramVideoIds = cachedSortedVideos
-      .map((media: any) => media?.id || null)
-      .filter((id: any): id is string => id !== null);
-
-    if (topInstagramVideoIds.length > 0) {
-      await prisma.instagramVideo.deleteMany({
-        where: {
-          instagramUserId: instagramUser.id,
-          OR: [
-            { video_id: null },
-            {
-              video_id: {
-                notIn: topInstagramVideoIds,
-              },
-            },
-          ],
-        },
-      });
-    } else {
-      await prisma.instagramVideo.deleteMany({
-        where: {
-          instagramUserId: instagramUser.id,
-        },
-      });
-    }
-
-    for (const media of cachedSortedVideos) {
-      const videoId = media.id;
-
-      await (prisma.instagramVideo as any).upsert({
-        where: {
-          video_id: videoId,
-        },
-        update: {
-          video_id: videoId,
-          comments_count: media.comments_count,
-          like_count: media.like_count,
-          view_count: media.video_views ?? null,
-          media_type: media.media_type,
-          media_url: media.media_url,
-          thumbnail_url: media.thumbnail_url,
-          caption: media.caption,
-          permalink: media.permalink,
-          datePosted: dayjs(media.timestamp).toDate(),
-          shortCode: media.shortcode,
-        },
-        create: {
-          video_id: videoId,
-          comments_count: media.comments_count,
-          like_count: media.like_count,
-          view_count: media.video_views ?? null,
-          media_type: media.media_type,
-          media_url: media.media_url,
-          thumbnail_url: media.thumbnail_url,
-          caption: media.caption,
-          permalink: media.permalink,
-          shortCode: media.shortcode,
-          datePosted: dayjs(media.timestamp).toDate(),
-          instagramUserId: instagramUser.id,
-        },
-      });
-    }
-
-    // Opportunistic backfill for existing DB rows that still have expiring Instagram URLs.
-    void backfillPersistedInstagramThumbnails(instagramUser.id, creator.id);
-
-    return res.status(200).json({ instagramUser, medias: { ...medias, sortedVideos: cachedSortedVideos }, creator });
-
-    // return res.status(200).json({
-    //   overview,
-    //   medias,
-    //   analytics,
-    // });
+    return res.status(200).json({ instagramUser, medias, creator });
   } catch (error) {
     console.error('Error in getInstagramMediaKit:', error);
     return res.status(400).json(error);

@@ -2775,8 +2775,10 @@ export const updatePlatformCreatorMetrics = async (req: Request, res: Response) 
     }
 
     const platform = pitch.selectedPlatform;
-    const instagramConnected = creator.isFacebookConnected || Boolean(creator.instagramUser);
-    const tiktokConnected = creator.isTiktokConnected || Boolean(creator.tiktokUser);
+    // Same rule as the shortlist save: a connected account counts only once its
+    // stats are saved. A token-only row has no numbers, so the admin may type them.
+    const instagramConnected = creator.instagramUser?.followers_count != null;
+    const tiktokConnected = creator.tiktokUser?.follower_count != null;
     const connected =
       platform === 'instagram'
         ? instagramConnected
