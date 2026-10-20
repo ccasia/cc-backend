@@ -3219,3 +3219,13 @@ model CreatorArchetypeQuiz {
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 }
+
+// One row per scheduled quiz push day. The unique date stops a second send.
+// sentAt stays null if the process stopped mid-send.
+model ArchetypeQuizPushLog {
+  id         String    @id @default(cuid())
+  date       String    @unique // YYYY-MM-DD in MYT
+  recipients Int?
+  createdAt  DateTime  @default(now())
+  sentAt     DateTime?
+}

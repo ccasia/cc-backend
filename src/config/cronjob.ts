@@ -17,6 +17,7 @@ import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshot
 import { emitter } from './socketEmitter';
 import { snapshotLeaderboard } from '../modules/gamification';
 import { publishDueReleaseNotes } from '@modules/release-note';
+import { sendArchetypeQuizPushForToday } from '@modules/archetype-quiz';
 import { reconcileStuckLogistics } from '../service/logisticsService';
 import { prisma } from '@/src/prisma/prisma';
 
@@ -335,5 +336,29 @@ new CronJob(
   },
   null, // onComplete
   true, // start
+  'Asia/Kuala_Lumpur',
+);
+
+new CronJob(
+  // 09:00 MYT send. The hourly runs until 21:00 are catch-ups if the server was down;
+  // the push log makes sure each day sends only once.
+  '0 9-21 * * *',
+  async function () {
+    try {
+      const result = await sendArchetypeQuizPushForToday();
+
+      if (result.sent) {
+        console.log('[Cronjob] Archetype quiz push sent:', {
+          date: result.date,
+          recipients: result.recipients,
+          timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+        });
+      }
+    } catch (error) {
+      console.error('[Cronjob] Archetype quiz push failed:', error);
+    }
+  },
+  null, // onComplete
+  isCronInstance, // start
   'Asia/Kuala_Lumpur',
 );
