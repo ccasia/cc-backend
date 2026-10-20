@@ -6,6 +6,7 @@ import { clients, getIo } from '@configs/socket';
 import { notificationSignature } from '@helper/notification';
 import { saveNotification } from '@controllers/notificationController';
 import { logAdminChange, logChange } from '@services/campaignServices';
+import type { StoredCampaignTier } from '@services/creditTierService';
 import {
   buildAgreementFollowerSnapshot,
   resolveAgreementFollowerCount,
@@ -73,6 +74,7 @@ export const resolveAgreementSnapshot = ({
 
   return {
     normalizedPlatform,
+    platformChanged,
     resolvedFollower,
     effectiveFollowerCount,
     shortlistFollowerData: shortlistData,
@@ -130,6 +132,56 @@ export const resolveAgreedTierOrNull = async (userId: string, platform: SocialPl
     console.warn(`Credit tier calculation failed for creator ${userId}, proceeding without tier data:`, error.message);
     return null;
   }
+};
+
+// The tier an agreement charges. Once approval has saved a tier on the shortlist it is reused, so live
+// data never re-prices the creator. Only corrections re-price: a superadmin's typed count, or a platform
+// change (the saved tier belongs to the old platform). With no saved tier for this platform, it takes
+// the live tier the master list row shows, the way approval does.
+export const resolveCampaignTierOrNull = async ({
+  userId,
+  platform,
+  followerCount,
+  resolvedFollower,
+  shortlist,
+  pitch,
+}: {
+  userId: string;
+  platform: SocialPlatform;
+  followerCount: number;
+  resolvedFollower: ResolvedAgreementFollowerCount;
+  shortlist?: StoredCampaignTier | null;
+  pitch?: { selectedPlatform?: string | null; followerCount?: string | null } | null;
+}) => {
+  if (resolvedFollower.source === 'override') return resolveAgreedTierOrNull(userId, platform, followerCount);
+
+  const { getStoredCampaignTier, resolveLiveRowTier } = require('@services/creditTierService');
+  const storedTier = await getStoredCampaignTier(platform, shortlist);
+  if (storedTier) return storedTier;
+
+  try {
+    // The pitch's count belongs to this platform only if it was saved for it.
+    const pitchFollowerCount =
+      !pitch?.selectedPlatform || pitch.selectedPlatform === platform ? pitch?.followerCount : null;
+    const { tier } = await resolveLiveRowTier(userId, { selectedPlatform: platform, followerCount: pitchFollowerCount });
+    if (tier) return tier;
+  } catch (error) {
+    console.warn(`Live tier lookup failed for creator ${userId}:`, error);
+  }
+
+  // Nothing live on this platform: price from a count an admin typed, if any.
+  return resolveAgreedTierOrNull(userId, platform, followerCount);
+};
+
+// Tier fields to write on ShortListedCreator. A platform change that resolved no tier clears the old
+// one, so a tier saved for the previous platform is never read as this one's.
+const campaignTierWrite = (
+  tierSnapshot: { id: string; creditsPerVideo: number } | null,
+  platformChanged: boolean,
+): { creditTierId?: string | null; creditPerVideo?: number | null } => {
+  if (tierSnapshot) return { creditTierId: tierSnapshot.id, creditPerVideo: tierSnapshot.creditsPerVideo };
+  if (platformChanged) return { creditTierId: null, creditPerVideo: null };
+  return {};
 };
 
 // Users (excluding guests) who currently have a sent agreement on this campaign.
@@ -320,15 +372,21 @@ export const updateAgreementAmount = async (
   });
 
   // An edit that only touches the amount must not flip the creator's platform.
-  const { normalizedPlatform, resolvedFollower, effectiveFollowerCount, shortlistFollowerData, pitchFollowerData } =
-    resolveAgreementSnapshot({
-      actorRole: admin?.role,
-      requestedPlatform: selectedPlatform,
-      requestedFollowerCount: followerCount,
-      shortlist: currentShortlisted,
-      pitch: currentPitch,
-      creator: creator.creator,
-    });
+  const {
+    normalizedPlatform,
+    platformChanged,
+    resolvedFollower,
+    effectiveFollowerCount,
+    shortlistFollowerData,
+    pitchFollowerData,
+  } = resolveAgreementSnapshot({
+    actorRole: admin?.role,
+    requestedPlatform: selectedPlatform,
+    requestedFollowerCount: followerCount,
+    shortlist: currentShortlisted,
+    pitch: currentPitch,
+    creator: creator.creator,
+  });
 
   const adminName = admin?.name || 'Admin';
   const creatorName = creator.name || 'Creator';
@@ -349,11 +407,24 @@ export const updateAgreementAmount = async (
     resolvedFollower,
   });
 
-  if (isCreditTierCampaign && !isGuestCreator && newVideoCount !== null && newVideoCount > 0) {
+  // A platform change re-prices even without a video count, so the saved tier follows the platform.
+  if (
+    isCreditTierCampaign &&
+    !isGuestCreator &&
+    ((newVideoCount !== null && newVideoCount > 0) || platformChanged)
+  ) {
     // Allow admin to proceed when tier data is unavailable — tier info will be null
-    tierSnapshot = await resolveAgreedTierOrNull(creator.id, normalizedPlatform, effectiveFollowerCount);
+    tierSnapshot = await resolveCampaignTierOrNull({
+      userId: creator.id,
+      platform: normalizedPlatform,
+      followerCount: effectiveFollowerCount,
+      resolvedFollower,
+      shortlist: currentShortlisted,
+      pitch: currentPitch,
+    });
     creditPerVideo = tierSnapshot?.creditsPerVideo ?? null;
   }
+  const tierWrite = isCreditTierCampaign ? campaignTierWrite(tierSnapshot, platformChanged) : {};
 
   // Update shortlisted creator with amount, currency, and optionally videos/tier info
   await prisma.shortListedCreator.updateMany({
@@ -368,14 +439,7 @@ export const updateAgreementAmount = async (
       ...shortlistFollowerData,
       ...(newVideoCount !== null && { ugcVideos: newVideoCount }),
       // Update tier info for credit tier campaigns
-      ...(isCreditTierCampaign &&
-        creditPerVideo !== null && {
-          creditPerVideo: creditPerVideo,
-        }),
-      ...(isCreditTierCampaign &&
-        tierSnapshot && {
-          creditTierId: tierSnapshot.id,
-        }),
+      ...tierWrite,
     },
   });
 
@@ -733,15 +797,21 @@ export const sendCreatorAgreement = async (
     }),
   ]);
 
-  const { normalizedPlatform, resolvedFollower, effectiveFollowerCount, shortlistFollowerData, pitchFollowerData } =
-    resolveAgreementSnapshot({
-      actorRole: agreementActor?.role,
-      requestedPlatform: selectedPlatform,
-      requestedFollowerCount: followerCount,
-      shortlist: shortlistedCreator,
-      pitch: pitchForUser,
-      creator: isUserExist.creator,
-    });
+  const {
+    normalizedPlatform,
+    platformChanged,
+    resolvedFollower,
+    effectiveFollowerCount,
+    shortlistFollowerData,
+    pitchFollowerData,
+  } = resolveAgreementSnapshot({
+    actorRole: agreementActor?.role,
+    requestedPlatform: selectedPlatform,
+    requestedFollowerCount: followerCount,
+    shortlist: shortlistedCreator,
+    pitch: pitchForUser,
+    creator: isUserExist.creator,
+  });
 
   // Pitch-only flow (e.g. external approver) can leave APPROVED pitches without a shortlist row.
   // Client approval path creates ShortListedCreator; mirror that here so the agreement can be sent.
@@ -757,15 +827,17 @@ export const sendCreatorAgreement = async (
     let creditPerVideo: number | null = null;
     let creditTierId: string | null = null;
     if (campaign.isCreditTier) {
-      try {
-        const { resolveAgreedTier } = require('@services/creditTierService');
-        const { tier } = await resolveAgreedTier(isUserExist.id, normalizedPlatform, effectiveFollowerCount || null);
-        if (tier) {
-          creditPerVideo = tier.creditsPerVideo;
-          creditTierId = tier.id;
-        }
-      } catch (tierErr) {
-        console.log('resolveAgreedTier in sendAgreement shortlist backfill:', tierErr);
+      // First shortlist row for this creator, so this saves the live tier the row showed.
+      const tier = await resolveCampaignTierOrNull({
+        userId: isUserExist.id,
+        platform: normalizedPlatform,
+        followerCount: effectiveFollowerCount,
+        resolvedFollower,
+        pitch: pitchForUser,
+      });
+      if (tier) {
+        creditPerVideo = tier.creditsPerVideo;
+        creditTierId = tier.id;
       }
     }
 
@@ -908,7 +980,14 @@ export const sendCreatorAgreement = async (
       // Deriving it from live socials instead would let a creator's media kit inflate the
       // cost above the tier the campaign was budgeted with, draining its credits.
       // Falls back to a 1:1 credit-to-video ratio when tier data is unavailable.
-      const tier = await resolveAgreedTierOrNull(isUserExist.id, normalizedPlatform, effectiveFollowerCount);
+      const tier = await resolveCampaignTierOrNull({
+        userId: isUserExist.id,
+        platform: normalizedPlatform,
+        followerCount: effectiveFollowerCount,
+        resolvedFollower,
+        shortlist: shortlistedCreator,
+        pitch: pitchForUser,
+      });
 
       if (tier) {
         creditsToAssign = tier.creditsPerVideo * videoCount;
@@ -951,6 +1030,8 @@ export const sendCreatorAgreement = async (
       }
     }
   }
+
+  const tierWrite = isCreditTierCampaign ? campaignTierWrite(tierSnapshot, platformChanged) : {};
 
   // Round-scoped snapshot, mirrored onto ShortListedCreator below for other consumers.
   const roundSnapshotData = {
@@ -997,11 +1078,7 @@ export const sendCreatorAgreement = async (
 
       ...(videoCount > 0 && { ugcVideos: videoCount }),
 
-      ...(isCreditTierCampaign &&
-        tierSnapshot && {
-          creditPerVideo: creditPerVideo,
-          creditTierId: tierSnapshot.id,
-        }),
+      ...tierWrite,
     },
   });
 

@@ -7464,7 +7464,7 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found.' });
     }
 
-    const { resolveAgreedTier } = require('@services/creditTierService');
+    const { resolveAgreedTier, getStoredCampaignTier } = require('@services/creditTierService');
     const isCreditTierCampaign = campaign.isCreditTier === true;
 
     // Resolve platform, tier and creditsAssigned for every creator up front so the
@@ -7529,11 +7529,13 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
       let followerCount: number | null = null;
 
       if (isCreditTierCampaign && !isGuest) {
-        const { tier, followerCount: resolvedFollowerCount } = await resolveAgreedTier(
-          creatorInput.userId,
-          normalizedPlatform,
-          creatorInput.followerCount || null,
-        );
+        // Same platform and no typed count: price the round at the tier the campaign saved, not live socials.
+        const storedTier = creatorInput.followerCount
+          ? null
+          : await getStoredCampaignTier(normalizedPlatform, shortlisted);
+        const { tier, followerCount: resolvedFollowerCount } = storedTier
+          ? { tier: storedTier, followerCount: shortlisted?.followerCount ?? null }
+          : await resolveAgreedTier(creatorInput.userId, normalizedPlatform, creatorInput.followerCount || null);
         if (!tier) {
           return res.status(400).json({
             message: `Could not resolve a credit tier for ${user.name || 'this creator'} — connect their media kit or set a follower count manually.`,
@@ -11122,12 +11124,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               })
             : null;
 
-        if (campaign.isCreditTier && tierForSelectedPlatform && user.creator) {
-          await tx.creator.update({
-            where: { userId: user.id },
-            data: { creditTierId: tierForSelectedPlatform.id, tierUpdatedAt: new Date() },
-          });
-        }
+        // tierForSelectedPlatform is this campaign's snapshot only. Creator.creditTier tracks live
+        // socials (updateCreatorTier), so writing a per-platform tier there leaks into other campaigns.
 
         // Check if already has a pitch for this campaign
         const existingPitch = await tx.pitch.findFirst({
