@@ -106,7 +106,7 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
       submissionVersion: true,
       campaignCredits: true,
       creditsUtilized: true,
-      campaignBrief: { select: { objectives: true, endDate: true } },
+      campaignBrief: { select: { objectives: true, endDate: true, images: true } },
       brand: { select: { logo: true } },
       company: { select: { logo: true } },
     },
@@ -114,44 +114,49 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
   });
   const campaignIds = campaigns.map((c) => c.id);
 
-  const [companyCredits, shortlisted, confirmedCreators, pitches, submissionTypes, submissionCounts, sentToClient] =
-    await Promise.all([
-      getCompanyCredits(client.companyId),
-      prisma.shortListedCreator.groupBy({
-        by: ['campaignId'],
-        where: { campaignId: { in: campaignIds } },
-        _count: { _all: true },
-      }),
-      prisma.pitch.groupBy({
-        by: ['campaignId'],
-        where: {
-          outreachStatus: 'CONFIRMED',
-          campaignId: { in: campaignIds },
-        },
-        _count: { _all: true },
-      }),
-      prisma.pitch.findMany({
-        where: { campaignId: { in: campaignIds }, status: { in: SHORTLIST_PITCH_STATUSES } },
-        select: { campaignId: true, status: true, createdAt: true, sentToClientAt: true },
-      }),
-      prisma.submissionType.findMany({ select: { id: true, type: true } }),
-      prisma.submission.groupBy({
-        by: ['campaignId', 'submissionTypeId', 'submissionVersion', 'status'],
-        where: { campaignId: { in: campaignIds } },
-        _count: { _all: true },
-      }),
-      prisma.submission.findMany({
-        where: { campaignId: { in: campaignIds }, status: 'SENT_TO_CLIENT' },
-        select: { campaignId: true, updatedAt: true, user: { select: { name: true } } },
-      }),
-    ]);
+  const [
+    companyCredits,
+    shortlisted,
+    pitches,
+    submissionTypes,
+    submissionCounts,
+    sentToClient,
+    approvedAgreementsCount,
+  ] = await Promise.all([
+    getCompanyCredits(client.companyId),
+    prisma.shortListedCreator.groupBy({
+      by: ['campaignId'],
+      where: { campaignId: { in: campaignIds } },
+      _count: { _all: true },
+    }),
+
+    prisma.pitch.findMany({
+      where: { campaignId: { in: campaignIds }, status: { in: SHORTLIST_PITCH_STATUSES } },
+      select: { campaignId: true, status: true, createdAt: true, sentToClientAt: true },
+    }),
+    prisma.submissionType.findMany({ select: { id: true, type: true } }),
+    prisma.submission.groupBy({
+      by: ['campaignId', 'submissionTypeId', 'submissionVersion', 'status'],
+      where: { campaignId: { in: campaignIds } },
+      _count: { _all: true },
+    }),
+    prisma.submission.findMany({
+      where: { campaignId: { in: campaignIds }, status: 'SENT_TO_CLIENT' },
+      select: { campaignId: true, updatedAt: true, user: { select: { name: true } } },
+    }),
+    prisma.submission.groupBy({
+      by: ['campaignId'],
+      where: { campaignId: { in: campaignIds }, status: 'APPROVED', submissionType: { type: 'AGREEMENT_FORM' } },
+      _count: { _all: true },
+    }),
+  ]);
 
   const typeById = new Map(submissionTypes.map((t) => [t.id, t.type]));
+  const approvedAgreementsId = new Map(approvedAgreementsCount.map((r) => [r.campaignId, r._count._all]));
   const confirmedBy = new Map(shortlisted.map((row) => [row.campaignId, row._count._all]));
 
-  const confirmedCreatorsBy = new Map(confirmedCreators.map((r) => [r.campaignId, r._count._all]));
-
   const statsBy = new Map<string, Pick<ClientHomeCampaign, 'submissions' | 'posting'>>();
+
   for (const row of submissionCounts) {
     const type = typeById.get(row.submissionTypeId);
     if (!type) continue;
@@ -160,7 +165,9 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
       submissions: { received: 0, approved: 0 },
       posting: { posted: 0, total: 0 },
     };
+
     statsBy.set(row.campaignId, stats);
+
     const count = row._count._all;
 
     if (CONTENT_TYPES.includes(type)) {
@@ -181,7 +188,8 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
   }
 
   const homeCampaigns: ClientHomeCampaign[] = campaigns.map((campaign) => {
-    const confirmed = confirmedCreatorsBy.get(campaign.id) ?? 0;
+    const confirmed = approvedAgreementsId.get(campaign.id) ?? 0;
+
     const totalShortlisted = confirmedBy.get(campaign.id) ?? 0;
     const base = {
       status: campaign.status,
@@ -195,6 +203,7 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
       objective: campaign.campaignBrief?.objectives ?? null,
       endDate: campaign.campaignBrief?.endDate ?? null,
       logo: campaign.brand?.logo ?? campaign.company?.logo ?? null,
+      image: campaign.campaignBrief?.images,
       submissionVersion: campaign.submissionVersion,
       stage: stageOf(base),
       credits: { used: campaign.creditsUtilized ?? 0, assigned: campaign.campaignCredits ?? 0 },

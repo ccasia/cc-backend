@@ -151,6 +151,7 @@ export const getCampaignOverview = async (userId: string, campaignId: string): P
     productCount,
     performance,
     updates,
+    approvedAgreementsCount,
   ] = await Promise.all([
     // prisma.shortListedCreator.count({ where: { campaignId } }),
     prisma.pitch.count({ where: { outreachStatus: 'CONFIRMED', campaignId } }),
@@ -174,6 +175,9 @@ export const getCampaignOverview = async (userId: string, campaignId: string): P
     prisma.product.count({ where: { campaignId, isArchived: false } }),
     getPerformance(campaignId),
     getUpdates(campaignId),
+    prisma.submission.count({
+      where: { campaignId, status: 'APPROVED', submissionType: { type: 'AGREEMENT_FORM' } },
+    }),
   ]);
 
   const typeById = new Map(submissionTypes.map((t) => [t.id, t.type]));
@@ -240,7 +244,12 @@ export const getCampaignOverview = async (userId: string, campaignId: string): P
       unallocated:
         campaign.creditsPending ?? Math.max((campaign.campaignCredits ?? 0) - (campaign.creditsUtilized ?? 0), 0),
     },
-    shortlist: { confirmed, contractPending, waitingOnClient: waitingPitches.length, waitingSince },
+    shortlist: {
+      confirmed: approvedAgreementsCount,
+      contractPending,
+      waitingOnClient: waitingPitches.length,
+      waitingSince,
+    },
     submissions: { submissionVersion: campaign.submissionVersion, ...submissions, nextDueAt: nextDue?.dueDate ?? null },
     logistics: {
       enabled: campaign.logisticsType !== null || logisticsTotal > 0,
