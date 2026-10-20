@@ -116,6 +116,7 @@ model User {
   creatorNotesAbout                 CreatorNote[]                      @relation("CreatorNoteCreator")
   creatorNotesAuthored              CreatorNote[]                      @relation("CreatorNoteAuthor")
   creatorNoteReadStates             CreatorNoteReadState[]
+  archetypeQuiz                     CreatorArchetypeQuiz?
 }
 
 model CampaignCreationDraft {
@@ -3186,4 +3187,37 @@ model CreatorNoteReadState {
 
   @@id([userId, campaignId, creatorId])
   @@index([campaignId, creatorId])
+}
+
+enum CreatorArchetype {
+  MAIN_CHARACTER
+  PINTEREST_FINAL_BOSS
+  YAPPER
+  TREND_HOPPER
+  CONTROL_FREAK
+}
+
+model CreatorArchetypeQuiz {
+  id                String            @id @default(cuid())
+  userId            String            @unique
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  archetype         CreatorArchetype?
+  answers           Json?
+  scores            Json?
+  quizVersion       Int?
+  attemptCount      Int               @default(0)
+  completedAt       DateTime?
+  promptDismissedAt DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+// One row per scheduled quiz push day. The unique date stops a second send.
+// sentAt stays null if the process stopped mid-send.
+model ArchetypeQuizPushLog {
+  id         String    @id @default(cuid())
+  date       String    @unique // YYYY-MM-DD in MYT
+  recipients Int?
+  createdAt  DateTime  @default(now())
+  sentAt     DateTime?
 }

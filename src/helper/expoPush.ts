@@ -1,4 +1,4 @@
-import { Expo, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
+import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { prisma } from '@/src/prisma/prisma';
 
 const expo = new Expo();
@@ -10,10 +10,14 @@ interface ExpoPushPayload {
   collapseId?: string; // for stacking notifications
 }
 
-export const sendExpoPushToUser = async (userId: string, payload: ExpoPushPayload) => {
+export const sendExpoPushToUser = (userId: string, payload: ExpoPushPayload) => sendExpoPushToUsers([userId], payload);
+
+export const sendExpoPushToUsers = async (userIds: string[], payload: ExpoPushPayload) => {
+  if (userIds.length === 0) return;
+
   try {
     const tokens = await prisma.pushToken.findMany({
-      where: { userId },
+      where: { userId: { in: userIds } },
       select: { id: true, token: true },
     });
 
@@ -43,36 +47,32 @@ export const sendExpoPushToUser = async (userId: string, payload: ExpoPushPayloa
 
     if (messages.length === 0) return;
 
-    const chunks = expo.chunkPushNotifications(messages);
-    const tickets: ExpoPushTicket[] = [];
+    // Clean up tokens reported as invalid by the Expo push service. Tickets are
+    // matched per chunk so a failed chunk cannot shift the index of later ones.
+    const badTokens: string[] = [];
 
-    for (const chunk of chunks) {
+    for (const chunk of expo.chunkPushNotifications(messages)) {
       try {
-        const chunkTickets = await expo.sendPushNotificationsAsync(chunk);
-        tickets.push(...chunkTickets);
+        const tickets = await expo.sendPushNotificationsAsync(chunk);
+        tickets.forEach((ticket, idx) => {
+          if (ticket.status !== 'error') return;
+          const errorCode = (ticket.details as { error?: string } | undefined)?.error;
+          const failedToken = chunk[idx]?.to;
+          if (errorCode === 'DeviceNotRegistered' && typeof failedToken === 'string') {
+            badTokens.push(failedToken);
+          } else {
+            console.warn('[expoPush] ticket error', ticket.message, ticket.details);
+          }
+        });
       } catch (error) {
         console.error('[expoPush] chunk send failed', error);
       }
     }
 
-    // Clean up tokens reported as invalid by the Expo push service
-    const badTokens: string[] = [];
-    tickets.forEach((ticket, idx) => {
-      if (ticket.status === 'error') {
-        const errorCode = (ticket.details as { error?: string } | undefined)?.error;
-        if (errorCode === 'DeviceNotRegistered') {
-          const failedToken = messages[idx]?.to;
-          if (typeof failedToken === 'string') badTokens.push(failedToken);
-        } else {
-          console.warn('[expoPush] ticket error', ticket.message, ticket.details);
-        }
-      }
-    });
-
     if (badTokens.length > 0) {
       await prisma.pushToken.deleteMany({ where: { token: { in: badTokens } } });
     }
   } catch (error) {
-    console.error('[expoPush] sendExpoPushToUser failed', error);
+    console.error('[expoPush] sendExpoPushToUsers failed', error);
   }
 };
