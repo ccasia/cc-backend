@@ -2,10 +2,10 @@ import { createHash } from 'crypto';
 import { InvoiceStatus, Prisma } from '@prisma/client';
 
 /**
- * Statuses an admin can approve from. 'processing' stays in the list so an invoice whose
- * job died can be approved again; the workers skip anything that already has a Xero bill.
+ * Statuses an admin can approve from. 'processing' is left out: a job or the reaper owns that invoice,
+ * and a second approval could run two jobs and create two bills. The reaper fails or retries it.
  */
-export const APPROVABLE_INVOICE_STATUSES: InvoiceStatus[] = ['draft', 'pending', 'failed', 'processing'];
+export const APPROVABLE_INVOICE_STATUSES: InvoiceStatus[] = ['draft', 'pending', 'failed'];
 
 /** Statuses that already went through Xero. Approving them again must not create another bill. */
 export const BILLED_INVOICE_STATUSES: InvoiceStatus[] = ['approved', 'paid'];

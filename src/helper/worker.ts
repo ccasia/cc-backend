@@ -26,7 +26,8 @@ import { bulkInvoiceQueue, invoiceQueue } from '@utils/queue';
 import { prisma } from '@/src/prisma/prisma';
 
 // xero-node uses the default axios instance and sets no timeout, so a hung call would hold a job forever.
-axios.defaults.timeout = 30_000;
+// A timed-out call rejects through the interceptor in xeroClientService. A batch of 50 bills can be slow.
+axios.defaults.timeout = 60_000;
 
 const XERO_BATCH_SIZE = 50;
 const REAPER_INTERVAL_MS = 10 * 60_000;
@@ -110,18 +111,37 @@ const resolveBillNumber = async (
   return { billNumber, mayExist: false };
 };
 
-/** The commit point: once this runs, the invoice can never be billed again. */
-const linkXeroBill = (invoiceId: string, xeroInvoiceId: string, tenantId: string) =>
-  prisma.invoice.update({
+const findLinkedInvoice = (invoiceId: string) =>
+  prisma.invoice.findUniqueOrThrow({
     where: { id: invoiceId },
-    data: { status: 'approved', xeroInvoiceId, xeroTenantId: tenantId, xeroError: null },
     include: {
       campaign: { include: { campaignAdmin: { include: { admin: { include: { role: true } } } } } },
       creator: { include: { user: { include: { paymentForm: true } } } },
     },
   });
 
-type LinkedInvoice = Awaited<ReturnType<typeof linkXeroBill>>;
+type LinkedInvoice = Awaited<ReturnType<typeof findLinkedInvoice>>;
+
+/**
+ * The commit point: once this runs, the invoice can never be billed again. It only links an invoice that
+ * is still 'processing' with no bill. Returns null when something else changed the invoice first; the
+ * bill just made is then a possible duplicate that a person must void in Xero.
+ */
+const linkXeroBill = async (invoiceId: string, xeroInvoiceId: string, tenantId: string) => {
+  const { count } = await prisma.invoice.updateMany({
+    where: { id: invoiceId, status: 'processing', ...noXeroBillWhere },
+    data: { status: 'approved', xeroInvoiceId, xeroTenantId: tenantId, xeroError: null },
+  });
+
+  if (!count) {
+    console.error(
+      `🚨 Xero bill ${xeroInvoiceId} (tenant ${tenantId}) was not linked: invoice ${invoiceId} is no longer processing or already has a bill. Check Xero for a duplicate.`,
+    );
+    return null;
+  }
+
+  return findLinkedInvoice(invoiceId);
+};
 
 /** Side effects run after the bill is linked. Their failure is logged and never changes the invoice. */
 const runSafely = async (label: string, task: () => Promise<unknown>) => {
@@ -231,12 +251,15 @@ const worker = new Worker(
       xeroInvoiceId = createdInvoice.body.invoices[0].invoiceID;
     }
 
+    let linked: LinkedInvoice | null;
     try {
-      await linkXeroBill(invoice.id, xeroInvoiceId!, tenantId);
+      linked = await linkXeroBill(invoice.id, xeroInvoiceId!, tenantId);
     } catch (error) {
       console.error(`🚨 Xero bill ${xeroInvoiceId} was created but not linked to invoice ${invoice.id}`, error);
       throw error;
     }
+
+    if (!linked) return;
 
     if (job.data.invoiceAttachment && xeroInvoiceId) {
       await runSafely(`Attachment for invoice ${invoice.id}`, async () => {
@@ -479,7 +502,7 @@ export const bulkInvoiceWorker = new Worker(
           if (existingBill?.invoiceID) {
             console.log(`🔗 Found existing Xero bill ${existingBill.invoiceID} for invoice ${invoice.id}; linking`);
             const updatedInvoice = await linkXeroBill(invoice.id, existingBill.invoiceID, tenantId);
-            await runBulkSideEffects(xero, tenantId, updatedInvoice, attachments, adminId);
+            if (updatedInvoice) await runBulkSideEffects(xero, tenantId, updatedInvoice, attachments, adminId);
             continue;
           }
 
@@ -554,7 +577,20 @@ export const bulkInvoiceWorker = new Worker(
       }
 
       for (const batch of Object.values(batches)) {
-        for (const bills of chunk(batch.bills, XERO_BATCH_SIZE)) {
+        for (const preparedBills of chunk(batch.bills, XERO_BATCH_SIZE)) {
+          // Preparing a batch takes minutes. Drop any invoice that was linked or changed in the meantime.
+          const stillPending = await prisma.invoice.findMany({
+            where: {
+              id: { in: preparedBills.map((bill) => bill.invoiceId) },
+              status: 'processing',
+              ...noXeroBillWhere,
+            },
+            select: { id: true },
+          });
+          const pendingIds = new Set(stillPending.map((invoice) => invoice.id));
+          const bills = preparedBills.filter((bill) => pendingIds.has(bill.invoiceId));
+          if (!bills.length) continue;
+
           let xeroResults: any[];
           const body = { invoices: bills.map((bill) => bill.xeroInvoice) };
 
@@ -597,11 +633,16 @@ export const bulkInvoiceWorker = new Worker(
             }
 
             try {
-              linkedInvoices.push(await linkXeroBill(bill.invoiceId, xeroInv.invoiceID, batch.tenantId));
+              const linked = await linkXeroBill(bill.invoiceId, xeroInv.invoiceID, batch.tenantId);
+              if (linked) linkedInvoices.push(linked);
             } catch (error) {
               console.error(
                 `🚨 Xero bill ${xeroInv.invoiceID} was created but not linked to invoice ${bill.invoiceId}`,
                 error,
+              );
+              await markInvoicesFailed(
+                [bill.invoiceId],
+                `Xero bill "${bill.billNumber}" was created but could not be saved here. Approve again; the bill is found and linked.`,
               );
             }
           }
@@ -727,7 +768,13 @@ worker.on('completed', (job) => {
 worker.on('failed', async (job, err) => {
   const reason = `Job ${job?.id} failed: ${describeXeroError(err)}`;
   console.error(`❌ ${reason}`);
-  if (job?.data?.invoice?.id) await markInvoicesFailed([job.data.invoice.id], reason);
+  if (!job?.data?.invoice?.id) return;
+
+  // A re-approve replaces this job with a new one under the same ID. Do not fail the invoice for the new job.
+  const current = job.id ? await invoiceQueue.getJob(job.id) : undefined;
+  if (current && current.timestamp !== job.timestamp) return;
+
+  await markInvoicesFailed([job.data.invoice.id], reason);
 });
 
 // graceful shutdown

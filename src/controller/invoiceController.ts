@@ -24,6 +24,7 @@ import { error } from 'console';
 
 import fs from 'fs-extra';
 import path from 'path';
+import { randomUUID } from 'crypto';
 
 import {
   createInvoiceService,
@@ -1203,11 +1204,15 @@ export const updateInvoice = async (req: Request, res: Response) => {
       const alreadyBilled =
         !!oldInvoice && (BILLED_INVOICE_STATUSES.includes(oldInvoice.status) || !!oldInvoice.xeroInvoiceId);
 
-      const sendsToXero = status === 'approved' && !!oldInvoice && !alreadyBilled;
+      // A 'processing' invoice belongs to a running job or the reaper. Changing its status here could
+      // start a second job for the same invoice and create a second bill, so its status is kept.
+      const inFlight = oldInvoice?.status === 'processing';
+
+      const sendsToXero = status === 'approved' && !!oldInvoice && !alreadyBilled && !inFlight;
 
       const nextStatus: InvoiceStatus = sendsToXero
         ? 'processing'
-        : status === 'approved' && oldInvoice && BILLED_INVOICE_STATUSES.includes(oldInvoice.status)
+        : oldInvoice && (inFlight || (status === 'approved' && BILLED_INVOICE_STATUSES.includes(oldInvoice.status)))
           ? oldInvoice.status
           : (status as InvoiceStatus);
 
@@ -1222,7 +1227,12 @@ export const updateInvoice = async (req: Request, res: Response) => {
           amount: parseFloat(totalAmount as any),
           bankAcc: bankInfo,
           campaignId,
-          ...(sendsToXero && { xeroApprovedById: userId, xeroAttempts: 0, xeroError: null }),
+          ...(sendsToXero && {
+            xeroApprovedById: userId,
+            xeroAttempts: 0,
+            xeroAttemptedAt: new Date(),
+            xeroError: null,
+          }),
         },
         include: {
           creator: {
@@ -2158,7 +2168,13 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
     // Statuses change only after the files are saved, and the job carries only the invoices that changed.
     await prisma.invoice.updateMany({
       where: { ...approvableWhere, id: { in: queuedIds } },
-      data: { status: 'processing', xeroApprovedById: adminId, xeroAttempts: 0, xeroError: null },
+      data: {
+        status: 'processing',
+        xeroApprovedById: adminId,
+        xeroAttempts: 0,
+        xeroAttemptedAt: new Date(),
+        xeroError: null,
+      },
     });
 
     await bulkInvoiceQueue.add(
@@ -2169,7 +2185,7 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
         attachments,
       },
       {
-        jobId: `bulk-inv-${dayjs().valueOf()}`,
+        jobId: `bulk-inv-${randomUUID()}`,
         removeOnComplete: true,
       },
     );

@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import axios from 'axios';
 import dayjs from 'dayjs';
 import { TokenSet, XeroClient } from 'xero-node';
 
@@ -8,7 +9,21 @@ import { prisma } from '@/src/prisma/prisma';
 
 const REFRESH_LOCK_TTL_MS = 30_000;
 const REFRESH_LOCK_POLL_MS = 250;
-const EXPIRY_MARGIN_SECONDS = 60;
+// Long enough that a bulk job started with this token does not hit a 401 halfway through.
+const EXPIRY_MARGIN_SECONDS = 10 * 60;
+
+/**
+ * xero-node builds an ApiError from every axios error and reads `error.response`. A timeout or network
+ * error has no response, so ApiError throws inside xero-node's promise and the call never settles:
+ * the job hangs forever. Giving those errors a response makes the call reject like any other error.
+ */
+axios.interceptors.response.use(undefined, (error) => {
+  if (error && !error.response && String(error.config?.url ?? '').includes('xero.com')) {
+    error.response = { status: 0, data: { Message: `Xero request failed: ${error.message}` }, headers: {} };
+    if (typeof error.request?.getHeaders !== 'function') error.request = { getHeaders: () => ({}) };
+  }
+  return Promise.reject(error);
+});
 
 const isExpiring = (tokenSet: TokenSet) =>
   !tokenSet?.expires_at || dayjs.unix(tokenSet.expires_at).subtract(EXPIRY_MARGIN_SECONDS, 'second').isBefore(dayjs());
