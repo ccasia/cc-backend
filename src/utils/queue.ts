@@ -9,6 +9,30 @@ export const bulkInvoiceQueue = new Queue('bulk-invoice-queue', {
   connection,
 });
 
+/**
+ * Queue one invoice for Xero. The job ID is per invoice and BullMQ silently ignores a
+ * duplicate ID, so a finished job is cleared first. A waiting or active job is left alone.
+ * Returns false when a job for this invoice is already queued or running.
+ */
+export async function enqueueInvoiceApproval(invoiceId: string, data: Record<string, unknown>): Promise<boolean> {
+  const jobId = `invoice-${invoiceId}`;
+  const existing = await invoiceQueue.getJob(jobId);
+
+  if (existing) {
+    const state = await existing.getState();
+    if (state !== 'completed' && state !== 'failed') return false;
+    await existing.remove();
+  }
+
+  await invoiceQueue.add('invoice-queue', data, {
+    jobId,
+    removeOnComplete: true,
+    removeOnFail: { age: 7 * 24 * 3600 },
+  });
+
+  return true;
+}
+
 export const xeroWebhookQueue = new Queue('xero-webhook-queue', {
   connection,
 });

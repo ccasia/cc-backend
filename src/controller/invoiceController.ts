@@ -35,7 +35,8 @@ import dayjs from 'dayjs';
 import { getCreatorInvoiceLists } from '@services/submissionService';
 import { missingInvoices } from '@constants/missing-invoices';
 import { creatorAgreements } from './campaignController';
-import { bulkInvoiceQueue, invoiceQueue } from '@utils/queue';
+import { bulkInvoiceQueue, enqueueInvoiceApproval } from '@utils/queue';
+import { APPROVABLE_INVOICE_STATUSES, BILLED_INVOICE_STATUSES, noXeroBillWhere } from '@utils/xeroInvoice';
 import { xero } from '@configs/xero';
 import { clients, getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
@@ -1175,14 +1176,35 @@ export const updateInvoice = async (req: Request, res: Response) => {
     const invoice = await prisma.$transaction(async (tx) => {
       const oldInvoice = await tx.invoice.findUnique({
         where: { id: invoiceId },
-        select: { amount: true, status: true, dueDate: true, bankAcc: true, task: true, campaignId: true },
+        select: {
+          amount: true,
+          status: true,
+          dueDate: true,
+          bankAcc: true,
+          task: true,
+          campaignId: true,
+          xeroInvoiceId: true,
+        },
       });
+
+      // Only a move into 'approved' creates a Xero bill. Saving an invoice that already has a bill
+      // (e.g. editing the due date of an approved invoice) must never queue a second one.
+      const alreadyBilled =
+        !!oldInvoice && (BILLED_INVOICE_STATUSES.includes(oldInvoice.status) || !!oldInvoice.xeroInvoiceId);
+
+      const sendsToXero = status === 'approved' && !!oldInvoice && !alreadyBilled;
+
+      const nextStatus: InvoiceStatus = sendsToXero
+        ? 'processing'
+        : status === 'approved' && oldInvoice && BILLED_INVOICE_STATUSES.includes(oldInvoice.status)
+          ? oldInvoice.status
+          : (status as InvoiceStatus);
 
       const updatedInvoice = await tx.invoice.update({
         where: { id: invoiceId },
         data: {
           dueDate,
-          status: status as InvoiceStatus,
+          status: nextStatus,
           invoiceFrom,
           invoiceTo,
           task: items[0],
@@ -1231,12 +1253,43 @@ export const updateInvoice = async (req: Request, res: Response) => {
         _oldAmount: oldInvoice?.amount,
         _oldStatus: oldInvoice?.status,
         _oldInvoice: oldInvoice,
+        _sendsToXero: sendsToXero,
       };
     });
 
     const oldAmount = invoice._oldAmount;
     const oldStatus = invoice._oldStatus;
     const oldInvoice = invoice._oldInvoice;
+
+    // Queue before any notification or log work, so a later error can't leave 'processing' with no job.
+    if (invoice._sendsToXero) {
+      try {
+        const queued = await enqueueInvoiceApproval(invoiceId, {
+          invoice,
+          invoiceId,
+          dueDate,
+          status,
+          invoiceFrom,
+          invoiceTo,
+          items,
+          totalAmount,
+          campaignId,
+          bankInfo,
+          newContact,
+          reason,
+          adminId: req.userId,
+          invoiceAttachment,
+        });
+
+        if (!queued) console.log(`Invoice ${invoiceId} already has a Xero job waiting or running.`);
+      } catch (queueError) {
+        await prisma.invoice.updateMany({
+          where: { id: invoiceId, status: 'processing' },
+          data: { status: oldStatus ?? 'draft' },
+        });
+        throw queueError;
+      }
+    }
 
     // Log invoice status changes to campaign activity log (only if status actually changed)
     if (status && status !== 'failed' && oldStatus !== status) {
@@ -1376,43 +1429,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
       getIo().to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
     }
 
-    const creatorUser = invoice.creator.user;
-    const creatorPaymentForm = creatorUser?.paymentForm;
-    const agreement = invoice.creator.user.creatorAgreement.find(
-      (item) => item.campaignId === campaignId && item.round === 1,
-    );
-
-    if (status === 'approved') {
-      await prisma.invoice.update({
-        where: { id: invoiceId },
-        data: { status: 'processing' },
-      });
-
-      await invoiceQueue.add(
-        'invoice-queue',
-        {
-          invoice,
-          invoiceId,
-          dueDate,
-          status,
-          invoiceFrom,
-          invoiceTo,
-          items,
-          totalAmount,
-          campaignId,
-          bankInfo,
-          newContact,
-          reason,
-          adminId: req.userId,
-          invoiceAttachment,
-        },
-        {
-          jobId: `invoice-${invoiceId}`,
-          removeOnComplete: true,
-        },
-      );
-    }
-
     return res.status(200).json(invoice);
   } catch (error) {
     console.error('Failed to update invoice', error);
@@ -1510,7 +1526,8 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
 
     xero.setTokenSet(tokenSet);
 
-    if (dayjs(tokenSet.expires_at).isBefore(dayjs())) {
+    // expires_at is in Unix seconds; dayjs() would read it as milliseconds and refresh on every call.
+    if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
       const validTokenSet = await xero.refreshToken();
       // save the new tokenset
 
@@ -2105,26 +2122,32 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'No invoices selected' });
   }
 
-  await prisma.invoice.updateMany({
-    where: {
-      id: {
-        in: invoiceIds,
-      },
-    },
-    data: {
-      status: 'processing',
-    },
-  });
+  // Never send an invoice that already has a Xero bill, whatever the client posted.
+  const approvableWhere: Prisma.InvoiceWhereInput = {
+    id: { in: invoiceIds },
+    status: { in: APPROVABLE_INVOICE_STATUSES },
+    ...noXeroBillWhere,
+  };
 
-  if (req.files) {
-    const uploadDir = path.join(process.cwd(), 'uploads/bulk');
-    await fs.ensureDir(uploadDir);
+  let queuedInvoices: { id: string; status: InvoiceStatus }[] = [];
 
-    for (const key of Object.keys(req.files)) {
-      if (key.startsWith('file_')) {
-        const file = req.files[key] as any;
+  try {
+    queuedInvoices = await prisma.invoice.findMany({ where: approvableWhere, select: { id: true, status: true } });
+    const queuedIds = queuedInvoices.map((invoice) => invoice.id);
+
+    if (queuedIds.length === 0) {
+      return res.status(200).json({ message: 'None of the selected invoices can be approved.', queued: 0 });
+    }
+
+    if (req.files) {
+      const uploadDir = path.join(process.cwd(), 'uploads/bulk');
+      await fs.ensureDir(uploadDir);
+
+      for (const key of Object.keys(req.files)) {
         const id = key.replace('file_', '');
+        if (!key.startsWith('file_') || !queuedIds.includes(id)) continue;
 
+        const file = req.files[key] as any;
         const permanentPath = path.join(uploadDir, `${Date.now()}_${file.name}`);
         await file.mv(permanentPath);
 
@@ -2135,14 +2158,17 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
         };
       }
     }
-  }
 
-  try {
-    // Add to queue
+    // Statuses change only after the files are saved, and the job carries only the invoices that changed.
+    await prisma.invoice.updateMany({
+      where: { ...approvableWhere, id: { in: queuedIds } },
+      data: { status: 'processing' },
+    });
+
     await bulkInvoiceQueue.add(
       'bulk-approve',
       {
-        invoiceIds,
+        invoiceIds: queuedIds,
         adminId,
         attachments,
       },
@@ -2153,10 +2179,27 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
     );
 
     return res.status(200).json({
-      message: `Successfully queued ${invoiceIds.length} invoices for approval.`,
+      message: `Successfully queued ${queuedIds.length} invoices for approval.`,
+      queued: queuedIds.length,
+      skipped: invoiceIds.length - queuedIds.length,
     });
   } catch (error) {
     console.error('Bulk Queue Error:', error);
+
+    // Put back the status each invoice had, so nothing is left in 'processing' without a job.
+    await Promise.all(
+      queuedInvoices.map((invoice) =>
+        prisma.invoice.updateMany({
+          where: { id: invoice.id, status: 'processing', ...noXeroBillWhere },
+          data: { status: invoice.status },
+        }),
+      ),
+    ).catch((revertError) => console.error('Bulk Queue revert failed:', revertError));
+
+    await Promise.all(Object.values(attachments).map((file) => fs.remove(file.tempFilePath))).catch((removeError) =>
+      console.error('Bulk Queue temp file cleanup failed:', removeError),
+    );
+
     return res.status(500).json({ error: 'Failed to queue bulk process' });
   }
 };

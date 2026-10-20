@@ -12,6 +12,7 @@ import { missingInvoices } from '@constants/missing-invoices';
 import { getCreatorInvoiceLists } from './submissionService';
 import { Contact, Invoice as XeroInvoice, LineItem, Phone, XeroClient } from 'xero-node';
 import { xero } from '@configs/xero';
+import { xeroBillNumber } from '@utils/xeroInvoice';
 import { prisma } from '@/src/prisma/prisma';
 
 dayjs.extend(utc);
@@ -625,7 +626,7 @@ export const createXeroInvoiceLocal = async (
       dueDate: dueDate,
       lineItems: lineItemsArray,
       status: 'AUTHORISED' as any,
-      invoiceNumber: `${clientName} ${campaignName}` || 'N/A',
+      invoiceNumber: xeroBillNumber(clientName, campaignName, invoiceNumber),
       reference: `${clientName} ${campaignName}`,
     };
 
