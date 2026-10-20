@@ -12,6 +12,23 @@ const getPlatformFollowers = (creator: any, platform: 'instagram' | 'tiktok'): n
 };
 
 // Get all credit tiers
+// Active tier ranges for any signed-in user. Master list rows (admin and client) use them to show a
+// creator's live tier for the row's platform until approval saves one.
+export const getActiveCreditTiers = async (_req: Request, res: Response) => {
+  try {
+    const creditTiers = await prisma.creditTier.findMany({
+      where: { isActive: true },
+      orderBy: { minFollowers: 'asc' },
+      select: { id: true, name: true, minFollowers: true, maxFollowers: true, creditsPerVideo: true, isActive: true },
+    });
+
+    return res.status(200).json(creditTiers);
+  } catch (error) {
+    console.error('Error fetching active credit tiers:', error);
+    return res.status(500).json({ message: 'Failed to fetch active credit tiers' });
+  }
+};
+
 export const getAllCreditTiers = async (req: Request, res: Response) => {
   try {
     const creditTiers = await prisma.creditTier.findMany({

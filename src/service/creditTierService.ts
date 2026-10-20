@@ -1,5 +1,6 @@
 import { PrismaClient, CreditTier } from '@prisma/client';
 import { prisma } from '@/src/prisma/prisma';
+import { DEFAULT_AGREEMENT_PLATFORM, parsePositiveFollowerCount } from '@utils/agreementFollowerUtils';
 
 interface FollowerData {
   instagramFollowers?: number | null;
@@ -211,6 +212,75 @@ export const resolveAgreedTier = async (
   }
 
   return calculateCreatorTier(userId, selectedPlatform);
+};
+
+type CampaignTier = Pick<CreditTier, 'id' | 'name' | 'creditsPerVideo'>;
+
+export interface StoredCampaignTier {
+  selectedPlatform?: string | null;
+  creditTierId?: string | null;
+  creditPerVideo?: number | null;
+}
+
+/**
+ * The tier a campaign saved on ShortListedCreator at approval, priced at what was saved. Null when
+ * none is saved, or it was saved for another platform, so the caller resolves a fresh tier.
+ *
+ * A campaign's tier is fixed once the client approves. Re-resolving the same follower count would
+ * re-price the creator whenever tier ranges are edited, and a missing count would fall back to live
+ * socials.
+ */
+export const getStoredCampaignTier = async (
+  platform: PlatformType | undefined,
+  shortlist: StoredCampaignTier | null | undefined,
+): Promise<CampaignTier | null> => {
+  if (!shortlist?.creditTierId) return null;
+  // Rows written before selectedPlatform existed are read as the default platform, as agreements do.
+  if (platform && (shortlist.selectedPlatform ?? DEFAULT_AGREEMENT_PLATFORM) !== platform) return null;
+
+  const tier = await prisma.creditTier.findUnique({
+    where: { id: shortlist.creditTierId },
+    select: { id: true, name: true, creditsPerVideo: true },
+  });
+  return tier ? { ...tier, creditsPerVideo: shortlist.creditPerVideo ?? tier.creditsPerVideo } : null;
+};
+
+/**
+ * The creator's live tier on the platform chosen at shortlisting, from the same numbers a master list
+ * row shows (resolveRowTier in cc-frontend): the connected account, else the manual count for that
+ * platform, else the pitch's own count, else the general manual count. A pitch with no platform
+ * (a creator's own pitch, or an old row) is read as the default platform, as agreements do.
+ *
+ * Rows show this tier until the client approves; approval saves it on ShortListedCreator, and from
+ * then on agreements reuse the saved tier (see getStoredCampaignTier).
+ */
+export const resolveLiveRowTier = async (
+  userId: string,
+  pitch?: { selectedPlatform?: string | null; followerCount?: string | null } | null,
+): Promise<{ platform: PlatformType; followerCount: number; tier: CreditTier | null }> => {
+  const creator = await prisma.creator.findUnique({
+    where: { userId },
+    include: {
+      instagramUser: { select: { followers_count: true } },
+      tiktokUser: { select: { follower_count: true } },
+    },
+  });
+  if (!creator) throw new Error('Creator not found');
+
+  const saved = pitch?.selectedPlatform;
+  const platform: PlatformType = saved === 'tiktok' || saved === 'instagram' ? saved : DEFAULT_AGREEMENT_PLATFORM;
+
+  const followerCount =
+    [
+      platform === 'tiktok' ? creator.tiktokUser?.follower_count : creator.instagramUser?.followers_count,
+      platform === 'tiktok' ? creator.manualTiktokFollowerCount : creator.manualInstagramFollowerCount,
+      pitch?.followerCount,
+      creator.manualFollowerCount,
+    ]
+      .map(parsePositiveFollowerCount)
+      .find((count) => count !== null) ?? 0;
+
+  return { platform, followerCount, tier: await getTierByFollowerCount(followerCount) };
 };
 
 /**

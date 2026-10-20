@@ -9,6 +9,8 @@ import {
   assignCreditTier,
 } from '@services/guestProfileExtraction/pendingPitchMetrics';
 import { withScrapedEvidence } from '@services/guestProfileExtraction/selectedPostStats';
+import { resolveLiveRowTier } from '@services/creditTierService';
+import { SocialPlatform } from '@prisma/client';
 import dayjs from 'dayjs';
 
 import { saveNotification } from './notificationController';
@@ -65,10 +67,32 @@ const emitCreatorCampaignMembershipUpdated = ({
   getIo().to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
 };
 
-const normalizePlatform = (platform?: string | null): 'instagram' | 'tiktok' | undefined => {
-  if (platform === 'tiktok') return 'tiktok';
-  if (platform === 'instagram') return 'instagram';
-  return undefined;
+// ShortListedCreator fields for an approval. On a credit tier campaign this saves the tier from the
+// live data the master list row showed (resolveLiveRowTier); agreements reuse it from then on. A
+// shortlist that already has a tier keeps it. Never throws: approval proceeds without a tier.
+const approvalShortlistTierData = async (
+  pitch: {
+    userId: string;
+    selectedPlatform: SocialPlatform | null;
+    followerCount: string | null;
+    campaign: { isCreditTier: boolean };
+  },
+  existingShortlist: { creditTierId: string | null } | null,
+) => {
+  const keepPlatform = pitch.selectedPlatform ? { selectedPlatform: pitch.selectedPlatform } : {};
+  if (!pitch.campaign.isCreditTier || existingShortlist?.creditTierId) return keepPlatform;
+
+  try {
+    const { platform, followerCount, tier } = await resolveLiveRowTier(pitch.userId, pitch);
+    return {
+      selectedPlatform: platform,
+      ...(followerCount > 0 && { followerCount }),
+      ...(tier && { creditTierId: tier.id, creditPerVideo: tier.creditsPerVideo }),
+    };
+  } catch (error) {
+    console.log(`Could not calculate tier for creator ${pitch.userId}:`, error);
+    return keepPlatform;
+  }
 };
 
 // Utility function to map submission types to entities
@@ -241,26 +265,8 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         },
       });
 
-      // For credit tier campaigns, calculate creditPerVideo from creator's tier
-      let creditPerVideo: number | null = null;
-      let creditTierId: string | null = null;
-      const pitchPlatform = normalizePlatform(pitch.selectedPlatform);
-      if (pitch.campaign.isCreditTier) {
-        try {
-          const { resolveAgreedTier } = require('@services/creditTierService');
-          const { tier } = await resolveAgreedTier(
-            pitch.userId,
-            pitchPlatform,
-            parsePitchFollowerCount(pitch.followerCount),
-          );
-          if (tier) {
-            creditPerVideo = tier.creditsPerVideo;
-            creditTierId = tier.id;
-          }
-        } catch (error) {
-          console.log(`Could not calculate tier for creator ${pitch.userId}:`, error);
-        }
-      }
+      // No client review: the tier is saved now, from the live data the row showed
+      const tierData = await approvalShortlistTierData(pitch, existingShortlist);
 
       if (existingShortlist) {
         await prisma.shortListedCreator.update({
@@ -272,12 +278,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
           },
           data: {
             isAgreementReady: false,
-            ...(pitch.selectedPlatform ? { selectedPlatform: pitch.selectedPlatform } : {}),
-            ...(pitch.campaign.isCreditTier &&
-              creditPerVideo !== null && {
-                creditPerVideo,
-                creditTierId,
-              }),
+            ...tierData,
           },
         });
       } else {
@@ -287,12 +288,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
             campaignId: pitch.campaignId,
             isAgreementReady: false,
             currency: 'MYR',
-            ...(pitch.selectedPlatform ? { selectedPlatform: pitch.selectedPlatform } : {}),
-            ...(pitch.campaign.isCreditTier &&
-              creditPerVideo !== null && {
-                creditPerVideo,
-                creditTierId,
-              }),
+            ...tierData,
           },
         });
       }
@@ -755,27 +751,6 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       }
     }
 
-    // For credit tier campaigns, calculate creditPerVideo from creator's tier
-    let creditPerVideo: number | null = null;
-    let creditTierId: string | null = null;
-    const pitchPlatform = normalizePlatform(pitch.selectedPlatform);
-    if (pitch.campaign.isCreditTier) {
-      try {
-        const { resolveAgreedTier } = require('@services/creditTierService');
-        const { tier } = await resolveAgreedTier(
-          pitch.userId,
-          pitchPlatform,
-          parsePitchFollowerCount(pitch.followerCount),
-        );
-        if (tier) {
-          creditPerVideo = tier.creditsPerVideo;
-          creditTierId = tier.id;
-        }
-      } catch (error) {
-        console.log(`Could not calculate tier for creator ${pitch.userId}:`, error);
-      }
-    }
-
     const existingShortlist = await prisma.shortListedCreator.findUnique({
       where: {
         userId_campaignId: {
@@ -784,6 +759,9 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
       },
     });
+
+    // Client approval saves the tier, from the live data the client was shown
+    const tierData = await approvalShortlistTierData(pitch, existingShortlist);
 
     if (existingShortlist) {
       await prisma.shortListedCreator.update({
@@ -795,12 +773,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
         data: {
           isAgreementReady: false,
-          ...(pitch.selectedPlatform ? { selectedPlatform: pitch.selectedPlatform } : {}),
-          ...(pitch.campaign.isCreditTier &&
-            creditPerVideo !== null && {
-              creditPerVideo,
-              creditTierId,
-            }),
+          ...tierData,
         },
       });
     } else {
@@ -810,12 +783,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
           campaignId: pitch.campaignId,
           isAgreementReady: false,
           currency: 'MYR',
-          ...(pitch.selectedPlatform ? { selectedPlatform: pitch.selectedPlatform } : {}),
-          ...(pitch.campaign.isCreditTier &&
-            creditPerVideo !== null && {
-              creditPerVideo,
-              creditTierId,
-            }),
+          ...tierData,
         },
       });
     }
@@ -3019,10 +2987,4 @@ export const acceptInviteByCreator = async (req: Request, res: Response) => {
     console.error('Error accepting invite by creator:', error);
     return res.status(500).json({ message: 'Failed to accept invite' });
   }
-};
-
-const parsePitchFollowerCount = (followerCount?: string | null): number | null => {
-  const digits = String(followerCount ?? '').replace(/\D/g, '');
-  const parsed = Number.parseInt(digits, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };

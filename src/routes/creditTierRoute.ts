@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import {
   getAllCreditTiers,
+  getActiveCreditTiers,
   createCreditTier,
   updateCreditTier,
   deleteCreditTier,
@@ -14,6 +15,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', isSuperAdmin, getAllCreditTiers);
+router.get('/active', getActiveCreditTiers);
 router.post('/', isSuperAdmin, createCreditTier);
 router.put('/:id', isSuperAdmin, updateCreditTier);
 router.delete('/:id', isSuperAdmin, deleteCreditTier);
