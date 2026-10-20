@@ -3950,6 +3950,8 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
         parentId: null,
         deletedAt: null,
         feedback: { is: null },
+        // Comments the admin left out still get marked as sent below, but get no Feedback row
+        ...(submission.status === 'CLIENT_FEEDBACK' && { isVisibleToCreator: true }),
       },
       select: { id: true },
       orderBy: { createdAt: 'asc' },

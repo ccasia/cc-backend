@@ -1341,7 +1341,8 @@ export const login = async (req: Request, res: Response) => {
     }
 
     // // Hashed password
-    const isMatch = data.password === password || (await bcrypt.compare(password, data.password as string));
+    // Accounts made through social sign-in or an unfinished invite have no password
+    const isMatch = !!data.password && (data.password === password || (await bcrypt.compare(password, data.password)));
 
     if (!isMatch) {
       return res.status(404).json({ message: 'Wrong password' });
@@ -1372,7 +1373,7 @@ export const login = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.log(error);
-    return res.send(error);
+    return res.status(500).json({ message: 'Login failed, please try again' });
   }
 };
 
