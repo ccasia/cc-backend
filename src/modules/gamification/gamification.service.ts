@@ -1,5 +1,5 @@
 import { Achievement, Prisma, PrismaClient, Rank, RewardType } from '@prisma/client';
-import { getIo } from '@configs/socket';
+import { emitter } from '@configs/socketEmitter';
 import { saveNotification } from '@controllers/notificationController';
 import { getPeriodId } from '@constants/gamification';
 import { previousDay } from 'date-fns';
@@ -280,7 +280,7 @@ export const getXpHistory = async ({ userId, limit = 20, cursor, periodId }: XpH
 
 const notifyBadgeUnlocked = (userId: string, achievement: Achievement): void => {
   try {
-    getIo().to(userId).emit('gamification:badge', {
+    emitter.to(userId).emit('gamification:badge', {
       id: achievement.id,
       code: achievement.code,
       name: achievement.name,
@@ -310,10 +310,9 @@ const notifyXpAwarded = async (
   rankUp: Rank | null,
 ): Promise<void> => {
   try {
-    const io = getIo();
-    io.to(userId).emit('gamification:xp', { xp, actionCode: action.code, totalPoints });
+    emitter.to(userId).emit('gamification:xp', { xp, actionCode: action.code, totalPoints });
     if (rankUp) {
-      io.to(userId).emit('gamification:rankUp', { rank: rankUp });
+      emitter.to(userId).emit('gamification:rankUp', { rank: rankUp });
     }
 
     if (rankUp) {
