@@ -335,6 +335,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
         draft: 0,
         rejected: 0,
         failed: 0,
+        processing: 0,
       };
       for (const inv of invoicesWithCurrency) {
         if (inv.status in statusCounts) {
@@ -370,7 +371,16 @@ export const getAllInvoices = async (req: Request, res: Response) => {
 
       // If date filter is active, compute per-status counts from the DB
       if (hasDateFilter) {
-        const statusKeys: InvoiceStatus[] = ['paid', 'approved', 'pending', 'overdue', 'draft', 'rejected', 'failed'];
+        const statusKeys: InvoiceStatus[] = [
+          'paid',
+          'approved',
+          'pending',
+          'overdue',
+          'draft',
+          'rejected',
+          'failed',
+          'processing',
+        ];
         const [totalCount, ...perStatusCounts] = await Promise.all([
           prisma.invoice.count({ where: baseWhere }),
           ...statusKeys.map((s) => prisma.invoice.count({ where: { ...baseWhere, status: s } })),
