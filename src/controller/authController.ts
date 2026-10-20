@@ -23,7 +23,7 @@ import bcrypt from 'bcryptjs';
 
 import { generateRandomString } from '@utils/randomString';
 import dayjs from 'dayjs';
-import { TokenSet, XeroClient } from 'xero-node';
+import { getXeroClientForAdmin } from '@services/xeroClientService';
 import { generate, generateSecret, generateURI, verify } from 'otplib';
 
 import QRCode from 'qrcode';
@@ -86,19 +86,6 @@ interface CreatorUpdateData {
   instagramProfileLink?: string;
   tiktokProfileLink?: string;
 }
-
-const client_id: string = process.env.XERO_CLIENT_ID as string;
-const client_secret: string = process.env.XERO_CLIENT_SECRET as string;
-const redirectUrl: string = process.env.XERO_REDIRECT_URL as string;
-const scopes: string = process.env.XERO_SCOPES as string;
-
-const xero = new XeroClient({
-  clientId: client_id,
-  clientSecret: client_secret,
-  redirectUris: [redirectUrl],
-  scopes: scopes?.split(' '),
-  // grantType: 'client_credentials',
-});
 
 export const registerUser = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
@@ -1195,32 +1182,8 @@ export const getprofile = async (req: Request, res: Response) => {
       (user?.role === 'admin' && user?.admin?.role?.name.toLowerCase() === 'finance')
     ) {
       try {
-        await xero.initialize();
-
-        const savedTokenSet = user.admin?.xeroTokenSet as TokenSet;
-
-        xero.setTokenSet(savedTokenSet);
-
-        const isExpired = xero.readTokenSet().expired();
-
-        if (isExpired) {
-          const newTokenSet = await xero.refreshToken();
-
-          await prisma.admin.update({
-            where: {
-              userId: user.id,
-            },
-            data: {
-              xeroTokenSet: newTokenSet as any,
-            },
-          });
-
-          xero.setTokenSet(newTokenSet);
-        }
-
-        await xero.updateTenants();
-
-        xeroinformation = xero.tenants;
+        const client = await getXeroClientForAdmin(user.id);
+        xeroinformation = client.tenants;
       } catch (error) {
         xeroError = true;
       }

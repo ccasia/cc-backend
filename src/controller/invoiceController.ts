@@ -38,6 +38,7 @@ import { creatorAgreements } from './campaignController';
 import { bulkInvoiceQueue, enqueueInvoiceApproval } from '@utils/queue';
 import { APPROVABLE_INVOICE_STATUSES, BILLED_INVOICE_STATUSES, noXeroBillWhere } from '@utils/xeroInvoice';
 import { xero } from '@configs/xero';
+import { getFreshXeroTokenSet } from '@services/xeroClientService';
 import { clients, getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
@@ -1211,6 +1212,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
           amount: parseFloat(totalAmount as any),
           bankAcc: bankInfo,
           campaignId,
+          ...(sendsToXero && { xeroApprovedById: userId, xeroAttempts: 0, xeroError: null }),
         },
         include: {
           creator: {
@@ -1518,28 +1520,12 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
-
-    if (!tokenSet) return res.status(404).json({ message: 'You are not connected to Xero' });
+    if (!user.admin?.xeroTokenSet) return res.status(404).json({ message: 'You are not connected to Xero' });
 
     await xero.initialize();
 
-    xero.setTokenSet(tokenSet);
-
-    // expires_at is in Unix seconds; dayjs() would read it as milliseconds and refresh on every call.
-    if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
-      const validTokenSet = await xero.refreshToken();
-      // save the new tokenset
-
-      await prisma.admin.update({
-        where: {
-          userId: user.id,
-        },
-        data: {
-          xeroTokenSet: validTokenSet as any,
-        },
-      });
-    }
+    // Refresh goes through the shared lock so it can't race the workers and save a rotated-out token.
+    xero.setTokenSet(await getFreshXeroTokenSet(user.id));
 
     await xero.updateTenants();
 
@@ -2162,7 +2148,7 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
     // Statuses change only after the files are saved, and the job carries only the invoices that changed.
     await prisma.invoice.updateMany({
       where: { ...approvableWhere, id: { in: queuedIds } },
-      data: { status: 'processing' },
+      data: { status: 'processing', xeroApprovedById: adminId, xeroAttempts: 0, xeroError: null },
     });
 
     await bulkInvoiceQueue.add(

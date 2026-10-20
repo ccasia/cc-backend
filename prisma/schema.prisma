@@ -1575,29 +1575,37 @@ model CommentAgreement {
 }
 
 model Invoice {
-  id              String        @id @unique @default(cuid())
-  invoiceNumber   String        @unique
-  amount          Float
-  status          InvoiceStatus @default(draft)
-  task            Json?
-  bankAcc         Json?
-  invoiceFrom     Json?
-  invoiceTo       Json?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  dueDate         DateTime
-  creatorId       String
-  campaignId      String
-  adminId         String?
-  deliverables    Json?
-  xeroInvoiceId   String?
-  round           Int           @default(1)
-  invoiceType     InvoiceType   @default(STANDARD)
-  parentInvoiceId String?
-  reimbursements  Json?
-  user            User?         @relation("CreatedBy", fields: [adminId], references: [id])
-  campaign        Campaign      @relation(fields: [campaignId], references: [id])
-  creator         Creator       @relation(fields: [creatorId], references: [userId])
+  id               String        @id @unique @default(cuid())
+  invoiceNumber    String        @unique
+  amount           Float
+  status           InvoiceStatus @default(draft)
+  task             Json?
+  bankAcc          Json?
+  invoiceFrom      Json?
+  invoiceTo        Json?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  dueDate          DateTime
+  creatorId        String
+  campaignId       String
+  adminId          String?
+  deliverables     Json?
+  xeroInvoiceId    String?
+  // Xero approval tracking. xeroBillNumber is the exact InvoiceNumber sent to Xero, saved before the first
+  // create call, so a retry can find a bill that was created but never linked.
+  xeroBillNumber   String?       @unique
+  xeroTenantId     String?
+  xeroError        String?
+  xeroAttempts     Int           @default(0)
+  xeroAttemptedAt  DateTime?
+  xeroApprovedById String?
+  round            Int           @default(1)
+  invoiceType      InvoiceType   @default(STANDARD)
+  parentInvoiceId  String?
+  reimbursements   Json?
+  user             User?         @relation("CreatedBy", fields: [adminId], references: [id])
+  campaign         Campaign      @relation(fields: [campaignId], references: [id])
+  creator          Creator       @relation(fields: [creatorId], references: [userId])
 }
 
 model PaymentForm {

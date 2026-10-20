@@ -1,8 +1,8 @@
-import { Worker } from 'bullmq';
+import { JobType, Worker } from 'bullmq';
 import connection from '@configs/redis';
 
 import axios from 'axios';
-import { TokenSet } from 'xero-node';
+import { XeroClient } from 'xero-node';
 import dayjs from 'dayjs';
 
 import { notificationInvoiceUpdate } from './notification';
@@ -10,19 +10,29 @@ import { saveNotification } from '@controllers/notificationController';
 
 import { logAdminChange, logChange } from '@services/campaignServices';
 
-import { createXeroContact, createXeroInvoiceLocal, sendToSpreadSheet } from '@services/invoiceService';
+import { createXeroContact, createXeroInvoiceLocal, findXeroBill, sendToSpreadSheet } from '@services/invoiceService';
+import { getXeroClientForAdmin } from '@services/xeroClientService';
 
 import fs from 'fs-extra';
 
-import { xero } from '@configs/xero';
-
-import { describeXeroError, isXeroBillFor, noXeroBillWhere, xeroBillNumber } from '@utils/xeroInvoice';
+import {
+  describeXeroError,
+  isXeroBillFor,
+  noXeroBillWhere,
+  xeroBillNumber,
+  xeroIdempotencyKey,
+} from '@utils/xeroInvoice';
+import { bulkInvoiceQueue, invoiceQueue } from '@utils/queue';
 import { prisma } from '@/src/prisma/prisma';
 
 // xero-node uses the default axios instance and sets no timeout, so a hung call would hold a job forever.
 axios.defaults.timeout = 30_000;
 
 const XERO_BATCH_SIZE = 50;
+const REAPER_INTERVAL_MS = 10 * 60_000;
+const STALE_AFTER_MINUTES = 30;
+const MAX_XERO_ATTEMPTS = 3;
+const LIVE_JOB_STATES: JobType[] = ['waiting', 'active', 'delayed', 'prioritized', 'waiting-children'];
 
 interface InvoiceForXero {
   invoiceType?: string | null;
@@ -70,13 +80,48 @@ const markInvoicesFailed = async (invoiceIds: string[], reason: string) => {
   try {
     const { count } = await prisma.invoice.updateMany({
       where: { id: { in: invoiceIds }, status: 'processing', ...noXeroBillWhere },
-      data: { status: 'failed' },
+      data: { status: 'failed', xeroError: reason.slice(0, 1000) },
     });
     console.error(`❌ Marked ${count}/${invoiceIds.length} invoice(s) failed — ${reason}`, invoiceIds);
   } catch (error) {
     console.error(`🚨 Could not mark invoices failed — ${reason}`, invoiceIds, error);
   }
 };
+
+/** Marks the start of an attempt. The reaper uses these fields to find attempts that never finished. */
+const startXeroAttempt = (invoiceIds: string[]) =>
+  prisma.invoice.updateMany({
+    where: { id: { in: invoiceIds }, status: 'processing' },
+    data: { xeroAttemptedAt: new Date(), xeroAttempts: { increment: 1 }, xeroError: null },
+  });
+
+/**
+ * The bill number is saved before the first create call. If it was already saved, an earlier attempt
+ * may have created the bill without linking it, so Xero is searched first.
+ */
+const resolveBillNumber = async (
+  invoice: { id: string; invoiceNumber: string; xeroBillNumber: string | null },
+  build: () => string,
+) => {
+  if (invoice.xeroBillNumber) return { billNumber: invoice.xeroBillNumber, mayExist: true };
+
+  const billNumber = build();
+  await prisma.invoice.update({ where: { id: invoice.id }, data: { xeroBillNumber: billNumber } });
+  return { billNumber, mayExist: false };
+};
+
+/** The commit point: once this runs, the invoice can never be billed again. */
+const linkXeroBill = (invoiceId: string, xeroInvoiceId: string, tenantId: string) =>
+  prisma.invoice.update({
+    where: { id: invoiceId },
+    data: { status: 'approved', xeroInvoiceId, xeroTenantId: tenantId, xeroError: null },
+    include: {
+      campaign: { include: { campaignAdmin: { include: { admin: { include: { role: true } } } } } },
+      creator: { include: { user: { include: { paymentForm: true } } } },
+    },
+  });
+
+type LinkedInvoice = Awaited<ReturnType<typeof linkXeroBill>>;
 
 /** Side effects run after the bill is linked. Their failure is logged and never changes the invoice. */
 const runSafely = async (label: string, task: () => Promise<unknown>) => {
@@ -95,7 +140,7 @@ const worker = new Worker(
 
     const current = await prisma.invoice.findUnique({
       where: { id: invoice.id },
-      select: { status: true, xeroInvoiceId: true },
+      select: { id: true, invoiceNumber: true, status: true, xeroInvoiceId: true, xeroBillNumber: true },
     });
 
     if (!current || current.status !== 'processing' || current.xeroInvoiceId) {
@@ -105,6 +150,8 @@ const worker = new Worker(
       return;
     }
 
+    await startXeroAttempt([invoice.id]);
+
     const creatorUser = invoice.creator.user;
     const creatorPaymentForm = creatorUser?.paymentForm;
     const campaign = invoice.campaign;
@@ -112,104 +159,80 @@ const worker = new Worker(
       (item: any) => item.campaignId === invoice.campaignId && item.round === 1,
     );
     const currency = (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR';
+    const clientName = campaign.brand?.name || campaign.company?.name;
+    const campaignName = xeroCampaignName(campaign.name, invoice);
 
-    let contactID = invoice.creator.xeroContactId;
-
-    const user = await prisma.user.findUnique({
-      where: {
-        id: job.data.adminId,
-      },
-      include: {
-        admin: {
-          select: {
-            xeroTokenSet: true,
-          },
-        },
-      },
-    });
-
-    if (!user) throw new Error('User not found');
-
-    const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
-
-    if (!tokenSet) throw new Error('You are not connected to Xero');
-
-    await xero.initialize();
-    xero.setTokenSet(tokenSet);
-
-    if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
-      const validTokenSet = await xero.refreshToken();
-      // save the new tokenset
-      await prisma.admin.update({
-        where: {
-          userId: user.id,
-        },
-        data: {
-          xeroTokenSet: validTokenSet as any,
-        },
-      });
-    }
-
-    await xero.updateTenants();
+    const xero = await getXeroClientForAdmin(job.data.adminId);
 
     const activeTenant = xero.tenants.find((item) => item?.orgData?.baseCurrency?.toUpperCase() === currency);
 
     if (!activeTenant) throw new Error(`Xero organisation for ${currency} is not connected for this admin`);
 
-    const result = await xero.accountingApi.getContacts(
-      activeTenant.tenantId,
-      undefined, // IDs
-      `Name=="${invoice.invoiceFrom.name?.trim()}"`,
+    const tenantId: string = activeTenant.tenantId;
+    const { billNumber, mayExist } = await resolveBillNumber(current, () =>
+      xeroBillNumber(clientName, campaignName, current.invoiceNumber),
     );
 
-    if (result.body.contacts && result.body.contacts.length > 0) {
-      contactID = result.body.contacts[0].contactID || null;
-    } else {
-      const result = await xero.accountingApi.getContacts(
-        activeTenant.tenantId,
-        undefined, // IDs
-        `EmailAddress=="${creatorUser.email.trim()}"`,
+    let xeroInvoiceId = mayExist ? (await findXeroBill(xero, tenantId, current.invoiceNumber))?.invoiceID : undefined;
+
+    if (xeroInvoiceId) {
+      console.log(
+        `🔗 Found existing Xero bill ${xeroInvoiceId} for invoice ${invoice.id}; linking instead of creating`,
       );
+    } else {
+      let contactID = invoice.creator.xeroContactId;
+
+      const result = await xero.accountingApi.getContacts(
+        tenantId,
+        undefined, // IDs
+        `Name=="${invoice.invoiceFrom.name?.trim()}"`,
+      );
+
       if (result.body.contacts && result.body.contacts.length > 0) {
         contactID = result.body.contacts[0].contactID || null;
       } else {
-        const [contact] = await createXeroContact(invoice.bankAcc, invoice.creator, invoice.invoiceFrom, currency);
-        contactID = contact.contactID || null;
-        await prisma.creator.update({
-          where: { id: invoice.creator.id },
-          data: { xeroContactId: contactID },
-        });
+        const result = await xero.accountingApi.getContacts(
+          tenantId,
+          undefined, // IDs
+          `EmailAddress=="${creatorUser.email.trim()}"`,
+        );
+        if (result.body.contacts && result.body.contacts.length > 0) {
+          contactID = result.body.contacts[0].contactID || null;
+        } else {
+          const [contact] = await createXeroContact(
+            xero,
+            tenantId,
+            invoice.bankAcc,
+            invoice.creator,
+            invoice.invoiceFrom,
+          );
+          contactID = contact.contactID || null;
+          await prisma.creator.update({
+            where: { id: invoice.creator.id },
+            data: { xeroContactId: contactID },
+          });
+        }
       }
+
+      if (!contactID) throw new Error('No Xero contact was found or created');
+
+      const createdInvoice = await createXeroInvoiceLocal(
+        xero,
+        tenantId,
+        contactID,
+        withReimbursementLines(job.data.items, invoice),
+        job.data.dueDate,
+        campaignName,
+        billNumber,
+        clientName,
+        invoice.id,
+      );
+
+      xeroInvoiceId = createdInvoice.body.invoices[0].invoiceID;
     }
 
-    if (!contactID) throw new Error('No Xero contact was found or created');
-
-    const createdInvoice = await createXeroInvoiceLocal(
-      contactID,
-      withReimbursementLines(job.data.items, invoice),
-      job.data.dueDate,
-      xeroCampaignName(campaign.name, invoice),
-      invoice.invoiceNumber,
-      invoice.user?.email!,
-      job.data.invoiceFrom,
-      invoice.creator,
-      job.data.bankInfo,
-      campaign.brand?.name || campaign.company?.name,
-      currency,
-    );
-
-    const xeroInvoiceId = createdInvoice.body.invoices[0].invoiceID;
-
     try {
-      await prisma.invoice.update({
-        where: {
-          id: invoice.id,
-        },
-        data: {
-          xeroInvoiceId,
-          status: 'approved',
-        },
-      });
+      await linkXeroBill(invoice.id, xeroInvoiceId!, tenantId);
     } catch (error) {
       console.error(`🚨 Xero bill ${xeroInvoiceId} was created but not linked to invoice ${invoice.id}`, error);
       throw error;
@@ -219,8 +242,8 @@ const worker = new Worker(
       await runSafely(`Attachment for invoice ${invoice.id}`, async () => {
         const buffer = fs.readFileSync(job.data.invoiceAttachment.tempFilePath);
         await xero.accountingApi.createInvoiceAttachmentByFileName(
-          activeTenant.tenantId,
-          xeroInvoiceId,
+          tenantId,
+          xeroInvoiceId!,
           job.data.invoiceAttachment.name,
           buffer,
           false,
@@ -306,6 +329,86 @@ const worker = new Worker(
   },
 );
 
+const runBulkSideEffects = async (
+  xero: XeroClient,
+  tenantId: string,
+  updatedInvoice: LinkedInvoice,
+  attachments: Record<string, { name: string; mimetype: string; tempFilePath: string }> | undefined,
+  adminId: string,
+) => {
+  const attachment = attachments?.[updatedInvoice.id];
+
+  if (attachment && updatedInvoice.xeroInvoiceId) {
+    await runSafely(`Attachment ${attachment.name}`, async () => {
+      const buffer = fs.readFileSync(attachment.tempFilePath);
+      await xero.accountingApi.createInvoiceAttachmentByFileName(
+        tenantId,
+        updatedInvoice.xeroInvoiceId!,
+        attachment.name,
+        buffer,
+        false,
+        undefined,
+        { headers: { 'Content-Type': attachment.mimetype } },
+      );
+      console.log(`📎 Successfully attached: ${attachment.name}`);
+    });
+  }
+
+  await runSafely(`Campaign log for invoice ${updatedInvoice.id}`, () =>
+    logChange(
+      `Bulk approved invoice ${updatedInvoice.invoiceNumber} for ${updatedInvoice.creator.user?.name || 'Unknown Creator'}`,
+      updatedInvoice.campaignId,
+      undefined,
+      adminId,
+    ),
+  );
+
+  await runSafely(`Invoices spreadsheet for invoice ${updatedInvoice.id}`, () =>
+    sendToSpreadSheet(
+      {
+        createdAt: dayjs().format('YYYY-MM-DD'),
+        name: updatedInvoice.creator.user.paymentForm?.bankAccountName || updatedInvoice.creator.user.name || '',
+        icNumber: updatedInvoice.creator.user.paymentForm?.icNumber || '',
+        bankName: (updatedInvoice.bankAcc as any)?.bankName || '',
+        bankAccountNumber: (updatedInvoice.bankAcc as any)?.accountNumber || '',
+        campaignName: updatedInvoice.campaign.name,
+        amount: updatedInvoice.amount,
+      },
+      '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
+      'Invoices',
+    ),
+  );
+
+  const { title, message } = notificationInvoiceUpdate(updatedInvoice.campaign.name);
+
+  await runSafely(`CSM notifications for invoice ${updatedInvoice.id}`, () =>
+    Promise.all(
+      updatedInvoice.campaign.campaignAdmin
+        .filter((a) => a.admin?.role?.name === 'CSM')
+        .map((admin) =>
+          saveNotification({
+            userId: admin.adminId,
+            title,
+            message,
+            entity: 'Invoice',
+            threadId: updatedInvoice.id,
+            entityId: updatedInvoice.campaignId,
+          }),
+        ),
+    ),
+  );
+
+  await runSafely(`Creator notification for invoice ${updatedInvoice.id}`, () =>
+    saveNotification({
+      userId: updatedInvoice.creatorId,
+      title,
+      message,
+      entity: 'Invoice',
+      entityId: updatedInvoice.campaignId,
+    }),
+  );
+};
+
 export const bulkInvoiceWorker = new Worker(
   'bulk-invoice-queue',
   async (job) => {
@@ -313,44 +416,7 @@ export const bulkInvoiceWorker = new Worker(
     console.log(`📦 Starting Bulk Approval for ${invoiceIds.length} invoices...`);
 
     try {
-      const user = await prisma.user.findUnique({
-        where: { id: adminId },
-        include: { admin: { select: { xeroTokenSet: true } } },
-      });
-
-      if (!user || !user.admin?.xeroTokenSet) throw new Error('Admin not connected to Xero');
-
-      const tokenSet: TokenSet = user.admin.xeroTokenSet as any;
-      await xero.initialize();
-      xero.setTokenSet(tokenSet);
-
-      if (tokenSet.expires_at && dayjs.unix(tokenSet.expires_at).isBefore(dayjs())) {
-        try {
-          const latestAdmin = await prisma.admin.findUnique({
-            where: { userId: adminId },
-            select: { xeroTokenSet: true },
-          });
-
-          const latestToken: TokenSet = latestAdmin?.xeroTokenSet as any;
-
-          if (latestToken?.expires_at && dayjs.unix(latestToken.expires_at).isAfter(dayjs())) {
-            console.log('Token was already refreshed by another worker. Skipping refresh.');
-            xero.setTokenSet(latestToken);
-          } else {
-            const validTokenSet = await xero.refreshToken();
-            await prisma.admin.update({
-              where: { userId: adminId },
-              data: { xeroTokenSet: validTokenSet as any },
-            });
-            xero.setTokenSet(validTokenSet);
-          }
-        } catch (error) {
-          console.error('Critical: Xero Refresh Token is invalid or refresh failed.');
-          throw error;
-        }
-      }
-
-      await xero.updateTenants();
+      const xero = await getXeroClientForAdmin(adminId);
 
       console.log(
         `🏢 Xero organisations for bulk job ${job.id}:`,
@@ -376,12 +442,13 @@ export const bulkInvoiceWorker = new Worker(
         },
       });
 
+      // The controller moved every invoice of this job to 'processing'. Anything else was handled elsewhere.
+      const pending = invoices.filter((invoice) => invoice.status === 'processing' && !invoice.xeroInvoiceId);
+      await startXeroAttempt(pending.map((invoice) => invoice.id));
+
       const batches: Record<string, { tenantId: string; bills: PreparedBill[] }> = {};
 
-      for (const invoice of invoices) {
-        // The controller moved every invoice of this job to 'processing'. Anything else was handled elsewhere.
-        if (invoice.status !== 'processing' || invoice.xeroInvoiceId) continue;
-
+      for (const invoice of pending) {
         try {
           const agreement = invoice.creator.user.creatorAgreement.find(
             (a) => a.campaignId === invoice.campaignId && a.round === 1,
@@ -399,11 +466,25 @@ export const bulkInvoiceWorker = new Worker(
             continue;
           }
 
-          const tenantId = activeTenant.tenantId;
-          let contactID = invoice.creator.xeroContactId;
-
+          const tenantId: string = activeTenant.tenantId;
           const clientName = invoice.campaign.brand?.name || invoice.campaign.company?.name || '';
           const campaignName = xeroCampaignName(invoice.campaign.name, invoice);
+
+          const { billNumber, mayExist } = await resolveBillNumber(invoice, () =>
+            xeroBillNumber(clientName, campaignName, invoice.invoiceNumber),
+          );
+
+          const existingBill = mayExist ? await findXeroBill(xero, tenantId, invoice.invoiceNumber) : undefined;
+
+          if (existingBill?.invoiceID) {
+            console.log(`🔗 Found existing Xero bill ${existingBill.invoiceID} for invoice ${invoice.id}; linking`);
+            const updatedInvoice = await linkXeroBill(invoice.id, existingBill.invoiceID, tenantId);
+            await runBulkSideEffects(xero, tenantId, updatedInvoice, attachments, adminId);
+            continue;
+          }
+
+          let contactID = invoice.creator.xeroContactId;
+
           const recipientName =
             (invoice.bankAcc as any)?.payTo ||
             invoice.creator.user.paymentForm?.bankAccountName ||
@@ -427,10 +508,11 @@ export const bulkInvoiceWorker = new Worker(
               contactID = result.body.contacts[0].contactID || null;
             } else {
               const [contact] = await createXeroContact(
+                xero,
+                tenantId,
                 invoice.bankAcc,
                 invoice.creator,
                 invoice.invoiceFrom,
-                currency,
               );
               contactID = contact.contactID || null;
               await prisma.creator.update({
@@ -441,8 +523,6 @@ export const bulkInvoiceWorker = new Worker(
           }
 
           if (!contactID) throw new Error('No Xero contact was found or created');
-
-          const billNumber = xeroBillNumber(clientName, campaignName, invoice.invoiceNumber);
 
           if (!batches[tenantId]) batches[tenantId] = { tenantId, bills: [] };
 
@@ -476,25 +556,28 @@ export const bulkInvoiceWorker = new Worker(
       for (const batch of Object.values(batches)) {
         for (const bills of chunk(batch.bills, XERO_BATCH_SIZE)) {
           let xeroResults: any[];
+          const body = { invoices: bills.map((bill) => bill.xeroInvoice) };
 
           try {
             const response = await xero.accountingApi.createInvoices(
               batch.tenantId,
-              { invoices: bills.map((bill) => bill.xeroInvoice) },
+              body,
               false,
+              undefined,
+              xeroIdempotencyKey(`bills-${job.id}`, body),
             );
             xeroResults = response.body.invoices || [];
           } catch (batchError) {
-            // The request may still have reached Xero, so say where to look before anyone approves again.
+            // The request may still have reached Xero. The saved bill numbers let the next attempt find those bills.
             await markInvoicesFailed(
               bills.map((bill) => bill.invoiceId),
-              `Xero createInvoices failed for tenant ${batch.tenantId}: ${describeXeroError(batchError)}. Check Xero for these bills before approving again.`,
+              `Xero createInvoices failed for tenant ${batch.tenantId}: ${describeXeroError(batchError)}. Approve again to retry; existing bills are found and linked.`,
             );
             continue;
           }
 
           // Xero does not promise the response order, so match each result by its unique "(INV-…)" suffix.
-          const linkedInvoices = [];
+          const linkedInvoices: LinkedInvoice[] = [];
 
           for (const bill of bills) {
             const xeroInv = xeroResults.find((result) => isXeroBillFor(result.invoiceNumber, bill.invoiceNumber));
@@ -502,7 +585,7 @@ export const bulkInvoiceWorker = new Worker(
             if (!xeroInv) {
               await markInvoicesFailed(
                 [bill.invoiceId],
-                `Xero returned no result for bill "${bill.billNumber}". Check Xero before approving again.`,
+                `Xero returned no result for bill "${bill.billNumber}". Approve again to retry; an existing bill is found and linked.`,
               );
               continue;
             }
@@ -514,15 +597,7 @@ export const bulkInvoiceWorker = new Worker(
             }
 
             try {
-              const updatedInvoice = await prisma.invoice.update({
-                where: { id: bill.invoiceId },
-                data: { status: 'approved', xeroInvoiceId: xeroInv.invoiceID },
-                include: {
-                  campaign: { include: { campaignAdmin: { include: { admin: { include: { role: true } } } } } },
-                  creator: { include: { user: { include: { paymentForm: true } } } },
-                },
-              });
-              linkedInvoices.push({ updatedInvoice, xeroInvoiceId: xeroInv.invoiceID as string });
+              linkedInvoices.push(await linkXeroBill(bill.invoiceId, xeroInv.invoiceID, batch.tenantId));
             } catch (error) {
               console.error(
                 `🚨 Xero bill ${xeroInv.invoiceID} was created but not linked to invoice ${bill.invoiceId}`,
@@ -532,79 +607,8 @@ export const bulkInvoiceWorker = new Worker(
           }
 
           // Side effects run only after every bill in this request is linked, and never stop the loop.
-          for (const { updatedInvoice, xeroInvoiceId } of linkedInvoices) {
-            const attachment = attachments?.[updatedInvoice.id];
-
-            if (attachment) {
-              await runSafely(`Attachment ${attachment.name}`, async () => {
-                const buffer = fs.readFileSync(attachment.tempFilePath);
-                await xero.accountingApi.createInvoiceAttachmentByFileName(
-                  batch.tenantId,
-                  xeroInvoiceId,
-                  attachment.name,
-                  buffer,
-                  false,
-                  undefined,
-                  { headers: { 'Content-Type': attachment.mimetype } },
-                );
-                console.log(`📎 Successfully attached: ${attachment.name}`);
-              });
-            }
-
-            await runSafely(`Campaign log for invoice ${updatedInvoice.id}`, () =>
-              logChange(
-                `Bulk approved invoice ${updatedInvoice.invoiceNumber} for ${updatedInvoice.creator.user?.name || 'Unknown Creator'}`,
-                updatedInvoice.campaignId,
-                undefined,
-                adminId,
-              ),
-            );
-
-            await runSafely(`Invoices spreadsheet for invoice ${updatedInvoice.id}`, () =>
-              sendToSpreadSheet(
-                {
-                  createdAt: dayjs().format('YYYY-MM-DD'),
-                  name:
-                    updatedInvoice.creator.user.paymentForm?.bankAccountName || updatedInvoice.creator.user.name || '',
-                  icNumber: updatedInvoice.creator.user.paymentForm?.icNumber || '',
-                  bankName: (updatedInvoice.bankAcc as any)?.bankName || '',
-                  bankAccountNumber: (updatedInvoice.bankAcc as any)?.accountNumber || '',
-                  campaignName: updatedInvoice.campaign.name,
-                  amount: updatedInvoice.amount,
-                },
-                '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
-                'Invoices',
-              ),
-            );
-
-            const { title, message } = notificationInvoiceUpdate(updatedInvoice.campaign.name);
-
-            await runSafely(`CSM notifications for invoice ${updatedInvoice.id}`, () =>
-              Promise.all(
-                updatedInvoice.campaign.campaignAdmin
-                  .filter((a) => a.admin?.role?.name === 'CSM')
-                  .map((admin) =>
-                    saveNotification({
-                      userId: admin.adminId,
-                      title,
-                      message,
-                      entity: 'Invoice',
-                      threadId: updatedInvoice.id,
-                      entityId: updatedInvoice.campaignId,
-                    }),
-                  ),
-              ),
-            );
-
-            await runSafely(`Creator notification for invoice ${updatedInvoice.id}`, () =>
-              saveNotification({
-                userId: updatedInvoice.creatorId,
-                title,
-                message,
-                entity: 'Invoice',
-                entityId: updatedInvoice.campaignId,
-              }),
-            );
+          for (const updatedInvoice of linkedInvoices) {
+            await runBulkSideEffects(xero, batch.tenantId, updatedInvoice, attachments, adminId);
           }
         }
       }
@@ -628,6 +632,84 @@ export const bulkInvoiceWorker = new Worker(
   },
 );
 
+/**
+ * Finds invoices left in 'processing' with no live job (a crash, a deploy, a lost job) and queues them
+ * again under the admin who approved them. This is safe because a retry searches Xero for the saved
+ * bill number before it creates anything. After MAX_XERO_ATTEMPTS, or with no known approver, the
+ * invoice is marked failed so a person looks at it.
+ */
+export const reapStuckInvoices = async () => {
+  const cutoff = dayjs().subtract(STALE_AFTER_MINUTES, 'minute').toDate();
+
+  const stale = await prisma.invoice.findMany({
+    where: {
+      status: 'processing',
+      AND: [
+        noXeroBillWhere,
+        { OR: [{ xeroAttemptedAt: { lt: cutoff } }, { xeroAttemptedAt: null, updatedAt: { lt: cutoff } }] },
+      ],
+    },
+    select: { id: true, xeroAttempts: true, xeroApprovedById: true },
+  });
+
+  if (!stale.length) return;
+
+  const liveBulkJobs = await bulkInvoiceQueue.getJobs(LIVE_JOB_STATES);
+  const inLiveBulkJob = new Set<string>(liveBulkJobs.flatMap((liveJob) => liveJob?.data?.invoiceIds ?? []));
+
+  const requeueByAdmin = new Map<string, string[]>();
+  const giveUp: string[] = [];
+
+  for (const invoice of stale) {
+    if (inLiveBulkJob.has(invoice.id)) continue;
+
+    const singleJob = await invoiceQueue.getJob(`invoice-${invoice.id}`);
+    if (singleJob && LIVE_JOB_STATES.includes((await singleJob.getState()) as JobType)) continue;
+
+    if (!invoice.xeroApprovedById || invoice.xeroAttempts >= MAX_XERO_ATTEMPTS) {
+      giveUp.push(invoice.id);
+      continue;
+    }
+
+    requeueByAdmin.set(invoice.xeroApprovedById, [...(requeueByAdmin.get(invoice.xeroApprovedById) ?? []), invoice.id]);
+  }
+
+  await markInvoicesFailed(
+    giveUp,
+    'Approval stopped before it finished and was not retried. Check Xero for this bill, then approve again.',
+  );
+
+  for (const [adminId, ids] of requeueByAdmin) {
+    await bulkInvoiceQueue.add(
+      'bulk-approve',
+      { invoiceIds: ids, adminId, attachments: {} },
+      { jobId: `reaper-${adminId}-${Date.now()}`, removeOnComplete: true },
+    );
+  }
+
+  const requeued = [...requeueByAdmin.values()].flat();
+  if (requeued.length || giveUp.length) {
+    console.warn(`🚨 Invoice reaper: re-queued ${requeued.length}, marked failed ${giveUp.length}`, {
+      requeued,
+      giveUp,
+    });
+  }
+};
+
+let reaperRunning = false;
+
+const reaperTimer = setInterval(async () => {
+  if (reaperRunning) return;
+  reaperRunning = true;
+  try {
+    await reapStuckInvoices();
+  } catch (error) {
+    console.error('Invoice reaper failed:', error);
+  } finally {
+    reaperRunning = false;
+  }
+}, REAPER_INTERVAL_MS);
+
 bulkInvoiceWorker.on('completed', (job) => {
   console.log(`✅Bulk Job ${job.id} done`);
 });
@@ -650,6 +732,7 @@ worker.on('failed', async (job, err) => {
 
 // graceful shutdown
 process.on('SIGTERM', async () => {
+  clearInterval(reaperTimer);
   await worker.close();
   await bulkInvoiceWorker.close();
   process.exit(0);

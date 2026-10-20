@@ -1,11 +1,11 @@
 import { Worker } from 'bullmq';
 import connection from '@configs/redis';
 
-import { Invoice as XeroInvoice, TokenSet } from 'xero-node';
-import dayjs from 'dayjs';
+import { Invoice as XeroInvoice } from 'xero-node';
 
-import { xero } from '@configs/xero';
 import { logChange } from '@services/campaignServices';
+import { getXeroClientForAdmin } from '@services/xeroClientService';
+import { parseXeroError } from '@utils/xeroInvoice';
 import { prisma } from '../prisma/prisma';
 
 interface XeroWebhookEvent {
@@ -42,19 +42,10 @@ export const xeroWebhookWorker = new Worker(
     });
     if (!user) throw new Error('Xero webhook: super user not found');
 
-    const tokenSet: TokenSet = user.admin?.xeroTokenSet as TokenSet;
-    if (!tokenSet) throw new Error('Xero webhook: user not connected to Xero');
+    if (!user.admin?.xeroTokenSet) throw new Error('Xero webhook: user not connected to Xero');
 
-    await xero.initialize();
-    xero.setTokenSet(tokenSet);
-
-    if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
-      const validTokenSet = await xero.refreshToken();
-      await prisma.admin.update({
-        where: { userId: user.id },
-        data: { xeroTokenSet: validTokenSet as any },
-      });
-    }
+    // Event payloads carry the tenant ID, so the tenant list is not needed here.
+    const xero = await getXeroClientForAdmin(user.id, { withTenants: false });
 
     // The backlog batch is heavily duplicated (same invoice CREATE + many UPDATEs). Dedupe per tenant.
     const idsByTenant = new Map<string, Set<string>>();
@@ -89,10 +80,12 @@ export const xeroWebhookWorker = new Worker(
             if (inv.status === XeroInvoice.StatusEnum.PAID && inv.invoiceID) paidIds.add(inv.invoiceID);
           }
         } catch (err: any) {
-          if (err?.response?.statusCode === 429) {
-            const retryAfter = parseInt(err.response.headers?.['retry-after'] ?? '60', 10);
+          // xero-node rejects with a JSON string, so read the status through parseXeroError.
+          const { statusCode, headers } = parseXeroError(err);
+          if (statusCode === 429) {
+            const retryAfter = parseInt(headers?.['retry-after'] ?? '60', 10);
             console.warn(
-              `⏳ Xero webhook rate-limited (${err.response.headers?.['x-rate-limit-problem']}); backing off ${retryAfter}s`,
+              `⏳ Xero webhook rate-limited (${headers?.['x-rate-limit-problem']}); backing off ${retryAfter}s`,
             );
             await xeroWebhookWorker.rateLimit(retryAfter * 1000);
             // Re-queues the job after the delay without consuming an attempt.

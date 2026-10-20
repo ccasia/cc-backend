@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { InvoiceStatus, Prisma } from '@prisma/client';
 
 /**
@@ -22,33 +23,57 @@ export const isXeroBillFor = (xeroInvoiceNumber: string | undefined, invoiceNumb
   Boolean(xeroInvoiceNumber?.trim().endsWith(`(${invoiceNumber})`));
 
 /**
- * xero-node rejects with a JSON string, and our services wrap that in `new Error(string)`.
- * `err.message` alone logs `undefined` or a raw blob, so pull out status, rate limit and validation messages.
+ * Xero replays the saved response for a repeated key within 6 minutes, and rejects the same key
+ * with a different body. Hashing the body keeps the key stable for identical retries only.
  */
-export const describeXeroError = (error: unknown): string => {
-  let value: any = error instanceof Error ? error.message : error;
+export const xeroIdempotencyKey = (prefix: string, body: unknown) =>
+  `${prefix}-${createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 32)}`.slice(0, 128);
 
-  if (typeof value === 'string') {
+interface XeroErrorDetails {
+  statusCode?: number;
+  headers?: Record<string, string>;
+  body?: any;
+  message?: string;
+}
+
+/** xero-node rejects with a JSON string, and our services wrap that in `new Error(string)`. */
+export const parseXeroError = (error: unknown): XeroErrorDetails => {
+  const raw: any = error instanceof Error ? error.message : error;
+  let value = raw;
+
+  if (typeof raw === 'string') {
     try {
-      value = JSON.parse(value);
+      value = JSON.parse(raw);
     } catch {
-      return value;
+      return { message: raw };
     }
   }
 
   const response = value?.response;
-  const body = response?.body ?? value?.body;
+  return {
+    statusCode: response?.statusCode,
+    headers: response?.headers,
+    body: response?.body ?? value?.body,
+    message: undefined,
+  };
+};
+
+/** Status, rate limit and validation messages, instead of `undefined` or a raw blob. */
+export const describeXeroError = (error: unknown): string => {
+  const { statusCode, headers, body, message } = parseXeroError(error);
+  if (message) return message;
+
   const validation: string[] = (body?.Elements ?? [])
     .flatMap((element: any) => element?.ValidationErrors ?? [])
     .map((item: any) => item?.Message)
     .filter(Boolean);
 
   const parts = [
-    response?.statusCode && `HTTP ${response.statusCode}`,
-    response?.headers?.['x-rate-limit-problem'] && `rate limit: ${response.headers['x-rate-limit-problem']}`,
+    statusCode && `HTTP ${statusCode}`,
+    headers?.['x-rate-limit-problem'] && `rate limit: ${headers['x-rate-limit-problem']}`,
     ...validation,
     !validation.length && (body?.Message || body?.Detail || body?.error_description || body?.error),
   ].filter(Boolean);
 
-  return parts.length ? parts.join(' | ') : String(JSON.stringify(value) ?? value).slice(0, 500);
+  return parts.length ? parts.join(' | ') : String(JSON.stringify(error) ?? error).slice(0, 500);
 };
