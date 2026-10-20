@@ -152,7 +152,8 @@ export const getCampaignOverview = async (userId: string, campaignId: string): P
     performance,
     updates,
   ] = await Promise.all([
-    prisma.shortListedCreator.count({ where: { campaignId } }),
+    // prisma.shortListedCreator.count({ where: { campaignId } }),
+    prisma.pitch.count({ where: { outreachStatus: 'CONFIRMED', campaignId } }),
     prisma.pitch.count({ where: { campaignId, status: 'AGREEMENT_PENDING' } }),
     prisma.pitch.findMany({
       where: { campaignId, status: { in: ['SENT_TO_CLIENT', 'AWAITING_APPROVAL'] } },

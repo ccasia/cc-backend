@@ -94,6 +94,7 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
     where: { id: userId },
     select: { name: true, client: { select: { id: true, companyId: true } } },
   });
+
   const client = user.client!;
 
   const campaigns = await prisma.campaign.findMany({
@@ -113,32 +114,42 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
   });
   const campaignIds = campaigns.map((c) => c.id);
 
-  const [companyCredits, shortlisted, pitches, submissionTypes, submissionCounts, sentToClient] = await Promise.all([
-    getCompanyCredits(client.companyId),
-    prisma.shortListedCreator.groupBy({
-      by: ['campaignId'],
-      where: { campaignId: { in: campaignIds } },
-      _count: { _all: true },
-    }),
-    prisma.pitch.findMany({
-      where: { campaignId: { in: campaignIds }, status: { in: SHORTLIST_PITCH_STATUSES } },
-      select: { campaignId: true, status: true, createdAt: true, sentToClientAt: true },
-    }),
-    prisma.submissionType.findMany({ select: { id: true, type: true } }),
-    prisma.submission.groupBy({
-      by: ['campaignId', 'submissionTypeId', 'submissionVersion', 'status'],
-      where: { campaignId: { in: campaignIds } },
-      _count: { _all: true },
-    }),
-    prisma.submission.findMany({
-      where: { campaignId: { in: campaignIds }, status: 'SENT_TO_CLIENT' },
-      select: { campaignId: true, updatedAt: true, user: { select: { name: true } } },
-    }),
-  ]);
+  const [companyCredits, shortlisted, confirmedCreators, pitches, submissionTypes, submissionCounts, sentToClient] =
+    await Promise.all([
+      getCompanyCredits(client.companyId),
+      prisma.shortListedCreator.groupBy({
+        by: ['campaignId'],
+        where: { campaignId: { in: campaignIds } },
+        _count: { _all: true },
+      }),
+      prisma.pitch.groupBy({
+        by: ['campaignId'],
+        where: {
+          outreachStatus: 'CONFIRMED',
+          campaignId: { in: campaignIds },
+        },
+        _count: { _all: true },
+      }),
+      prisma.pitch.findMany({
+        where: { campaignId: { in: campaignIds }, status: { in: SHORTLIST_PITCH_STATUSES } },
+        select: { campaignId: true, status: true, createdAt: true, sentToClientAt: true },
+      }),
+      prisma.submissionType.findMany({ select: { id: true, type: true } }),
+      prisma.submission.groupBy({
+        by: ['campaignId', 'submissionTypeId', 'submissionVersion', 'status'],
+        where: { campaignId: { in: campaignIds } },
+        _count: { _all: true },
+      }),
+      prisma.submission.findMany({
+        where: { campaignId: { in: campaignIds }, status: 'SENT_TO_CLIENT' },
+        select: { campaignId: true, updatedAt: true, user: { select: { name: true } } },
+      }),
+    ]);
 
   const typeById = new Map(submissionTypes.map((t) => [t.id, t.type]));
   const confirmedBy = new Map(shortlisted.map((row) => [row.campaignId, row._count._all]));
-  const shortlistPitchesBy = countBy(pitches, (p) => p.campaignId);
+
+  const confirmedCreatorsBy = new Map(confirmedCreators.map((r) => [r.campaignId, r._count._all]));
 
   const statsBy = new Map<string, Pick<ClientHomeCampaign, 'submissions' | 'posting'>>();
   for (const row of submissionCounts) {
@@ -170,10 +181,11 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
   }
 
   const homeCampaigns: ClientHomeCampaign[] = campaigns.map((campaign) => {
-    const confirmed = confirmedBy.get(campaign.id) ?? 0;
+    const confirmed = confirmedCreatorsBy.get(campaign.id) ?? 0;
+    const totalShortlisted = confirmedBy.get(campaign.id) ?? 0;
     const base = {
       status: campaign.status,
-      shortlist: { confirmed, total: confirmed + (shortlistPitchesBy.get(campaign.id) ?? 0) },
+      shortlist: { confirmed, total: totalShortlisted },
       ...(statsBy.get(campaign.id) ?? { submissions: { received: 0, approved: 0 }, posting: { posted: 0, total: 0 } }),
     };
 
