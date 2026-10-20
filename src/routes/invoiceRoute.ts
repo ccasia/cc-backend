@@ -36,7 +36,7 @@ router.get('/getAll', authenticate, getAllSelectedInvoices);
 
 router.get('/xeroConnect', authenticate, isSuperAdmin, getXero);
 
-router.get('/xeroCallback', xeroCallBack);
+router.get('/xeroCallback', authenticate, isSuperAdmin, xeroCallBack);
 
 router.get('/getXeroContacts', checkAndRefreshAccessToken, getXeroContacts);
 
