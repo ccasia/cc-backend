@@ -1915,11 +1915,18 @@ export const deleteAccount = async (req: Request, res: Response) => {
     // already-open socket would otherwise keep receiving chat/notifications. Match on the
     // middleware-verified socket.data.userId (set in server.ts), not the client-supplied
     // `clients` map (which only tracks one socket per user). The existing `disconnect` handler
-    // cleans up the clients/users maps automatically.
-    for (const socket of getIo().sockets.sockets.values()) {
-      if (socket.data.userId === userId) {
-        socket.disconnect(true);
+    // cleans up the clients/users maps automatically. fetchSockets() goes through the Redis
+    // adapter, so it also reaches sockets connected to the other API copies.
+    // A copy that doesn't answer in time rejects this; the account is already deleted, so log and carry on.
+    try {
+      const liveSockets = await getIo().fetchSockets();
+      for (const socket of liveSockets) {
+        if (socket.data.userId === userId) {
+          socket.disconnect(true);
+        }
       }
+    } catch (error) {
+      console.error('Failed to disconnect sockets for deleted account:', error);
     }
 
     // Clear session and cookies
