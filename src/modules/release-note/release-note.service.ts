@@ -3,7 +3,7 @@ import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { ReleaseNoteStatus } from '@prisma/client';
 import { prisma } from '@/src/prisma/prisma';
-import { getIo } from '@configs/socket';
+import { emitter } from '@configs/socketEmitter';
 import { ReleaseNoteInput, ReleaseNoteItemInput } from './release-note.types';
 
 dayjs.extend(utc);
@@ -39,7 +39,7 @@ const resolveUpdateStatus = (current: ReleaseNoteStatus, input: ReleaseNoteInput
 
 const notifyReleaseNotesChanged = () => {
   try {
-    getIo().emit('releaseNotes:changed');
+    emitter.emit('releaseNotes:changed');
   } catch (error) {
     console.error('Failed to emit releaseNotes:changed:', error);
   }
