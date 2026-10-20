@@ -16,6 +16,24 @@ import { scheduleUrlExtractionAndFetch } from './submissionV4Controller';
 import { awardXp, onSubmissionSubmitted } from '@/src/modules/gamification';
 import { prisma } from '@/src/prisma/prisma';
 
+// Comments the admin left out are marked as sent but stay hidden (isVisibleToCreator: false)
+const isCommentVisibleToCreator = (comment: any) =>
+  !comment || comment.user?.role === 'creator' || comment.isVisibleToCreator !== false;
+
+const withCreatorVisibleComment = (feedback: any) =>
+  feedback.submissionComment
+    ? {
+        ...feedback,
+        submissionComment: {
+          ...feedback.submissionComment,
+          replies: (feedback.submissionComment.replies ?? []).filter(isCommentVisibleToCreator),
+        },
+      }
+    : feedback;
+
+const filterFeedbackForCreator = (feedback: any[]) =>
+  feedback.filter((f) => isCommentVisibleToCreator(f.submissionComment)).map(withCreatorVisibleComment);
+
 /**
  * Get creator's own V4 submissions for a campaign
  * GET /api/creator/submissions/v4?campaignId=xxx
@@ -72,7 +90,7 @@ export const getMyV4Submissions = async (req: Request<{}, {}, {}, { campaignId: 
       }
 
       // Map feedback to include submissionComment data
-      filteredFeedback = filteredFeedback.map(mapFeedbackWithComments);
+      filteredFeedback = filterFeedbackForCreator(filteredFeedback).map(mapFeedbackWithComments);
 
       return {
         ...submission,
@@ -842,7 +860,7 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
         user: r.user,
       })),
     });
-    filteredFeedback = filteredFeedback.map(mapFeedbackReplies);
+    filteredFeedback = filterFeedbackForCreator(filteredFeedback).map(mapFeedbackReplies);
 
     // Add creator-friendly status mapping
     const getCreatorStatus = (status: string) => {
