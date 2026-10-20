@@ -12,6 +12,7 @@ import { missingInvoices } from '@constants/missing-invoices';
 import { getCreatorInvoiceLists } from './submissionService';
 import { Contact, Invoice as XeroInvoice, LineItem, Phone, XeroClient } from 'xero-node';
 import { xero } from '@configs/xero';
+import { isXeroBillFor, xeroIdempotencyKey } from '@utils/xeroInvoice';
 import { prisma } from '@/src/prisma/prisma';
 
 dayjs.extend(utc);
@@ -541,16 +542,15 @@ export const updateInvoices = async ({ bankAcc, userId }: { bankAcc: any; userId
 // }
 
 export const createXeroContact = async (
+  client: XeroClient,
+  tenantId: string,
   bankInfo: any,
   creator: any,
   invoiceFrom: any,
-  currency?: 'SGD' | 'MYR',
 ): Promise<Contact[]> => {
-  if (Object.keys(bankInfo).length == 0) {
+  if (!bankInfo || Object.keys(bankInfo).length == 0) {
     throw new Error('bank information not found');
   }
-
-  let activeTenant;
 
   const contact: Contact = {
     name: invoiceFrom.name,
@@ -565,48 +565,65 @@ export const createXeroContact = async (
   };
 
   try {
-    await xero.updateTenants();
-
-    console.log('TENANTS', xero.tenants);
-    console.log('CURRENCY', currency);
-
-    activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
-
-    console.log('SELECTED TENANT', activeTenant);
-
-    const response = await xero.accountingApi.createContacts(activeTenant.tenantId, { contacts: [contact] });
+    const response = await client.accountingApi.createContacts(
+      tenantId,
+      { contacts: [contact] },
+      undefined,
+      xeroIdempotencyKey(`contact-${tenantId}`, contact),
+    );
 
     return response.body.contacts || [];
   } catch (error) {
-    console.log('SADSAD', error);
     throw new Error(error);
-    // throw new Error(error);
   }
 };
 
+/**
+ * A bill this app already created for the invoice, if any. The search covers InvoiceNumber, and the
+ * "(INV-…)" suffix check makes the match exact. Used before every create that is not a first attempt.
+ */
+export const findXeroBill = async (client: XeroClient, tenantId: string, invoiceNumber: string) => {
+  const response = await client.accountingApi.getInvoices(
+    tenantId,
+    undefined, // ifModifiedSince
+    undefined, // where
+    undefined, // order
+    undefined, // IDs
+    undefined, // invoiceNumbers (commas in campaign names break this filter)
+    undefined, // contactIDs
+    undefined, // statuses
+    undefined, // page
+    false, // includeArchived
+    true, // createdByMyApp
+    undefined, // unitdp
+    true, // summaryOnly
+    undefined, // pageSize
+    invoiceNumber, // searchTerm
+  );
+
+  return (response.body.invoices || []).find(
+    (bill) =>
+      String(bill.type) === 'ACCPAY' &&
+      !['DELETED', 'VOIDED'].includes(String(bill.status)) &&
+      isXeroBillFor(bill.invoiceNumber, invoiceNumber),
+  );
+};
+
 export const createXeroInvoiceLocal = async (
+  client: XeroClient,
+  tenantId: string,
   contactId: string,
   lineItems: any,
   dueDate: any,
   campaignName: string,
-  invoiceNumber: string,
-  creatorEmail: string,
-  invoiceFrom: any,
-  creator: any,
-  bankInfo: any,
+  billNumber: string,
   clientName: string | undefined,
-  currency?: 'SGD' | 'MYR',
+  invoiceId: string,
 ) => {
-  let activeTenant;
-
   try {
     const where = 'Status=="ACTIVE"';
 
-    if (currency) {
-      activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
-    }
-
-    const accounts: any = await xero.accountingApi.getAccounts(activeTenant.tenantId, undefined, where);
+    const accounts: any = await client.accountingApi.getAccounts(tenantId, undefined, where);
 
     const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
       accountID: accounts.body.accounts[0].accountID,
@@ -625,14 +642,19 @@ export const createXeroInvoiceLocal = async (
       dueDate: dueDate,
       lineItems: lineItemsArray,
       status: 'AUTHORISED' as any,
-      invoiceNumber: `${clientName} ${campaignName}` || 'N/A',
+      invoiceNumber: billNumber,
       reference: `${clientName} ${campaignName}`,
     };
 
-    const response: any = await xero.accountingApi.createInvoices(activeTenant.tenantId, { invoices: [invoice] });
+    const response: any = await client.accountingApi.createInvoices(
+      tenantId,
+      { invoices: [invoice] },
+      undefined,
+      undefined,
+      xeroIdempotencyKey(`bill-${invoiceId}`, invoice),
+    );
     return response;
   } catch (error) {
-    console.log('Testing', error);
     throw new Error(error);
   }
 };
