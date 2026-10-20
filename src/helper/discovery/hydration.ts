@@ -154,6 +154,7 @@ export const hydrateMissingInstagramData = async (
             averageShares,
             averageSaves,
             engagement_rate: engagementRate,
+            lastUpdated: new Date(),
             insightData: {
               since: insight.since,
               until: insight.until,

@@ -155,11 +155,16 @@ const emitCreatorCampaignMembershipUpdated = ({
   getIo().to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
 };
 
+// A connected account counts as a media kit only once its stats are saved. A
+// token-only row (stats sync failed) falls back to the manual numbers.
+const hasPlatformMediaKitStats = (creator: any, platform: SocialPlatform): boolean =>
+  platform === 'tiktok' ? creator?.tiktokUser?.follower_count != null : creator?.instagramUser?.followers_count != null;
+
 const getFollowerForPlatform = (creator: any, platform: SocialPlatform): number => {
   const instagramFollowers = creator?.instagramUser?.followers_count || 0;
   const tiktokFollowers = creator?.tiktokUser?.follower_count || 0;
-  const hasInstagramConnected = !!creator?.instagramUser;
-  const hasTiktokConnected = !!creator?.tiktokUser;
+  const hasInstagramConnected = hasPlatformMediaKitStats(creator, 'instagram');
+  const hasTiktokConnected = hasPlatformMediaKitStats(creator, 'tiktok');
   const manualInstagramFollowers = creator?.manualInstagramFollowerCount || 0;
   const manualTiktokFollowers = creator?.manualTiktokFollowerCount || 0;
 
@@ -11009,8 +11014,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         const selectedPlatform = resolvePlatform(verified?.platform, creator.selectedPlatform);
         const submittedFollowerCount = manualFollowerCountByCreator.get(creator) ?? creator.followerCount;
         const manualEngagementRate = manualEngagementRateByCreator.get(creator);
-        const hasPlatformMediaKit =
-          selectedPlatform === 'instagram' ? !!user.creator?.instagramUser : !!user.creator?.tiktokUser;
+        // A verified scrape means the admin chose the profile link over the
+        // media kit (for example, an expired token), so its numbers win.
+        const hasPlatformMediaKit = !verified && hasPlatformMediaKitStats(user.creator, selectedPlatform);
         let resolvedFollowerCount = 0;
 
         await ensureScrapedProfileLink(
