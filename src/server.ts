@@ -33,7 +33,6 @@ import { PrismaSessionStore } from '@quixo3/prisma-session-store';
 
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
-import { storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import passport from 'passport';
 
@@ -98,7 +97,7 @@ app.use(
   }),
 );
 
-app.use(morgan('combined'));
+app.use(morgan('tiny'));
 
 app.disable('x-powered-by');
 
