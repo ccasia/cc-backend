@@ -331,10 +331,15 @@ io.use(async (socket: Socket, next) => {
 io.on('connection', (socket) => {
   io.emit('onlineUsers', { onlineUsers: clients.size });
 
-  socket.on('register', (userId) => {
-    clients.set(userId, socket.id);
-    users.set(userId, socket.id);
-    socket.join(userId);
+  // User rooms use the id verified by the auth middleware above, never the id a client sends,
+  // so a socket can't subscribe to another user's notifications or chat events.
+  const verifiedUserId = socket.data.userId as string | undefined;
+  if (verifiedUserId) socket.join(verifiedUserId);
+
+  socket.on('register', () => {
+    if (!verifiedUserId) return;
+    clients.set(verifiedUserId, socket.id);
+    users.set(verifiedUserId, socket.id);
   });
 
   socket.on('online-user', () => {
