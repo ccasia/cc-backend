@@ -5,6 +5,7 @@ import { normalizeInsightResults, UrlData } from '@utils/insightNormalizationHel
 import { getManualCreatorEntries } from '@services/manualCreatorService';
 import { storeDailyPostEngagementResults } from '@services/postEngagementSnapshotService';
 import { queuePostScrape } from '@services/postMetricsScrape/queuePostScrape';
+import { isInScrapeWindow, scrapeDay } from '@services/postMetricsScrape/scrapeDay';
 import { prisma } from '@/src/prisma/prisma';
 
 /**
@@ -89,7 +90,7 @@ export async function fetchAndStoreInsightsForCampaign(campaignId: string): Prom
     // Get campaign info for logging
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { name: true, status: true },
+      select: { name: true, status: true, campaignBrief: { select: { endDate: true } } },
     });
 
     if (!campaign) {
@@ -115,15 +116,16 @@ export async function fetchAndStoreInsightsForCampaign(campaignId: string): Prom
     }
 
     const failures: InsightRefreshFailure[] = [];
+    const campaignEndDate = campaign.campaignBrief?.endDate ?? null;
 
     // Fetch and store Instagram insights
     if (instaUrls.length > 0) {
-      failures.push(...(await fetchAndStorePlatformInsights(campaignId, 'Instagram', instaUrls)));
+      failures.push(...(await fetchAndStorePlatformInsights(campaignId, 'Instagram', instaUrls, campaignEndDate)));
     }
 
     // Fetch and store TikTok insights
     if (tiktokUrls.length > 0) {
-      failures.push(...(await fetchAndStorePlatformInsights(campaignId, 'TikTok', tiktokUrls)));
+      failures.push(...(await fetchAndStorePlatformInsights(campaignId, 'TikTok', tiktokUrls, campaignEndDate)));
     }
 
     console.log(`✅ Insights fetched and stored for campaign ${campaignId}`);
@@ -142,6 +144,7 @@ async function fetchAndStorePlatformInsights(
   campaignId: string,
   platform: 'Instagram' | 'TikTok',
   urls: any[],
+  campaignEndDate: Date | null,
 ): Promise<InsightRefreshFailure[]> {
   console.log(`\n   📦 Fetching ${platform} insights...`);
 
@@ -163,7 +166,7 @@ async function fetchAndStorePlatformInsights(
     });
 
     const dailySnapshotResult = await storeDailyPostEngagementResults(urls, results, platform);
-    queueScrapeFallbacks(urls, dailySnapshotResult.failures);
+    queueScrapeFallbacks(urls, dailySnapshotResult.failures, campaignEndDate);
 
     // Filter valid results
     const validResults = results.filter((r) => !r.error);
@@ -216,23 +219,23 @@ async function fetchAndStorePlatformInsights(
 const SCRAPE_FALLBACK_CODES = new Set(['ACCOUNT_NOT_CONNECTED', 'ACCESS_TOKEN_MISSING', 'TOKEN_EXPIRED']);
 
 /**
- * Only recent links fall back, so the first nightly run never backfills every
- * historical post as paid jobs. `createdAt`, not `postingDate`: each extraction
- * resets `postingDate` to now.
+ * Queue today's scrape for posted links the API could not read. Only links
+ * inside their campaign period fall back, so ended campaigns never become paid
+ * jobs. The worker claims `metricsScrapedAt`, so a post is scraped once a day.
  */
-const SCRAPE_FALLBACK_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-
-/**
- * Queue a one-time scrape for posted links the API could not read. The worker
- * claims `metricsScrapedAt`, so the daily cron never scrapes a post twice.
- */
-function queueScrapeFallbacks(urls: any[], failures: { postUrl: string; reason: string }[]): void {
-  const createdAfter = Date.now() - SCRAPE_FALLBACK_MAX_AGE_MS;
+function queueScrapeFallbacks(
+  urls: any[],
+  failures: { postUrl: string; reason: string }[],
+  campaignEndDate: Date | null,
+): void {
+  const now = new Date();
+  const todayStart = scrapeDay(now).toDate();
   for (const { postUrl, reason } of failures) {
     if (!SCRAPE_FALLBACK_CODES.has(classifyRefreshFailure(reason))) continue;
     const postingUrl = urls.find((url) => url.postUrl === postUrl);
-    if (!postingUrl || postingUrl.metricsScrapedAt || postingUrl.submission?.status !== 'POSTED') continue;
-    if (new Date(postingUrl.createdAt).getTime() < createdAfter) continue;
+    if (!postingUrl || postingUrl.submission?.status !== 'POSTED') continue;
+    if (postingUrl.metricsScrapedAt && new Date(postingUrl.metricsScrapedAt) >= todayStart) continue;
+    if (!isInScrapeWindow(postingUrl.postingDate, campaignEndDate, now)) continue;
     queuePostScrape({
       postingUrlId: postingUrl.id,
       campaignId: postingUrl.campaignId,

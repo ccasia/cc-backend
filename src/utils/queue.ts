@@ -89,8 +89,8 @@ export async function enqueueExtraction(
 }
 
 /**
- * One Bright Data scrape per approved post, for creators with no connected
- * account. One attempt only: a retry would start a second paid job.
+ * One Bright Data scrape per approved post per day, for creators with no
+ * connected account. One attempt only: a retry would start a second paid job.
  */
 export const postMetricsScrapeQueue = new Queue('post-metrics-scrape-queue', {
   connection,
@@ -102,7 +102,7 @@ export const postMetricsScrapeQueue = new Queue('post-metrics-scrape-queue', {
 });
 
 /**
- * The job ID dedupes a burst of enqueues for one post. The durable once-only
+ * The job ID dedupes a burst of enqueues for one post. The durable once-a-day
  * rule is `SubmissionPostingUrl.metricsScrapedAt`, checked by the worker.
  */
 export interface PostScrapeJobData {
