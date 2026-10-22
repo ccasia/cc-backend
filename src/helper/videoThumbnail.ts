@@ -7,8 +7,11 @@ import { randomUUID } from 'crypto';
 
 import { uploadImage } from '@configs/cloudStorage.config';
 
+// The bundled static ffmpeg can't resolve DNS on Alpine, so prefer the system binary.
+// fluent-ffmpeg keeps one global path that other modules overwrite, so it's set per command below.
 const systemFfmpegPath = '/usr/bin/ffmpeg';
-Ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH ?? (fs.existsSync(systemFfmpegPath) ? systemFfmpegPath : ffmpegPath.path));
+const thumbnailFfmpegPath =
+  process.env.FFMPEG_PATH || (fs.existsSync(systemFfmpegPath) ? systemFfmpegPath : ffmpegPath.path);
 
 const THUMBNAIL_TIMEOUT_MS = 30_000;
 
@@ -30,8 +33,14 @@ export const createVideoThumbnail = async (
     await new Promise<void>((resolve, reject) => {
       let settled = false;
       const command = Ffmpeg(encodedVideoUrl)
+        .setFfmpegPath(thumbnailFfmpegPath)
         .seekInput(1)
-        .outputOptions(['-frames:v 1', `-vf scale=${width}:${height}:force_original_aspect_ratio=decrease`, '-q:v 3']);
+        .outputOptions([
+          '-frames:v 1',
+          '-update 1',
+          `-vf scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+          '-q:v 3',
+        ]);
 
       const finish = (error?: Error) => {
         if (settled) return;

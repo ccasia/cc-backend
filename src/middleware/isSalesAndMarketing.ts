@@ -3,16 +3,18 @@ import { prisma } from '@/src/prisma/prisma';
 
 export const isSalesAndMarketing = async (req: Request, res: Response, next: NextFunction) => {
   const userId = req.userId;
+
   if (!userId) {
     return res.status(401).json({ message: 'You are not logged in' });
   }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: {
+    select: {
       admin: {
-        include: {
+        select: {
           role: true,
+          mode: true,
         },
       },
     },
@@ -23,6 +25,7 @@ export const isSalesAndMarketing = async (req: Request, res: Response, next: Nex
   }
 
   const { mode, role } = user.admin;
+
   const allowed =
     mode === 'god' ||
     mode === 'advanced' ||

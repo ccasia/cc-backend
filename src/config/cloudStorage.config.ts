@@ -77,6 +77,7 @@ export const uploadImageToObjectPath = async (tempFilePath: string, destination:
           // eslint-disable-next-line promise/always-return
           .then(() => {
             const publicURL = buildGcsPublicUrl(process.env.BUCKET_NAME as string, destination, dayjs().format());
+
             resolve(publicURL);
           })
           .catch((err) => {
