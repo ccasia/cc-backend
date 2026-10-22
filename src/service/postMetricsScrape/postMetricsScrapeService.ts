@@ -1,7 +1,3 @@
-import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
-
 import {
   POST_SCRAPERS,
   REEL_VIEWS_LOOKUP_POSTS,
@@ -18,9 +14,7 @@ import {
   scrapedEngagementRate,
   type PostMetrics,
 } from './postMetricsAdapter';
-
-dayjs.extend(utc);
-dayjs.extend(timezone);
+import { notScrapedToday, scrapeDay } from './scrapeDay';
 
 const { DbNull } = Prisma;
 
@@ -28,10 +22,11 @@ const { DbNull } = Prisma;
  * Scrapes one approved post with Bright Data and stores it as a daily
  * snapshot, so campaign analytics lists creators with no connected account.
  *
- * Every post is scraped once. `SubmissionPostingUrl.metricsScrapedAt` is
- * claimed before the paid job starts, so a second enqueue (approval, then the
- * cron's API-failure fallback) does nothing. The claim is released only when
- * Bright Data definitely started no job.
+ * A post is scraped at most once a day, from approval until the campaign
+ * ends (see dailyPostScrapes). `SubmissionPostingUrl.metricsScrapedAt` is
+ * claimed before the paid job starts, so a second enqueue on the same day
+ * (approval, the daily cron, the API-failure fallback) does nothing. The claim
+ * is given back only when Bright Data definitely started no job.
  *
  * An Instagram Reel takes two jobs: the post itself (likes, comments, owner),
  * then a Reels discovery of the owner for its views. See POST_SCRAPERS.
@@ -61,6 +56,7 @@ interface PostingUrlRow {
   postingDate: Date | null;
   shortCode: string | null;
   mediaId: string | null;
+  metricsScrapedAt?: Date | null;
   metricsScrapeStatus?: string | null;
   metricsScrapeFailure?: unknown;
   submission: { userId: string; status: string; content: string | null };
@@ -175,8 +171,6 @@ export async function scrapePostMetrics(postingUrlId: string, deps: PostScrapeDe
   return outcome;
 }
 
-const snapshotDay = (date: Date) => dayjs(date).tz('Asia/Kuala_Lumpur').startOf('day');
-
 /** Writes the day's `brightdata` snapshot for a link. Shared by the scrape and an admin's manual completion. */
 async function writeSnapshot(
   store: PostScrapeStore,
@@ -185,8 +179,8 @@ async function writeSnapshot(
   rawMetrics: Record<string, unknown>,
   capturedAt: Date,
 ): Promise<void> {
-  const snapshotDate = snapshotDay(capturedAt);
-  const postDate = snapshotDay(row.postingDate ?? capturedAt);
+  const snapshotDate = scrapeDay(capturedAt);
+  const postDate = scrapeDay(row.postingDate ?? capturedAt);
   const values = {
     daysSincePost: snapshotDate.diff(postDate, 'day'),
     capturedAt,
@@ -241,14 +235,14 @@ async function runScrape(postingUrlId: string, deps: PostScrapeDeps, note: Failu
   if (!isCurrentLink(row)) return 'SKIPPED_STALE_LINK';
 
   const snapshotKey = {
-    postUrl_snapshotDate: { postUrl: row.postUrl, snapshotDate: snapshotDay(now()).toDate() },
+    postUrl_snapshotDate: { postUrl: row.postUrl, snapshotDate: scrapeDay(now()).toDate() },
   };
   // The API already read this post today and has real shares and saves. Never pay to overwrite them.
   const today = await store.dailyPostEngagementSnapshot.findUnique({ where: snapshotKey, select: { source: true } });
   if (today?.source === 'api') return 'SKIPPED_API_ROW_TODAY';
 
   const claimed = await store.submissionPostingUrl.updateMany({
-    where: { id: postingUrlId, metricsScrapedAt: null },
+    where: { id: postingUrlId, ...notScrapedToday(now()) },
     data: { metricsScrapedAt: now(), metricsScrapeStatus: 'RUNNING' },
   });
   if (claimed.count === 0) return 'SKIPPED_ALREADY_SCRAPED';
@@ -329,9 +323,12 @@ async function runScrape(postingUrlId: string, deps: PostScrapeDeps, note: Failu
 
   const postRun = await runJob(POST_SCRAPERS[platform], [{ url: scrapeUrl(row) }], deps.pollTimeoutMs);
   if (!postRun.ok) {
-    // Nothing was billed, so a later approval or the nightly fallback may try again.
+    // Nothing was billed, so give back today's claim and let a later enqueue try again.
     if (postRun.refused) {
-      await store.submissionPostingUrl.updateMany({ where: { id: postingUrlId }, data: { metricsScrapedAt: null } });
+      await store.submissionPostingUrl.updateMany({
+        where: { id: postingUrlId },
+        data: { metricsScrapedAt: row.metricsScrapedAt ?? null },
+      });
     }
     return failWith(postRun);
   }
