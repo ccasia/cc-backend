@@ -38,7 +38,7 @@ import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
 import { queueMissingThumbnails } from '@services/submissionThumbnailService';
 import { selectCurrentAgreementSubmission, selectAgreementSubmissions } from '@utils/submissionAgreement';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
 import { awardXp, onAgreementApproved } from '@/src/modules/gamification';
 import { prisma } from '@/src/prisma/prisma';
@@ -720,9 +720,8 @@ export const approveV4Submission = async (req: Request, res: Response) => {
           entityId: submission.campaign.id,
         });
 
-        const clientSocketId = clients.get(clientUserId);
-        if (clientSocketId) {
-          getIo().to(clientSocketId).emit('notification', notification);
+        if (clientUserId) {
+          getIo().to(clientUserId).emit('notification', notification);
         }
       }
     } else if (action === 'request_revision' || action === 'rejected') {
@@ -750,9 +749,8 @@ export const approveV4Submission = async (req: Request, res: Response) => {
         submissionId,
       });
 
-      const creatorSocketId = clients.get(creatorId);
-      if (getIo() && creatorSocketId) {
-        getIo().to(creatorSocketId).emit('notification', notification);
+      if (getIo() && creatorId) {
+        getIo().to(creatorId).emit('notification', notification);
       }
     }
 
@@ -1113,10 +1111,8 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         entityId: submission.campaign.id,
       });
 
-      const adminSocketId = clients.get(adminUserId);
-
-      if (adminSocketId) {
-        getIo().to(adminSocketId).emit('notification', notification);
+      if (adminUserId) {
+        getIo().to(adminUserId).emit('notification', notification);
       }
     }
 
@@ -1130,9 +1126,8 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         entityId: submission.campaign.id,
       });
 
-      const creatorSocketId = clients.get(submission.userId);
-      if (getIo() && creatorSocketId) {
-        getIo().to(creatorSocketId).emit('notification', creatorNotification);
+      if (getIo() && submission.userId) {
+        getIo().to(submission.userId).emit('notification', creatorNotification);
       }
     }
 
@@ -3533,9 +3528,8 @@ export const createComment = async (req: Request, res: Response) => {
             include: { notification: true },
           });
 
-          const creatorSocketId = clients.get(creatorUserId);
-          if (getIo() && creatorSocketId && updated) {
-            getIo().to(creatorSocketId).emit('notification', updated.notification);
+          if (getIo() && creatorUserId && updated) {
+            getIo().to(creatorUserId).emit('notification', updated.notification);
           }
 
           void sendExpoPushToUser(creatorUserId, {
@@ -3554,9 +3548,8 @@ export const createComment = async (req: Request, res: Response) => {
             submissionId,
           });
 
-          const creatorSocketId = clients.get(creatorUserId);
-          if (getIo() && creatorSocketId) {
-            getIo().to(creatorSocketId).emit('notification', notification);
+          if (getIo() && creatorUserId) {
+            getIo().to(creatorUserId).emit('notification', notification);
           }
         }
       } catch (notifyError) {
@@ -4065,9 +4058,8 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
       submissionId: submissionId,
     });
 
-    const creatorSocketId = clients.get(creatorId);
-    if (getIo() && creatorSocketId) {
-      getIo().to(creatorSocketId).emit('notification', notification);
+    if (getIo() && creatorId) {
+      getIo().to(creatorId).emit('notification', notification);
     }
 
     console.log(`✅ V4 submission ${submissionId} feedback sent to creator by admin ${adminId}`);
@@ -4201,9 +4193,8 @@ export const sendVideoFeedbackToClient = async (req: Request, res: Response) => 
           entityId: submission.campaign.id,
         });
 
-        const clientSocketId = clients.get(clientUserId);
-        if (clientSocketId) {
-          getIo().to(clientSocketId).emit('notification', notification);
+        if (clientUserId) {
+          getIo().to(clientUserId).emit('notification', notification);
         }
       }),
     );

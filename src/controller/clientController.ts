@@ -4,7 +4,7 @@ import { uploadCompanyLogo, uploadAttachments } from '@configs/cloudStorage.conf
 import { getRemainingCredits } from '@services/companyService';
 
 import { saveNotification } from './notificationController';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
 export const updateClient = async (req: Request, res: Response) => {
@@ -749,11 +749,9 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           entityId: newCampaign.id,
           campaignId: newCampaign.id,
         });
-        const socketId = clients.get(adminUser.id);
-
-        if (socketId) {
-          getIo().to(socketId).emit('notification', notification);
-          console.log(`Sent real-time notification to user ${adminUser.id} on socket ${socketId}`);
+        if (adminUser.id) {
+          getIo().to(adminUser.id).emit('notification', notification);
+          console.log(`Sent real-time notification to user ${adminUser.id}`);
         }
       }
     }

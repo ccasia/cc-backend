@@ -40,6 +40,7 @@ import crypto from 'crypto';
 
 import { prisma } from './prisma/prisma';
 import { xeroWebhookQueue } from '@utils/queue';
+import { isPrimaryInstance } from '@utils/instance';
 
 import { users } from '@utils/activeUsers';
 import { mobileRouter } from '@routes/mobile';
@@ -329,10 +330,15 @@ io.use(async (socket: Socket, next) => {
 io.on('connection', (socket) => {
   io.emit('onlineUsers', { onlineUsers: clients.size });
 
-  socket.on('register', (userId) => {
-    clients.set(userId, socket.id);
-    users.set(userId, socket.id);
-    socket.join(userId);
+  // User rooms use the id verified by the auth middleware above, never the id a client sends,
+  // so a socket can't subscribe to another user's notifications or chat events.
+  const verifiedUserId = socket.data.userId as string | undefined;
+  if (verifiedUserId) socket.join(verifiedUserId);
+
+  socket.on('register', () => {
+    if (!verifiedUserId) return;
+    clients.set(verifiedUserId, socket.id);
+    users.set(verifiedUserId, socket.id);
   });
 
   socket.on('online-user', () => {
@@ -464,29 +470,57 @@ app.post('/video', (req: Request, res: Response) => {
   }
 });
 
-const queueEvents = new QueueEvents('compression-queue', { connection: connection });
+// Every API copy would receive these queue events, so only the primary copy relays them.
+// The Redis adapter still delivers its emits to sockets connected to any copy.
+if (isPrimaryInstance) {
+  const queueEvents = new QueueEvents('compression-queue', { connection: connection });
 
-queueEvents.on('progress', ({ data }) => {
-  const { submissionId, progress, uploadSessionId, etaSeconds } = data as {
-    submissionId: string;
-    progress: number;
-    uploadSessionId: string;
-    etaSeconds: number;
-  };
+  queueEvents.on('progress', ({ data }) => {
+    const { submissionId, progress, uploadSessionId, etaSeconds, campaignId } = data as {
+      submissionId: string;
+      progress: number;
+      uploadSessionId: string;
+      etaSeconds: number;
+      campaignId?: string;
+    };
 
-  getIo().emit('compression:progress', { submissionId, progress, uploadSessionId, etaSeconds });
-});
+    // The uploader joins `upload:<id>`; the admin submissions page joins the campaign room.
+    let target = getIo().to(`upload:${uploadSessionId}`);
+    if (campaignId) target = target.to(campaignId);
 
-queueEvents.on('completed', ({ returnvalue }) => {
-  console.log(returnvalue);
-  const { submissionId, uploadSessionId, video } = returnvalue as unknown as {
-    submissionId: string;
-    uploadSessionId: string;
-    video: Video;
-  };
+    target.emit('compression:progress', { submissionId, progress, uploadSessionId, etaSeconds });
+  });
 
-  getIo().emit('status', { submissionId, progress: 100, video });
-});
+  queueEvents.on('completed', ({ returnvalue }) => {
+    console.log(returnvalue);
+    const { submissionId, uploadSessionId, campaignId, creatorId, video } = returnvalue as unknown as {
+      submissionId: string;
+      uploadSessionId: string;
+      campaignId?: string;
+      creatorId?: string;
+      video: Video;
+    };
+
+    const uploadRoom = `upload:${uploadSessionId}`;
+    getIo().to(uploadRoom).emit('status', { submissionId, uploadSessionId, progress: 100, video });
+
+    // Creators join campaign rooms too, so other members get the completion without the video.
+    if (campaignId) {
+      getIo().to(campaignId).except(uploadRoom).emit('status', { submissionId, uploadSessionId, progress: 100 });
+
+      // Same event the old draft worker sent; v4 submission lists refetch on it.
+      getIo().to(campaignId).emit('v4:content:processed', {
+        submissionId,
+        campaignId,
+        hasVideo: true,
+        hasPhotos: false,
+        hasRawFootage: false,
+        processedAt: new Date().toISOString(),
+        creatorId,
+      });
+    }
+  });
+}
 
 if (require.main === module) {
   server.listen(process.env.PORT, async () => {
