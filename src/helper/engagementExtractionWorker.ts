@@ -82,7 +82,7 @@ const POST_SCRAPE_MAX_RUN_MS = (postPollTimeoutSeconds() + config.pollTimeoutSec
 /** Links this process is scraping, so a shutdown can mark them FAILED. */
 const activePostScrapes = new Set<string>();
 
-/** One Bright Data scrape per approved post, for creators with no connected account. */
+/** One Bright Data scrape per approved post per day, for creators with no connected account. */
 const postScrapeWorker = new Worker(
   'post-metrics-scrape-queue',
   async (job) => {
