@@ -3455,6 +3455,7 @@ export const createComment = async (req: Request, res: Response) => {
           select: {
             campaignId: true,
             userId: true,
+            status: true,
             campaign: { select: { name: true } },
           },
         },
@@ -3463,28 +3464,30 @@ export const createComment = async (req: Request, res: Response) => {
 
     // Emit socket event for real-time updates (including client drafts for client-to-client sync)
     const commentCampaignId = newComment.submission?.campaignId;
+    const creatorUserId = newComment.submission?.userId;
+    const isVisibleToCreator = newComment.isSentToCreator && newComment.isVisibleToCreator;
 
     if (commentCampaignId && getIo()) {
       const eventName = parentId ? 'v4:comment:reply:added' : 'v4:comment:added';
-      getIo()
-        .to(commentCampaignId)
-        .emit(eventName, {
-          submissionId,
-          videoId,
-          campaignId: commentCampaignId,
-          comment: newComment,
-          ...(parentId ? { parentCommentId: parentId } : {}),
-        });
+      // Keep comments the creator can't see yet off the creator's own socket.
+      const room = getIo().to(commentCampaignId);
+      (!isVisibleToCreator && creatorUserId ? room.except(creatorUserId) : room).emit(eventName, {
+        submissionId,
+        videoId,
+        campaignId: commentCampaignId,
+        comment: newComment,
+        ...(parentId ? { parentCommentId: parentId } : {}),
+      });
     }
 
     // Notify the creator when an admin replies to a feedback thread. Replies are
     // stacked per (creator, campaign): an existing unread reply notification is
     // updated with a running count instead of inserting a new row, and the push
     // shares a per-campaign collapseId so the OS banner replaces rather than piles up.
-    const creatorUserId = newComment.submission?.userId;
     const isAdminReply = !!parentId && (user.role === 'admin' || user.role === 'superadmin');
+    const shouldNotifyCreator = newComment.submission?.status === 'CHANGES_REQUIRED' && isVisibleToCreator;
 
-    if (isAdminReply && commentCampaignId && creatorUserId && creatorUserId !== user.id) {
+    if (isAdminReply && shouldNotifyCreator && commentCampaignId && creatorUserId && creatorUserId !== user.id) {
       try {
         const campaignName = newComment.submission?.campaign?.name ?? 'a campaign';
 
@@ -3744,7 +3747,10 @@ export const updateComment = async (req: Request, res: Response) => {
   try {
     const comment = await prisma.submissionComment.findUnique({
       where: { id: commentId },
-      include: { user: { select: { id: true, role: true } } },
+      include: {
+        user: { select: { id: true, role: true } },
+        submission: { select: { userId: true } },
+      },
     });
 
     if (!comment) {
@@ -3768,7 +3774,10 @@ export const updateComment = async (req: Request, res: Response) => {
     const editCampaignId = (updatedComment as any).submission?.campaignId;
 
     if (editCampaignId && getIo()) {
-      getIo().to(editCampaignId).emit('v4:comment:updated', {
+      const room = getIo().to(editCampaignId);
+      const commentCreatorId = comment.submission?.userId;
+      const hiddenFromCreator = !(updatedComment.isSentToCreator && updatedComment.isVisibleToCreator);
+      (hiddenFromCreator && commentCreatorId ? room.except(commentCreatorId) : room).emit('v4:comment:updated', {
         submissionId: comment.submissionId,
         videoId: comment.videoId,
         campaignId: editCampaignId,
