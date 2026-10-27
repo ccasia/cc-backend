@@ -340,9 +340,9 @@ new CronJob(
 );
 
 new CronJob(
-  // 09:00 MYT send. The hourly runs until 21:00 are catch-ups if the server was down;
-  // the push log makes sure each day sends only once.
-  '0 9-21 * * *',
+  // Each quiz push has its own MYT send time, so check every minute. A run after a missed time
+  // catches up for a few hours; the push log makes sure each day sends only once.
+  '* * * * *',
   async function () {
     try {
       const result = await sendArchetypeQuizPushForToday();

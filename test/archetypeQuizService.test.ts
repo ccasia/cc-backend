@@ -36,7 +36,6 @@ beforeEach(() => {
         answers: null,
         scores: null,
         quizVersion: null,
-        attemptCount: 0,
         completedAt: null,
         promptDismissedAt: null,
         ...create,
@@ -44,7 +43,9 @@ beforeEach(() => {
     return { ...row };
   });
   db.updateMany.mockImplementation(async ({ where, data }: any) => {
-    if (!row || (where.promptDismissedAt === null && row.promptDismissedAt !== null)) return { count: 0 };
+    const { userId: _userId, ...filters } = where;
+    const matches = Object.entries(filters).every(([key, value]) => (value === null ? row?.[key] === null : true));
+    if (!row || !matches) return { count: 0 };
     applyData(row, data);
     return { count: 1 };
   });
@@ -118,62 +119,84 @@ describe('submit validation', () => {
   });
 });
 
+// 3 Nov 2026 has a 15:00 MYT push (07:00 UTC), so its second prompt period starts then.
+const NOV3_MIDNIGHT = '2026-11-02T16:00:00.000Z';
+const NOV3_PUSH = '2026-11-03T07:00:00.000Z';
+
 describe('quiz state', () => {
-  it('is NOT_STARTED when there is no row', async () => {
+  afterEach(() => jest.useRealTimers());
+
+  const at = (iso: string) => jest.useFakeTimers({ now: new Date(iso), doNotFake: ['setTimeout'] });
+
+  it('is NOT_STARTED with the prompt due when there is no row', async () => {
+    at('2026-11-03T02:00:00Z');
     expect(await getState('user-1')).toEqual({
       status: 'NOT_STARTED',
       archetype: null,
       mix: [],
       completedAt: null,
-      attemptCount: 0,
+      promptSlot: NOV3_MIDNIGHT,
       quizVersion: 1,
     });
   });
 
-  it('retake overwrites the result and increments attemptCount', async () => {
+  it('keeps the first result: a second submit does not overwrite it', async () => {
     const first = await submit('user-1', body('mc', 'mc', 'mc', 'yap', 'cf'));
-    expect(first).toMatchObject({ status: 'COMPLETED', archetype: 'MAIN_CHARACTER', attemptCount: 1 });
-    expect(db.upsert).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        where: { userId: 'user-1' },
-        create: expect.objectContaining({
-          userId: 'user-1',
-          archetype: 'MAIN_CHARACTER',
-          attemptCount: 1,
-          quizVersion: 1,
-        }),
-        update: expect.objectContaining({ attemptCount: { increment: 1 } }),
-      }),
-    );
+    expect(first).toMatchObject({ status: 'COMPLETED', archetype: 'MAIN_CHARACTER', promptSlot: null });
 
     const second = await submit('user-1', body('th', 'th', 'th', 'yap', 'cf'));
-    expect(second).toMatchObject({ status: 'COMPLETED', archetype: 'TREND_HOPPER', attemptCount: 2 });
-    expect(second.mix[0]).toEqual({ archetype: 'TREND_HOPPER', percent: 60 });
+    expect(second).toMatchObject({ status: 'COMPLETED', archetype: 'MAIN_CHARACTER' });
+    expect(second.mix[0]).toEqual({ archetype: 'MAIN_CHARACTER', percent: 60 });
     expect(typeof second.completedAt).toBe('string');
   });
 
-  it('dismissing twice keeps the first timestamp', async () => {
-    const first = await dismissPrompt('user-1');
-    expect(first.status).toBe('DISMISSED');
+  it('hides the prompt for the rest of the day after a dismiss', async () => {
+    at('2026-11-01T02:00:00Z'); // 10:00 MYT, no push that day
+    expect((await dismissPrompt('user-1')).promptSlot).toBeNull();
+
+    at('2026-11-01T15:59:00Z'); // 23:59 MYT
+    expect((await getState('user-1')).promptSlot).toBeNull();
+  });
+
+  it('shows the prompt again on the next MYT day', async () => {
+    at('2026-11-01T15:00:00Z'); // 23:00 MYT on 1 Nov
+    await dismissPrompt('user-1');
+
+    at('2026-11-01T16:00:00Z'); // 00:00 MYT on 2 Nov
+    expect(await getState('user-1')).toMatchObject({
+      status: 'DISMISSED',
+      promptSlot: '2026-11-01T16:00:00.000Z',
+    });
+  });
+
+  it('shows the prompt again after the push on a push day', async () => {
+    at('2026-11-03T01:00:00Z'); // 09:00 MYT
+    await dismissPrompt('user-1');
+
+    at('2026-11-03T06:59:00Z'); // 14:59 MYT, just before the 15:00 push
+    expect((await getState('user-1')).promptSlot).toBeNull();
+
+    at(NOV3_PUSH);
+    expect((await getState('user-1')).promptSlot).toBe(NOV3_PUSH);
+
+    await dismissPrompt('user-1');
+    at('2026-11-03T15:00:00Z'); // 23:00 MYT
+    expect((await getState('user-1')).promptSlot).toBeNull();
+  });
+
+  it('moves the dismiss time forward on each dismiss', async () => {
+    await dismissPrompt('user-1');
     const firstAt = row?.promptDismissedAt;
 
     await new Promise((resolve) => setTimeout(resolve, 5));
-    const second = await dismissPrompt('user-1');
-    expect(second.status).toBe('DISMISSED');
-    expect(row?.promptDismissedAt).toBe(firstAt);
+    await dismissPrompt('user-1');
+    expect(row?.promptDismissedAt.getTime()).toBeGreaterThan(firstAt.getTime());
   });
 
-  it('sets promptDismissedAt on an existing row without one, and keeps the result', async () => {
-    await submit('user-1', body('cf', 'cf', 'cf', 'yap', 'mc'));
-    const state = await dismissPrompt('user-1');
-    expect(row?.promptDismissedAt).toBeInstanceOf(Date);
-    expect(state).toMatchObject({ status: 'COMPLETED', archetype: 'CONTROL_FREAK', attemptCount: 1 });
-  });
-
-  it('stays COMPLETED when the prompt was dismissed before completing', async () => {
+  it('never shows the prompt once the quiz is completed', async () => {
     await dismissPrompt('user-1');
     const state = await submit('user-1', body('pfb', 'pfb', 'pfb', 'yap', 'mc'));
-    expect(state.status).toBe('COMPLETED');
-    expect((await dismissPrompt('user-1')).status).toBe('COMPLETED');
+    expect(state).toMatchObject({ status: 'COMPLETED', promptSlot: null });
+    expect(await dismissPrompt('user-1')).toMatchObject({ status: 'COMPLETED', promptSlot: null });
   });
 });

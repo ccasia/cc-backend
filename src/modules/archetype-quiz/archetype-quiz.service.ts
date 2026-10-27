@@ -7,6 +7,7 @@ import {
   QUIZ_VERSION,
   TIE_BREAK_QUESTION,
 } from './archetype-quiz.definition';
+import { getPromptPeriodStart } from './archetype-quiz.schedule';
 import {
   ArchetypeMixRow,
   ArchetypeQuizState,
@@ -66,16 +67,18 @@ const readScores = (value: unknown): ArchetypeScores => {
   return scores;
 };
 
-export const toState = (row: CreatorArchetypeQuiz | null): ArchetypeQuizState => {
+export const toState = (row: CreatorArchetypeQuiz | null, now = new Date()): ArchetypeQuizState => {
   const archetype = row?.archetype ?? null;
   const status = archetype ? 'COMPLETED' : row?.promptDismissedAt ? 'DISMISSED' : 'NOT_STARTED';
+  const periodStart = getPromptPeriodStart(now);
+  const isPromptDue = !archetype && !(row?.promptDismissedAt && row.promptDismissedAt >= periodStart);
 
   return {
     status,
     archetype,
     mix: archetype ? buildMix(readScores(row?.scores)) : [],
     completedAt: row?.completedAt ? row.completedAt.toISOString() : null,
-    attemptCount: row?.attemptCount ?? 0,
+    promptSlot: isPromptDue ? periodStart.toISOString() : null,
     quizVersion: QUIZ_VERSION,
   };
 };
@@ -95,29 +98,44 @@ export const submit = async (userId: string, body: unknown): Promise<ArchetypeQu
   const { archetype, scores } = scoreAnswers(answers);
   const result = { archetype, answers, scores, quizVersion, completedAt: new Date() };
 
-  const row = await prisma.creatorArchetypeQuiz.upsert({
+  // No retakes: once completed, a submit returns the saved result unchanged.
+  await prisma.creatorArchetypeQuiz.upsert({
     where: { userId },
-    create: { userId, ...result, attemptCount: 1 },
-    update: { ...result, attemptCount: { increment: 1 } },
+    create: { userId, ...result },
+    update: {},
+  });
+  await prisma.creatorArchetypeQuiz.updateMany({
+    where: { userId, completedAt: null },
+    data: result,
   });
 
-  return toState(row);
+  return getState(userId);
 };
 
+// Called when "Share to Story" opens the Instagram Story editor.
+export const recordShare = async (userId: string): Promise<void> => {
+  const now = new Date();
+  const { count } = await prisma.creatorArchetypeQuiz.updateMany({
+    where: { userId, archetype: { not: null } },
+    data: { instagramShareCount: { increment: 1 }, lastSharedAt: now },
+  });
+  if (!count) throw new ArchetypeQuizError(409, 'Quiz is not completed');
+
+  await prisma.creatorArchetypeQuiz.updateMany({
+    where: { userId, firstSharedAt: null },
+    data: { firstSharedAt: now },
+  });
+};
+
+// Called when the prompt closes (X or "Take the Quiz"). It stays hidden until the next period.
 export const dismissPrompt = async (userId: string): Promise<ArchetypeQuizState> => {
   const now = new Date();
 
   const row = await prisma.creatorArchetypeQuiz.upsert({
     where: { userId },
     create: { userId, promptDismissedAt: now },
-    update: {},
-  });
-  if (row.promptDismissedAt) return toState(row);
-
-  await prisma.creatorArchetypeQuiz.updateMany({
-    where: { userId, promptDismissedAt: null },
-    data: { promptDismissedAt: now },
+    update: { promptDismissedAt: now },
   });
 
-  return getState(userId);
+  return toState(row, now);
 };

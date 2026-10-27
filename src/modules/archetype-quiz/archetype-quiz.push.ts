@@ -1,62 +1,9 @@
-import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
 import { prisma } from '@/src/prisma/prisma';
 import { sendExpoPushToUsers } from '@helper/expoPush';
+import { getDueArchetypeQuizPush } from './archetype-quiz.schedule';
 
-dayjs.extend(utc);
-dayjs.extend(timezone);
-
-const TZ = 'Asia/Kuala_Lumpur';
-
-export interface ArchetypeQuizPush {
-  date: string; // YYYY-MM-DD in MYT
-  title: string;
-  body: string;
-}
-
-export const ARCHETYPE_QUIZ_PUSHES: ArchetypeQuizPush[] = [
-  {
-    date: '2026-10-31',
-    title: "LOL, you're such a control freak!",
-    body: 'Find out which creator type you are. Take the quiz and face the truth.',
-  },
-  {
-    date: '2026-11-03',
-    title: 'Be soooo fr rn 🙄',
-    body: 'Your choices say more about you than you think. Take the quiz to find out more.',
-  },
-  {
-    date: '2026-11-06',
-    title: "Omg you're such a gemini 👯‍♀️",
-    body: "Or maybe you're just a walking Pinterest board. Take the quiz to find out.",
-  },
-  {
-    date: '2026-11-09',
-    title: "It's giving main character 💅",
-    body: 'Instead of taking selfies, maybe you should take this quiz.',
-  },
-  {
-    date: '2026-11-12',
-    title: 'Wait… is this quiz about us? 🌚🌝',
-    body: 'Check it out for yourself.',
-  },
-  {
-    date: '2026-11-14',
-    title: 'Have you seen this yet? 🤨',
-    body: 'You might wanna send this to the groupchat.',
-  },
-  {
-    date: '2026-11-15',
-    title: 'Hey, we need to talk.',
-    body: 'Find out which personality type is responsible for your behaviour.',
-  },
-];
-
-export const getArchetypeQuizPushFor = (now: Date) => {
-  const today = dayjs(now).tz(TZ).format('YYYY-MM-DD');
-  return ARCHETYPE_QUIZ_PUSHES.find((push) => push.date === today) ?? null;
-};
+// A claim with no send time after this long belongs to a run that stopped mid-send.
+const STALE_CLAIM_MS = 10 * 60 * 1000;
 
 /** Creates the day's log row. False when another run already claimed it. */
 const claimDay = async (date: string) => {
@@ -69,15 +16,31 @@ const claimDay = async (date: string) => {
   }
 };
 
+/** Deletes the day's claim, so the next run tries again. */
+const releaseDay = (date: string) => prisma.archetypeQuizPushLog.delete({ where: { date } });
+
 /**
- * Sends today's quiz push, if any, to creators with a device who have not finished the quiz.
- * Safe to call many times a day: only the first run that claims the date sends.
+ * Sends the due quiz push, if any, to creators with a device: all of them, or those who have
+ * not finished the quiz. Safe to call every minute: only the first run that claims the date sends.
  */
 export const sendArchetypeQuizPushForToday = async (now = new Date()) => {
-  const push = getArchetypeQuizPushFor(now);
+  const push = getDueArchetypeQuizPush(now);
   if (!push) return { date: null, sent: false, recipients: 0 };
 
-  if (!(await claimDay(push.date))) return { date: push.date, sent: false, recipients: 0 };
+  const skipped = { date: push.date, sent: false, recipients: 0 };
+  // A cheap read first, so the runs after a send do not hit the unique constraint.
+  const existing = await prisma.archetypeQuizPushLog.findUnique({ where: { date: push.date } });
+  if (existing) {
+    const staleBefore = new Date(now.getTime() - STALE_CLAIM_MS);
+    if (existing.sentAt || existing.createdAt >= staleBefore) return skipped;
+    // The run that claimed the day stopped before it finished. Creators it already reached
+    // get the push again; that is better than nobody getting it.
+    console.warn('[archetypeQuizPush] Retrying a send that did not finish:', push.date);
+    await prisma.archetypeQuizPushLog.deleteMany({
+      where: { date: push.date, sentAt: null, createdAt: { lt: staleBefore } },
+    });
+  }
+  if (!(await claimDay(push.date))) return skipped;
 
   let userIds: string[];
   try {
@@ -86,22 +49,37 @@ export const sendArchetypeQuizPushForToday = async (now = new Date()) => {
         role: 'creator',
         status: { notIn: ['banned', 'blacklisted', 'suspended', 'spam'] },
         pushTokens: { some: {} },
-        OR: [{ archetypeQuiz: { is: null } }, { archetypeQuiz: { is: { completedAt: null } } }],
+        ...(push.audience === 'notCompleted'
+          ? { OR: [{ archetypeQuiz: { is: null } }, { archetypeQuiz: { is: { completedAt: null } } }] }
+          : {}),
       },
       select: { id: true },
     });
     userIds = creators.map((creator) => creator.id);
   } catch (error) {
     // Nothing was sent, so release the claim and let the next run try again.
-    await prisma.archetypeQuizPushLog.delete({ where: { date: push.date } });
+    await releaseDay(push.date);
     throw error;
   }
 
-  await sendExpoPushToUsers(userIds, {
+  const result = await sendExpoPushToUsers(userIds, {
     title: push.title,
     body: push.body,
     data: { entity: 'ArchetypeQuiz' },
   });
+
+  // Expo took none of it (an outage, or the send stopped early): try again next run.
+  if (!result.accepted && (result.failed || result.messages > 0)) {
+    await releaseDay(push.date);
+    throw new Error(`Archetype quiz push ${push.date} was not accepted by Expo; retrying next run.`);
+  }
+  if (result.accepted < result.messages) {
+    console.error('[archetypeQuizPush] Expo did not accept every push:', {
+      date: push.date,
+      accepted: result.accepted,
+      messages: result.messages,
+    });
+  }
 
   await prisma.archetypeQuizPushLog.update({
     where: { date: push.date },
