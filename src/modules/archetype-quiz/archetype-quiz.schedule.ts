@@ -72,8 +72,8 @@ export const ARCHETYPE_QUIZ_PUSHES: ArchetypeQuizPush[] = [
 
 const sendTimeOf = (push: ArchetypeQuizPush) => dayjs.tz(`${push.date} ${push.time}`, TZ);
 
-/** The quiz opens with the launch push. */
-export const ARCHETYPE_QUIZ_LAUNCH_AT = sendTimeOf(ARCHETYPE_QUIZ_PUSHES[0]).toDate();
+/** The quiz (home banner and pop-up) opens at the launch party, the day before the first push. */
+export const ARCHETYPE_QUIZ_LAUNCH_AT = dayjs.tz('2026-10-30 17:00', TZ).toDate();
 
 /**
  * Production keeps the quiz closed until launch. Other environments are always open, and
