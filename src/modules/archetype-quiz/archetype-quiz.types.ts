@@ -2,7 +2,7 @@ import { CreatorArchetype } from '@prisma/client';
 import { z } from 'zod';
 import { OPTION_TO_ARCHETYPE, QUESTION_IDS, QUIZ_VERSION } from './archetype-quiz.definition';
 
-export type ArchetypeQuizStatus = 'NOT_STARTED' | 'DISMISSED' | 'COMPLETED';
+export type ArchetypeQuizStatus = 'NOT_STARTED' | 'COMPLETED';
 
 export interface ArchetypeMixRow {
   archetype: CreatorArchetype;
