@@ -164,7 +164,7 @@ describe('quiz state', () => {
 
     at('2026-11-01T16:00:00Z'); // 00:00 MYT on 2 Nov
     expect(await getState('user-1')).toMatchObject({
-      status: 'DISMISSED',
+      status: 'NOT_STARTED',
       promptSlot: '2026-11-01T16:00:00.000Z',
     });
   });

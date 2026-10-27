@@ -69,12 +69,11 @@ const readScores = (value: unknown): ArchetypeScores => {
 
 export const toState = (row: CreatorArchetypeQuiz | null, now = new Date()): ArchetypeQuizState => {
   const archetype = row?.archetype ?? null;
-  const status = archetype ? 'COMPLETED' : row?.promptDismissedAt ? 'DISMISSED' : 'NOT_STARTED';
   const periodStart = getPromptPeriodStart(now);
   const isPromptDue = !archetype && !(row?.promptDismissedAt && row.promptDismissedAt >= periodStart);
 
   return {
-    status,
+    status: archetype ? 'COMPLETED' : 'NOT_STARTED',
     archetype,
     mix: archetype ? buildMix(readScores(row?.scores)) : [],
     completedAt: row?.completedAt ? row.completedAt.toISOString() : null,
