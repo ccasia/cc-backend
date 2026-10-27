@@ -14,6 +14,7 @@ jest.mock('../src/helper/expoPush', () => ({ sendExpoPushToUsers: jest.fn() }));
 
 import { prisma } from '../src/prisma/prisma';
 import { sendExpoPushToUsers } from '../src/helper/expoPush';
+import { requireOpenArchetypeQuiz } from '../src/modules/archetype-quiz/archetype-quiz.controller';
 import { sendArchetypeQuizPushForToday } from '../src/modules/archetype-quiz/archetype-quiz.push';
 import {
   ARCHETYPE_QUIZ_PUSHES,
@@ -69,11 +70,27 @@ describe('isArchetypeQuizOpen', () => {
     process.env = { ...env };
   });
 
-  it('stays closed in production until the launch push', () => {
+  it('stays closed in production until the launch party, 17:00 MYT on 30 Oct', () => {
     process.env.NODE_ENV = 'production';
     delete process.env.ARCHETYPE_QUIZ_EARLY_ACCESS;
-    expect(isArchetypeQuizOpen(new Date('2026-10-31T02:29:59Z'))).toBe(false);
-    expect(isArchetypeQuizOpen(LAUNCH)).toBe(true);
+    expect(isArchetypeQuizOpen(new Date('2026-10-30T08:59:59Z'))).toBe(false);
+    expect(isArchetypeQuizOpen(new Date('2026-10-30T09:00:00Z'))).toBe(true);
+  });
+
+  it('tells the app when the quiz opens in the 403', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.ARCHETYPE_QUIZ_EARLY_ACCESS;
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-30T08:59:00Z'));
+    const json = jest.fn();
+    const res = { status: jest.fn(() => ({ json })) } as any;
+    const next = jest.fn();
+
+    requireOpenArchetypeQuiz({} as any, res, next);
+    jest.useRealTimers();
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(json).toHaveBeenCalledWith(expect.objectContaining({ opensAt: '2026-10-30T09:00:00.000Z' }));
   });
 
   it('opens early with ARCHETYPE_QUIZ_EARLY_ACCESS, and outside production', () => {

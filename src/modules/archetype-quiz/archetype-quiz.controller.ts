@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { isArchetypeQuizOpen } from './archetype-quiz.schedule';
+import { ARCHETYPE_QUIZ_LAUNCH_AT, isArchetypeQuizOpen } from './archetype-quiz.schedule';
 import { ArchetypeQuizError, dismissPrompt, getState, recordShare, submit } from './archetype-quiz.service';
 
 const handleError = (res: Response, error: unknown, fallback: string) => {
@@ -12,9 +12,12 @@ const handleError = (res: Response, error: unknown, fallback: string) => {
 };
 
 // A 403 before launch hides the banner and pop-up in every app version.
+// opensAt lets an open app ask again at launch, without a refresh.
 export const requireOpenArchetypeQuiz = (_req: Request, res: Response, next: NextFunction) => {
   if (isArchetypeQuizOpen(new Date())) return next();
-  return res.status(403).json({ message: 'The quiz is not open yet.' });
+  return res
+    .status(403)
+    .json({ message: 'The quiz is not open yet.', opensAt: ARCHETYPE_QUIZ_LAUNCH_AT.toISOString() });
 };
 
 export const getMyArchetypeQuiz = async (req: Request, res: Response) => {
