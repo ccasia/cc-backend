@@ -1,13 +1,11 @@
 import { CronJob } from 'cron';
 
-import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import LocalizedFormat from 'dayjs/plugin/localizedFormat';
 import { saveNotification } from '@controllers/notificationController';
 
-// import { clients, io } from '../server';
 import {
   reminderDueDate,
   escalationAgreementUnsigned,
@@ -17,12 +15,11 @@ import {
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
 import { queueDailyPostScrapes } from '@services/postMetricsScrape/dailyPostScrapes';
-import { clients, getIo } from './socket';
+import { emitter } from './socketEmitter';
 import { snapshotLeaderboard } from '../modules/gamification';
 import { publishDueReleaseNotes } from '@modules/release-note';
 import { reconcileStuckLogistics } from '../service/logisticsService';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/src/prisma/prisma';
 
 dayjs.extend(LocalizedFormat);
 dayjs.extend(utc);
@@ -97,7 +94,7 @@ new CronJob(
           entityId: submission.campaignId,
         });
 
-        getIo().to(clients.get(submission.userId)).emit('notification', data);
+        emitter.to(submission.userId).emit('notification', data);
       }
     });
   },
@@ -131,8 +128,7 @@ new CronJob(
         entityId: campaignId,
         submissionId,
       });
-      const socket = clients.get(userId);
-      if (socket) getIo().to(socket).emit('notification', data);
+      if (userId) emitter.to(userId).emit('notification', data);
     };
 
     try {

@@ -37,10 +37,10 @@ import { getCreatorInvoiceLists } from '@services/submissionService';
 import { missingInvoices } from '@constants/missing-invoices';
 import { creatorAgreements } from './campaignController';
 import { bulkInvoiceQueue, enqueueInvoiceApproval } from '@utils/queue';
-import { APPROVABLE_INVOICE_STATUSES, BILLED_INVOICE_STATUSES, noXeroBillWhere } from '@utils/xeroInvoice';
+import { APPROVABLE_INVOICE_STATUSES, BILLED_INVOICE_STATUSES } from '@utils/xeroInvoice';
 import { xero } from '@configs/xero';
 import { getFreshXeroTokenSet } from '@services/xeroClientService';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
 const MAX_INVOICE_NUMBER_RETRIES = 8;
@@ -1133,7 +1133,7 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         sendPush: status === 'paid',
       });
 
-      getIo().to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+      getIo().to(invoice.creatorId).emit('notification', creatorNotification);
     }
 
     // Keep notifying campaign admins of the status change (In-App).
@@ -1149,7 +1149,7 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         sendPush: false,
       });
 
-      getIo().to(clients.get(admin.adminId)).emit('notification', notification);
+      getIo().to(admin.adminId).emit('notification', notification);
     }
   } catch (error) {
     res.status(500).json({ error: 'Something went wrong' });
@@ -1199,10 +1199,10 @@ export const updateInvoice = async (req: Request, res: Response) => {
         },
       });
 
-      // Only a move into 'approved' creates a Xero bill. Saving an invoice that already has a bill
-      // (e.g. editing the due date of an approved invoice) must never queue a second one.
-      const alreadyBilled =
-        !!oldInvoice && (BILLED_INVOICE_STATUSES.includes(oldInvoice.status) || !!oldInvoice.xeroInvoiceId);
+      // Only a move into 'approved' goes to Xero. Saving an approved or paid invoice (e.g. editing its due date)
+      // must never queue it again. A draft that already has a bill had its amount changed, so the worker
+      // updates that bill instead of creating one.
+      const alreadyBilled = !!oldInvoice && BILLED_INVOICE_STATUSES.includes(oldInvoice.status);
 
       // A 'processing' invoice belongs to a running job or the reaper. Changing its status here could
       // start a second job for the same invoice and create a second bill, so its status is kept.
@@ -1448,7 +1448,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
         sendPush: false,
       });
 
-      getIo().to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+      getIo().to(invoice.creatorId).emit('notification', creatorNotification);
     }
 
     return res.status(200).json(invoice);
@@ -2128,11 +2128,10 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'No invoices selected' });
   }
 
-  // Never send an invoice that already has a Xero bill, whatever the client posted.
+  // An approvable invoice that already has a Xero bill had its amount changed; the worker updates that bill.
   const approvableWhere: Prisma.InvoiceWhereInput = {
     id: { in: invoiceIds },
     status: { in: APPROVABLE_INVOICE_STATUSES },
-    ...noXeroBillWhere,
   };
 
   let queuedInvoices: { id: string; status: InvoiceStatus }[] = [];
@@ -2202,7 +2201,7 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
     await Promise.all(
       queuedInvoices.map((invoice) =>
         prisma.invoice.updateMany({
-          where: { id: invoice.id, status: 'processing', ...noXeroBillWhere },
+          where: { id: invoice.id, status: 'processing' },
           data: { status: invoice.status },
         }),
       ),

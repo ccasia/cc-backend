@@ -45,7 +45,7 @@ import {
   handleSubmissionNotification,
 } from '@services/submissionService';
 import { findSubmissionsWithStoredMetrics } from '@services/storedPostInsightService';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
@@ -360,11 +360,10 @@ export const agreementSubmission = async (req: Request, res: Response) => {
             message: adminMessage,
           });
 
-          const adminSocketId = clients.get(campaignAdmin.admin.userId);
-          if (adminSocketId) {
-            getIo().to(adminSocketId).emit('notification', adminNotification);
-            getIo().to(adminSocketId).emit('newSubmission');
-            getIo().to(adminSocketId).emit('agreementReady');
+          if (campaignAdmin.admin.userId) {
+            getIo().to(campaignAdmin.admin.userId).emit('notification', adminNotification);
+            getIo().to(campaignAdmin.admin.userId).emit('newSubmission');
+            getIo().to(campaignAdmin.admin.userId).emit('agreementReady');
           }
         }
       }
@@ -377,10 +376,9 @@ export const agreementSubmission = async (req: Request, res: Response) => {
     });
 
     for (const admin of allSuperadmins) {
-      const superadminSocketId = clients.get(admin.id);
-      if (superadminSocketId) {
-        getIo().to(superadminSocketId).emit('newSubmission');
-        getIo().to(superadminSocketId).emit('agreementReady');
+      if (admin.id) {
+        getIo().to(admin.id).emit('newSubmission');
+        getIo().to(admin.id).emit('agreementReady');
       }
     }
 
@@ -651,8 +649,8 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         firstDraftDue(user.email, campaign?.name as string, user.name ?? 'Creator', campaign?.id as string, image);
       }
 
-      getIo().to(clients.get(userId)).emit('notification', notification);
-      getIo().to(clients.get(userId)).emit('newFeedback');
+      getIo().to(userId).emit('notification', notification);
+      getIo().to(userId).emit('newFeedback');
       emitAgreementSubmissionUpdated({
         submissionId: agreementSubs.id,
         campaignId,
@@ -794,8 +792,8 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         entityId: campaign?.id,
       });
 
-      getIo().to(clients.get(userId)).emit('notification', notification);
-      getIo().to(clients.get(userId)).emit('newFeedback');
+      getIo().to(userId).emit('notification', notification);
+      getIo().to(userId).emit('newFeedback');
       emitAgreementSubmissionUpdated({
         submissionId: submission.id,
         campaignId,
@@ -1543,8 +1541,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         entityId: submission.campaignId,
       });
 
-      getIo().to(clients.get(submission.userId)).emit('notification', notification);
-      getIo().to(clients.get(submission.userId)).emit('newFeedback');
+      getIo().to(submission.userId).emit('notification', notification);
+      getIo().to(submission.userId).emit('newFeedback');
 
       return res.status(200).json({ message: 'Draft approved successfully', submission: result });
     } else {
@@ -1648,8 +1646,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         entityId: submission.campaignId,
       });
 
-      getIo().to(clients.get(sub.userId)).emit('notification', notification);
-      getIo().to(clients.get(sub.userId)).emit('newFeedback');
+      getIo().to(sub.userId).emit('notification', notification);
+      getIo().to(sub.userId).emit('newFeedback');
 
       return res.status(200).json({ message: 'Changes requested successfully' });
     }
@@ -1799,8 +1797,8 @@ export const postingSubmission = async (req: Request, res: Response) => {
         }
       }
 
-      getIo().to(clients.get(admin.adminId)).emit('notification', notification);
-      getIo().to(clients.get(admin.adminId)).emit('newSubmission');
+      getIo().to(admin.adminId).emit('notification', notification);
+      getIo().to(admin.adminId).emit('newSubmission');
     }
 
     const notification = await saveNotification({
@@ -1811,7 +1809,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
       entityId: submission.campaignId,
     });
 
-    getIo().to(clients.get(submission.userId)).emit('notification', notification);
+    getIo().to(submission.userId).emit('notification', notification);
 
     const allSuperadmins = await prisma.user.findMany({
       where: {
@@ -1820,7 +1818,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
     });
 
     for (const admin of allSuperadmins) {
-      getIo().to(clients.get(admin.id)).emit('newSubmission');
+      getIo().to(admin.id).emit('newSubmission');
     }
 
     return res.status(200).json({ message: 'Successfully submitted' });
@@ -2075,8 +2073,8 @@ export const adminManagePosting = async (req: Request, res: Response) => {
           entity: Entity.Post,
         });
 
-        getIo().to(clients.get(submission.userId)).emit('notification', notification);
-        getIo().to(clients.get(submission.userId)).emit('newFeedback');
+        getIo().to(submission.userId).emit('notification', notification);
+        getIo().to(submission.userId).emit('newFeedback');
       }
     });
 
@@ -2489,8 +2487,8 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
 
     // Send notifications regardless of sectionOnly flag
     const notification = await handleSubmissionNotification(submission.id);
-    getIo().to(clients.get(submission.userId)).emit('notification', notification);
-    getIo().to(clients.get(submission.userId)).emit('newFeedback');
+    getIo().to(submission.userId).emit('notification', notification);
+    getIo().to(submission.userId).emit('newFeedback');
 
     return res.status(200).json({
       message: type === 'approve' ? 'Photos approved successfully' : 'Changes requested successfully',
@@ -2895,8 +2893,8 @@ export const adminManageVideos = async (req: Request, res: Response) => {
           entityId: approveSubmission.campaignId,
         });
 
-        getIo().to(clients.get(approveSubmission.userId)).emit('notification', notification);
-        getIo().to(clients.get(approveSubmission.userId)).emit('newFeedback');
+        getIo().to(approveSubmission.userId).emit('notification', notification);
+        getIo().to(approveSubmission.userId).emit('newFeedback');
       });
 
       return res.status(200).json({ message: 'Successfully submitted' });
@@ -3048,8 +3046,8 @@ export const adminManageVideos = async (req: Request, res: Response) => {
 
       // Send notifications regardless of sectionOnly flag
       const notification = await handleSubmissionNotification(submission.id);
-      getIo().to(clients.get(submission.userId)).emit('notification', notification);
-      getIo().to(clients.get(submission.userId)).emit('newFeedback');
+      getIo().to(submission.userId).emit('notification', notification);
+      getIo().to(submission.userId).emit('newFeedback');
     });
 
     return res.status(200).json({ message: 'Successfully submitted' });
@@ -3650,8 +3648,8 @@ export const adminManageRawFootages = async (req: Request, res: Response) => {
 
     // Send notifications regardless of sectionOnly flag
     const notification = await handleSubmissionNotification(submission.id);
-    getIo().to(clients.get(submission.userId)).emit('notification', notification);
-    getIo().to(clients.get(submission.userId)).emit('newFeedback');
+    getIo().to(submission.userId).emit('notification', notification);
+    getIo().to(submission.userId).emit('newFeedback');
 
     return res.status(200).json({
       message: type === 'approve' ? 'Raw footage approved successfully' : 'Changes requested successfully',
@@ -4280,10 +4278,10 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
     });
 
     getIo()
-      .to(clients.get(result.photo.userId as string))
+      .to(result.photo.userId as string)
       .emit('notification', notification);
     getIo()
-      .to(clients.get(result.photo.userId as string))
+      .to(result.photo.userId as string)
       .emit('newFeedback');
 
     return res.status(200).json({
@@ -4652,10 +4650,10 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
     });
 
     getIo()
-      .to(clients.get(result.video.userId as string))
+      .to(result.video.userId as string)
       .emit('notification', notification);
     getIo()
-      .to(clients.get(result.video.userId as string))
+      .to(result.video.userId as string)
       .emit('newFeedback');
 
     return res.status(200).json({
@@ -5026,10 +5024,10 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
     });
 
     getIo()
-      .to(clients.get(result.rawFootage.userId as string))
+      .to(result.rawFootage.userId as string)
       .emit('notification', notification);
     getIo()
-      .to(clients.get(result.rawFootage.userId as string))
+      .to(result.rawFootage.userId as string)
       .emit('newFeedback');
 
     return res.status(200).json({

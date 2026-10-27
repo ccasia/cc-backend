@@ -30,7 +30,7 @@ import { logChange } from '@services/campaignServices';
 import { computeChanges, FieldMapping } from '@utils/campaignLogDiff';
 import { saveNotification } from '@controllers/notificationController';
 import { notificationLogisticShipped } from '@helper/notification';
-import { clients, getIo } from '../config/socket';
+import { getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
 async function getLogisticContext(logisticId: string) {
@@ -295,8 +295,7 @@ export const scheduleDelivery = async (req: Request, res: Response) => {
         entity: 'Logistic',
         entityId: campaignId,
       });
-      const socketId = clients.get(creatorUserId);
-      if (socketId) getIo().to(socketId).emit('notification', notification);
+      if (creatorUserId) getIo().to(creatorUserId).emit('notification', notification);
     }
 
     emitLogisticSocket(req, campaignId, { logisticId, action: 'scheduled' });

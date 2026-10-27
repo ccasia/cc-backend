@@ -10,7 +10,14 @@ import { saveNotification } from '@controllers/notificationController';
 
 import { logAdminChange, logChange } from '@services/campaignServices';
 
-import { createXeroContact, createXeroInvoiceLocal, findXeroBill, sendToSpreadSheet } from '@services/invoiceService';
+import {
+  createXeroContact,
+  createXeroInvoiceLocal,
+  findXeroBill,
+  sendToSpreadSheet,
+  toXeroLineItems,
+  updateXeroBill,
+} from '@services/invoiceService';
 import { getXeroClientForAdmin } from '@services/xeroClientService';
 
 import fs from 'fs-extra';
@@ -72,15 +79,16 @@ const chunk = <T>(items: T[], size: number): T[][] =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
 
 /**
- * Every exit path must leave the invoice approved or failed. Only invoices still in
- * 'processing' with no Xero bill are touched, so a linked bill is never marked failed.
+ * Every exit path must leave the invoice approved or failed. Only invoices still in 'processing' are
+ * touched: linking a new bill moves the invoice to 'approved' in the same write, so a processing invoice
+ * with a bill is one whose existing bill is being updated.
  */
 const markInvoicesFailed = async (invoiceIds: string[], reason: string) => {
   if (!invoiceIds.length) return;
 
   try {
     const { count } = await prisma.invoice.updateMany({
-      where: { id: { in: invoiceIds }, status: 'processing', ...noXeroBillWhere },
+      where: { id: { in: invoiceIds }, status: 'processing' },
       data: { status: 'failed', xeroError: reason.slice(0, 1000) },
     });
     console.error(`❌ Marked ${count}/${invoiceIds.length} invoice(s) failed — ${reason}`, invoiceIds);
@@ -143,6 +151,26 @@ const linkXeroBill = async (invoiceId: string, xeroInvoiceId: string, tenantId: 
   return findLinkedInvoice(invoiceId);
 };
 
+/**
+ * The commit point for an approved amount change: the invoice keeps the bill it already has and goes
+ * back to 'approved'. Returns null when the invoice changed while Xero was being updated.
+ */
+const markBillUpdated = async (invoiceId: string, xeroInvoiceId: string, tenantId: string) => {
+  const { count } = await prisma.invoice.updateMany({
+    where: { id: invoiceId, status: 'processing', xeroInvoiceId },
+    data: { status: 'approved', xeroTenantId: tenantId, xeroError: null },
+  });
+
+  if (!count) {
+    console.error(
+      `🚨 Xero bill ${xeroInvoiceId} was updated, but invoice ${invoiceId} is no longer processing with that bill. Check the bill in Xero.`,
+    );
+    return null;
+  }
+
+  return findLinkedInvoice(invoiceId);
+};
+
 /** Side effects run after the bill is linked. Their failure is logged and never changes the invoice. */
 const runSafely = async (label: string, task: () => Promise<unknown>) => {
   try {
@@ -160,15 +188,23 @@ const worker = new Worker(
 
     const current = await prisma.invoice.findUnique({
       where: { id: invoice.id },
-      select: { id: true, invoiceNumber: true, status: true, xeroInvoiceId: true, xeroBillNumber: true },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        status: true,
+        xeroInvoiceId: true,
+        xeroBillNumber: true,
+        xeroTenantId: true,
+      },
     });
 
-    if (!current || current.status !== 'processing' || current.xeroInvoiceId) {
-      console.log(
-        `⏭️ Skipping invoice ${invoice.id}: status ${current?.status}, xeroInvoiceId ${current?.xeroInvoiceId || 'none'}`,
-      );
+    if (!current || current.status !== 'processing') {
+      console.log(`⏭️ Skipping invoice ${invoice.id}: status ${current?.status}`);
       return;
     }
+
+    // An invoice that already has a bill is an approved amount change: its bill is updated, never recreated.
+    const billToUpdate = current.xeroInvoiceId || undefined;
 
     await startXeroAttempt([invoice.id]);
 
@@ -188,18 +224,39 @@ const worker = new Worker(
 
     if (!activeTenant) throw new Error(`Xero organisation for ${currency} is not connected for this admin`);
 
-    const tenantId: string = activeTenant.tenantId;
-    const { billNumber, mayExist } = await resolveBillNumber(current, () =>
-      xeroBillNumber(clientName, campaignName, current.invoiceNumber),
-    );
+    const tenantId: string = current.xeroTenantId || activeTenant.tenantId;
 
-    let xeroInvoiceId = mayExist ? (await findXeroBill(xero, tenantId, current.invoiceNumber))?.invoiceID : undefined;
+    let xeroInvoiceId: string | undefined;
+    let billNumber = '';
 
-    if (xeroInvoiceId) {
-      console.log(
-        `🔗 Found existing Xero bill ${xeroInvoiceId} for invoice ${invoice.id}; linking instead of creating`,
+    if (billToUpdate) {
+      await updateXeroBill(
+        xero,
+        tenantId,
+        billToUpdate,
+        toXeroLineItems(withReimbursementLines(job.data.items, invoice), campaignName, clientName),
+        job.data.dueDate,
+        invoice.amount,
       );
+      xeroInvoiceId = billToUpdate;
+      console.log(`✏️ Updated Xero bill ${billToUpdate} for invoice ${invoice.id}`);
     } else {
+      const resolved = await resolveBillNumber(current, () =>
+        xeroBillNumber(clientName, campaignName, current.invoiceNumber),
+      );
+      billNumber = resolved.billNumber;
+      xeroInvoiceId = resolved.mayExist
+        ? (await findXeroBill(xero, tenantId, current.invoiceNumber))?.invoiceID
+        : undefined;
+
+      if (xeroInvoiceId) {
+        console.log(
+          `🔗 Found existing Xero bill ${xeroInvoiceId} for invoice ${invoice.id}; linking instead of creating`,
+        );
+      }
+    }
+
+    if (!xeroInvoiceId) {
       let contactID = invoice.creator.xeroContactId;
 
       const result = await xero.accountingApi.getContacts(
@@ -253,9 +310,14 @@ const worker = new Worker(
 
     let linked: LinkedInvoice | null;
     try {
-      linked = await linkXeroBill(invoice.id, xeroInvoiceId!, tenantId);
+      linked = billToUpdate
+        ? await markBillUpdated(invoice.id, billToUpdate, tenantId)
+        : await linkXeroBill(invoice.id, xeroInvoiceId!, tenantId);
     } catch (error) {
-      console.error(`🚨 Xero bill ${xeroInvoiceId} was created but not linked to invoice ${invoice.id}`, error);
+      console.error(
+        `🚨 Xero bill ${xeroInvoiceId} was created or updated but not saved on invoice ${invoice.id}`,
+        error,
+      );
       throw error;
     }
 
@@ -310,7 +372,7 @@ const worker = new Worker(
       const creatorName = creatorUser?.name || 'Unknown Creator';
       await runSafely('Campaign log', () =>
         logChange(
-          `Approved invoice ${invoice.invoiceNumber} for ${creatorName}`,
+          `${billToUpdate ? 'Approved new amount on' : 'Approved'} invoice ${invoice.invoiceNumber} for ${creatorName}`,
           invoice.campaignId,
           undefined,
           adminId,
@@ -358,6 +420,7 @@ const runBulkSideEffects = async (
   updatedInvoice: LinkedInvoice,
   attachments: Record<string, { name: string; mimetype: string; tempFilePath: string }> | undefined,
   adminId: string,
+  billUpdated = false,
 ) => {
   const attachment = attachments?.[updatedInvoice.id];
 
@@ -379,7 +442,7 @@ const runBulkSideEffects = async (
 
   await runSafely(`Campaign log for invoice ${updatedInvoice.id}`, () =>
     logChange(
-      `Bulk approved invoice ${updatedInvoice.invoiceNumber} for ${updatedInvoice.creator.user?.name || 'Unknown Creator'}`,
+      `${billUpdated ? 'Bulk approved new amount on' : 'Bulk approved'} invoice ${updatedInvoice.invoiceNumber} for ${updatedInvoice.creator.user?.name || 'Unknown Creator'}`,
       updatedInvoice.campaignId,
       undefined,
       adminId,
@@ -466,7 +529,7 @@ export const bulkInvoiceWorker = new Worker(
       });
 
       // The controller moved every invoice of this job to 'processing'. Anything else was handled elsewhere.
-      const pending = invoices.filter((invoice) => invoice.status === 'processing' && !invoice.xeroInvoiceId);
+      const pending = invoices.filter((invoice) => invoice.status === 'processing');
       await startXeroAttempt(pending.map((invoice) => invoice.id));
 
       const batches: Record<string, { tenantId: string; bills: PreparedBill[] }> = {};
@@ -489,9 +552,25 @@ export const bulkInvoiceWorker = new Worker(
             continue;
           }
 
-          const tenantId: string = activeTenant.tenantId;
+          const tenantId: string = invoice.xeroTenantId || activeTenant.tenantId;
           const clientName = invoice.campaign.brand?.name || invoice.campaign.company?.name || '';
           const campaignName = xeroCampaignName(invoice.campaign.name, invoice);
+
+          // An invoice that already has a bill is an approved amount change: its bill is updated, never recreated.
+          if (invoice.xeroInvoiceId) {
+            await updateXeroBill(
+              xero,
+              tenantId,
+              invoice.xeroInvoiceId,
+              toXeroLineItems([{ quantity: 1, total: invoice.amount }], campaignName, clientName),
+              invoice.dueDate,
+              invoice.amount,
+            );
+            console.log(`✏️ Updated Xero bill ${invoice.xeroInvoiceId} for invoice ${invoice.id}`);
+            const updatedInvoice = await markBillUpdated(invoice.id, invoice.xeroInvoiceId, tenantId);
+            if (updatedInvoice) await runBulkSideEffects(xero, tenantId, updatedInvoice, attachments, adminId, true);
+            continue;
+          }
 
           const { billNumber, mayExist } = await resolveBillNumber(invoice, () =>
             xeroBillNumber(clientName, campaignName, invoice.invoiceNumber),
@@ -572,7 +651,10 @@ export const bulkInvoiceWorker = new Worker(
             },
           });
         } catch (err) {
-          await markInvoicesFailed([invoice.id], `Could not prepare the Xero bill: ${describeXeroError(err)}`);
+          await markInvoicesFailed(
+            [invoice.id],
+            `Could not ${invoice.xeroInvoiceId ? 'update' : 'prepare'} the Xero bill: ${describeXeroError(err)}`,
+          );
         }
       }
 
@@ -676,8 +758,8 @@ export const bulkInvoiceWorker = new Worker(
 /**
  * Finds invoices left in 'processing' with no live job (a crash, a deploy, a lost job) and queues them
  * again under the admin who approved them. This is safe because a retry searches Xero for the saved
- * bill number before it creates anything. After MAX_XERO_ATTEMPTS, or with no known approver, the
- * invoice is marked failed so a person looks at it.
+ * bill number before it creates anything, and a retried bill update sends the same lines again.
+ * After MAX_XERO_ATTEMPTS, or with no known approver, the invoice is marked failed so a person looks at it.
  */
 export const reapStuckInvoices = async () => {
   const cutoff = dayjs().subtract(STALE_AFTER_MINUTES, 'minute').toDate();
@@ -685,10 +767,7 @@ export const reapStuckInvoices = async () => {
   const stale = await prisma.invoice.findMany({
     where: {
       status: 'processing',
-      AND: [
-        noXeroBillWhere,
-        { OR: [{ xeroAttemptedAt: { lt: cutoff } }, { xeroAttemptedAt: null, updatedAt: { lt: cutoff } }] },
-      ],
+      OR: [{ xeroAttemptedAt: { lt: cutoff } }, { xeroAttemptedAt: null, updatedAt: { lt: cutoff } }],
     },
     select: { id: true, xeroAttempts: true, xeroApprovedById: true },
   });

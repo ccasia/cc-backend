@@ -609,6 +609,62 @@ export const findXeroBill = async (client: XeroClient, tenantId: string, invoice
   );
 };
 
+export const toXeroLineItems = (lineItems: any[], campaignName: string, clientName: string | undefined): LineItem[] =>
+  lineItems.map((item: any) => ({
+    accountCode: '50930',
+    description: item.xeroDescription
+      ? `${clientName} ${campaignName} – ${item.xeroDescription}`
+      : `${clientName} ${campaignName}`,
+    quantity: item.quantity,
+    unitAmount: item.total,
+    taxType: 'NONE',
+  }));
+
+/** Bill statuses Xero lets an app edit. A bill with a payment or credit is also refused. */
+const EDITABLE_BILL_STATUSES = ['DRAFT', 'SUBMITTED', 'AUTHORISED'];
+
+/**
+ * Puts new line items and a new due date on a bill this app already created. Sending lineItems
+ * replaces every line on the bill. The bill number, contact and status stay the same.
+ */
+export const updateXeroBill = async (
+  client: XeroClient,
+  tenantId: string,
+  xeroInvoiceId: string,
+  lineItems: LineItem[],
+  dueDate: any,
+  expectedTotal: number,
+) => {
+  const linesTotal = lineItems.reduce((sum, line) => sum + (line.quantity ?? 0) * (line.unitAmount ?? 0), 0);
+  if (Math.abs(linesTotal - expectedTotal) > 0.01) {
+    throw new Error(
+      `The new bill lines add up to ${linesTotal.toFixed(2)} but the invoice amount is ${expectedTotal.toFixed(2)}. Check the invoice items, then approve again.`,
+    );
+  }
+
+  const { body } = await client.accountingApi.getInvoice(tenantId, xeroInvoiceId);
+  const bill = body.invoices?.[0];
+
+  if (!bill || String(bill.type) !== 'ACCPAY') {
+    throw new Error(`Xero bill ${xeroInvoiceId} was not found in this Xero organisation.`);
+  }
+
+  const status = String(bill.status);
+  if (!EDITABLE_BILL_STATUSES.includes(status)) {
+    throw new Error(`Xero bill "${bill.invoiceNumber}" is ${status} and cannot be changed. Use a top-up invoice.`);
+  }
+
+  if (Number(bill.amountPaid) > 0 || Number(bill.amountCredited) > 0) {
+    throw new Error(
+      `Xero bill "${bill.invoiceNumber}" already has a payment or credit, so its amount cannot be changed. Use a top-up invoice.`,
+    );
+  }
+
+  // No idempotency key: an update only sets the lines, so repeating it is safe, and a replayed key could
+  // return an earlier amount's response instead of applying this one.
+  await client.accountingApi.updateInvoice(tenantId, xeroInvoiceId, { invoices: [{ lineItems, dueDate }] });
+};
+
 export const createXeroInvoiceLocal = async (
   client: XeroClient,
   tenantId: string,
@@ -625,15 +681,9 @@ export const createXeroInvoiceLocal = async (
 
     const accounts: any = await client.accountingApi.getAccounts(tenantId, undefined, where);
 
-    const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
+    const lineItemsArray: LineItem[] = toXeroLineItems(lineItems, campaignName, clientName).map((line) => ({
       accountID: accounts.body.accounts[0].accountID,
-      accountCode: '50930',
-      description: item.xeroDescription
-        ? `${clientName} ${campaignName} – ${item.xeroDescription}`
-        : `${clientName} ${campaignName}`,
-      quantity: item.quantity,
-      unitAmount: item.total,
-      taxType: 'NONE',
+      ...line,
     }));
 
     const invoice: XeroInvoice = {
