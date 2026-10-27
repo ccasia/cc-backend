@@ -90,7 +90,9 @@ describe('isArchetypeQuizOpen', () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(json).toHaveBeenCalledWith(expect.objectContaining({ opensAt: '2026-10-30T09:00:00.000Z' }));
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({ opensAt: '2026-10-30T09:00:00.000Z', now: '2026-10-30T08:59:00.000Z' }),
+    );
   });
 
   it('opens early with ARCHETYPE_QUIZ_EARLY_ACCESS, and outside production', () => {
