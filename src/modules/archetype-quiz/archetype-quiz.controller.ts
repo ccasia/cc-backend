@@ -12,12 +12,16 @@ const handleError = (res: Response, error: unknown, fallback: string) => {
 };
 
 // A 403 before launch hides the banner and pop-up in every app version.
-// opensAt lets an open app ask again at launch, without a refresh.
+// opensAt and the server's now let an open app ask again at launch, to the
+// millisecond and without a refresh, whatever the phone's clock says.
 export const requireOpenArchetypeQuiz = (_req: Request, res: Response, next: NextFunction) => {
-  if (isArchetypeQuizOpen(new Date())) return next();
-  return res
-    .status(403)
-    .json({ message: 'The quiz is not open yet.', opensAt: ARCHETYPE_QUIZ_LAUNCH_AT.toISOString() });
+  const now = new Date();
+  if (isArchetypeQuizOpen(now)) return next();
+  return res.status(403).json({
+    message: 'The quiz is not open yet.',
+    opensAt: ARCHETYPE_QUIZ_LAUNCH_AT.toISOString(),
+    now: now.toISOString(),
+  });
 };
 
 export const getMyArchetypeQuiz = async (req: Request, res: Response) => {
