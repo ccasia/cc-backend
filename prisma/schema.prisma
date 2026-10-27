@@ -3224,18 +3224,22 @@ enum CreatorArchetype {
 }
 
 model CreatorArchetypeQuiz {
-  id                String            @id @default(cuid())
-  userId            String            @unique
-  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  archetype         CreatorArchetype?
-  answers           Json?
-  scores            Json?
-  quizVersion       Int?
-  attemptCount      Int               @default(0)
-  completedAt       DateTime?
-  promptDismissedAt DateTime?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  id                  String            @id @default(cuid())
+  userId              String            @unique
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  archetype           CreatorArchetype?
+  answers             Json?
+  scores              Json?
+  quizVersion         Int?
+  completedAt         DateTime?
+  promptDismissedAt   DateTime?
+  // Taps on "Share to Story" that opened the Instagram Story editor.
+  // Instagram does not report whether the story was posted.
+  instagramShareCount Int               @default(0)
+  firstSharedAt       DateTime?
+  lastSharedAt        DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 }
 
 // One row per scheduled quiz push day. The unique date stops a second send.
