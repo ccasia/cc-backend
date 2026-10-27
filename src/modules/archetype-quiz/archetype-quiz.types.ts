@@ -14,7 +14,8 @@ export interface ArchetypeQuizState {
   archetype: CreatorArchetype | null;
   mix: ArchetypeMixRow[];
   completedAt: string | null;
-  attemptCount: number;
+  /** Start of the current prompt period while the quiz prompt is due in it; otherwise null. */
+  promptSlot: string | null;
   quizVersion: number;
 }
 

@@ -10,10 +10,18 @@ interface ExpoPushPayload {
   collapseId?: string; // for stacking notifications
 }
 
+/** `messages`: pushes built for valid tokens. `accepted`: tickets Expo accepted. `failed`: the send stopped on an error. */
+export interface ExpoPushResult {
+  messages: number;
+  accepted: number;
+  failed: boolean;
+}
+
 export const sendExpoPushToUser = (userId: string, payload: ExpoPushPayload) => sendExpoPushToUsers([userId], payload);
 
-export const sendExpoPushToUsers = async (userIds: string[], payload: ExpoPushPayload) => {
-  if (userIds.length === 0) return;
+export const sendExpoPushToUsers = async (userIds: string[], payload: ExpoPushPayload): Promise<ExpoPushResult> => {
+  const result: ExpoPushResult = { messages: 0, accepted: 0, failed: false };
+  if (userIds.length === 0) return result;
 
   try {
     const tokens = await prisma.pushToken.findMany({
@@ -21,7 +29,7 @@ export const sendExpoPushToUsers = async (userIds: string[], payload: ExpoPushPa
       select: { id: true, token: true },
     });
 
-    if (tokens.length === 0) return;
+    if (tokens.length === 0) return result;
 
     const messages: ExpoPushMessage[] = [];
     const invalidTokenIds: string[] = [];
@@ -45,7 +53,8 @@ export const sendExpoPushToUsers = async (userIds: string[], payload: ExpoPushPa
       await prisma.pushToken.deleteMany({ where: { id: { in: invalidTokenIds } } });
     }
 
-    if (messages.length === 0) return;
+    result.messages = messages.length;
+    if (messages.length === 0) return result;
 
     // Clean up tokens reported as invalid by the Expo push service. Tickets are
     // matched per chunk so a failed chunk cannot shift the index of later ones.
@@ -55,7 +64,10 @@ export const sendExpoPushToUsers = async (userIds: string[], payload: ExpoPushPa
       try {
         const tickets = await expo.sendPushNotificationsAsync(chunk);
         tickets.forEach((ticket, idx) => {
-          if (ticket.status !== 'error') return;
+          if (ticket.status !== 'error') {
+            result.accepted += 1;
+            return;
+          }
           const errorCode = (ticket.details as { error?: string } | undefined)?.error;
           const failedToken = chunk[idx]?.to;
           if (errorCode === 'DeviceNotRegistered' && typeof failedToken === 'string') {
@@ -74,5 +86,8 @@ export const sendExpoPushToUsers = async (userIds: string[], payload: ExpoPushPa
     }
   } catch (error) {
     console.error('[expoPush] sendExpoPushToUsers failed', error);
+    result.failed = true;
   }
+
+  return result;
 };
