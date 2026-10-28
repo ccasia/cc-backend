@@ -305,63 +305,55 @@ export async function getEngagementHeatmap(campaignId: string, platform: string,
       (entry) => !platformsWithSnapshot.has(entry.platform),
     );
 
-    // One platform's snapshot alone keeps its stored engagement rate
-    if (snapshotsForDate.length === 1 && manualEntriesForDate.length === 0) {
-      const [snapshot] = snapshotsForDate;
-      return {
-        date: snapshot.snapshotDate,
-        engagementRate: snapshot.averageEngagementRate,
-        totalPosts: snapshot.totalPosts,
-        totalViews: snapshot.totalViews,
-      };
-    }
+    // Each platform keeps its own rate: a snapshot's stored one, or one computed from the
+    // manual entries of a platform with no snapshot that day (no reach, so views stand in)
+    const platformRates = snapshotsForDate.map((snapshot) => ({
+      posts: snapshot.totalPosts,
+      views: snapshot.totalViews,
+      rate: snapshot.averageEngagementRate,
+    }));
 
-    // Manual entries have no reach; their views stand in for it
-    const manualTotals = manualEntriesForDate.reduce(
-      (acc, entry) => ({
-        posts: acc.posts + 1,
-        views: acc.views + entry.views,
-        likes: acc.likes + entry.likes,
-        comments: acc.comments + entry.comments,
-        shares: acc.shares + entry.shares,
-        saved: acc.saved + (entry.saved || 0),
-        reach: acc.reach + entry.views,
-      }),
-      { posts: 0, views: 0, likes: 0, comments: 0, shares: 0, saved: 0, reach: 0 },
-    );
-
-    const totals = snapshotsForDate.reduce(
-      (acc, snapshot) => ({
-        posts: acc.posts + snapshot.totalPosts,
-        views: acc.views + snapshot.totalViews,
-        likes: acc.likes + snapshot.totalLikes,
-        comments: acc.comments + snapshot.totalComments,
-        shares: acc.shares + snapshot.totalShares,
-        saved: acc.saved + snapshot.totalSaved,
-        reach: acc.reach + snapshot.totalReach,
-      }),
-      manualTotals,
-    );
-
-    let engagementRate = 0;
-    if (platform === 'TikTok') {
-      // TikTok: (likes + comments + shares) / views * 100
-      if (totals.views > 0) {
-        engagementRate = ((totals.likes + totals.comments + totals.shares) / totals.views) * 100;
+    const manualByPlatform = new Map<string, any[]>();
+    manualEntriesForDate.forEach((entry) => {
+      if (!manualByPlatform.has(entry.platform)) {
+        manualByPlatform.set(entry.platform, []);
       }
-    } else {
-      // Instagram and All: (likes + comments + shares + saved) / reach * 100, views as fallback
-      const denominator = totals.reach > 0 ? totals.reach : totals.views;
-      if (denominator > 0) {
-        engagementRate = ((totals.likes + totals.comments + totals.shares + totals.saved) / denominator) * 100;
-      }
-    }
+      manualByPlatform.get(entry.platform)!.push(entry);
+    });
+
+    manualByPlatform.forEach((entries, entryPlatform) => {
+      const totals = entries.reduce(
+        (acc, entry) => ({
+          views: acc.views + entry.views,
+          likes: acc.likes + entry.likes,
+          comments: acc.comments + entry.comments,
+          shares: acc.shares + entry.shares,
+          saved: acc.saved + (entry.saved || 0),
+        }),
+        { views: 0, likes: 0, comments: 0, shares: 0, saved: 0 },
+      );
+      // Instagram counts saves, TikTok does not
+      const interactions =
+        totals.likes + totals.comments + totals.shares + (entryPlatform === 'Instagram' ? totals.saved : 0);
+      platformRates.push({
+        posts: entries.length,
+        views: totals.views,
+        rate: totals.views > 0 ? (interactions / totals.views) * 100 : 0,
+      });
+    });
+
+    // 'All' is the posts-weighted average of the platforms' rates, so Instagram reach never
+    // becomes the denominator for TikTok interactions
+    const totalPosts = platformRates.reduce((sum, item) => sum + item.posts, 0);
+    const totalViews = platformRates.reduce((sum, item) => sum + item.views, 0);
+    const engagementRate =
+      totalPosts > 0 ? platformRates.reduce((sum, item) => sum + item.rate * item.posts, 0) / totalPosts : 0;
 
     return {
       date: new Date(dateKey),
       engagementRate: parseFloat(engagementRate.toFixed(2)),
-      totalPosts: totals.posts,
-      totalViews: totals.views,
+      totalPosts,
+      totalViews,
     };
   });
 

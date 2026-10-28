@@ -264,7 +264,8 @@ function extractMetrics(
   let comments = getMetricValue(metrics, ['comments', 'comment_count']);
   let shares = getMetricValue(metrics, ['shares', 'share_count']);
   let saved = platform === 'Instagram' ? getMetricValue(metrics, ['saved']) : 0;
-  let reach = platform === 'Instagram' ? getMetricValue(metrics, ['reach']) : views;
+  // TikTok has no reach metric; 0 keeps its views out of the campaign's reach total.
+  let reach = platform === 'Instagram' ? getMetricValue(metrics, ['reach']) : 0;
 
   let engagementRate = 0;
   if (platform === 'Instagram') {
@@ -281,7 +282,7 @@ function extractMetrics(
     comments = insight.video?.comment_count || 0;
     shares = insight.video?.share_count || 0;
     saved = 0;
-    reach = views;
+    reach = 0;
   }
 
   return {
