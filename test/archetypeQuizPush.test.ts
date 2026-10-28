@@ -14,7 +14,10 @@ jest.mock('../src/helper/expoPush', () => ({ sendExpoPushToUsers: jest.fn() }));
 
 import { prisma } from '../src/prisma/prisma';
 import { sendExpoPushToUsers } from '../src/helper/expoPush';
-import { requireOpenArchetypeQuiz } from '../src/modules/archetype-quiz/archetype-quiz.controller';
+import {
+  getArchetypeQuizStatus,
+  requireOpenArchetypeQuiz,
+} from '../src/modules/archetype-quiz/archetype-quiz.controller';
 import { sendArchetypeQuizPushForToday } from '../src/modules/archetype-quiz/archetype-quiz.push';
 import {
   ARCHETYPE_QUIZ_PUSHES,
@@ -93,6 +96,27 @@ describe('isArchetypeQuizOpen', () => {
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({ opensAt: '2026-10-30T09:00:00.000Z', now: '2026-10-30T08:59:00.000Z' }),
     );
+  });
+
+  it('tells sign-up whether the quiz is open, without an account', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.ARCHETYPE_QUIZ_EARLY_ACCESS;
+    const json = jest.fn();
+    const res = { status: jest.fn(() => ({ json })) } as any;
+
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-30T08:59:00Z'));
+    getArchetypeQuizStatus({} as any, res);
+    jest.setSystemTime(new Date('2026-10-30T09:00:00Z'));
+    getArchetypeQuizStatus({} as any, res);
+    jest.useRealTimers();
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(json).toHaveBeenNthCalledWith(1, {
+      open: false,
+      opensAt: '2026-10-30T09:00:00.000Z',
+      now: '2026-10-30T08:59:00.000Z',
+    });
+    expect(json).toHaveBeenNthCalledWith(2, expect.objectContaining({ open: true }));
   });
 
   it('opens early with ARCHETYPE_QUIZ_EARLY_ACCESS, and outside production', () => {
