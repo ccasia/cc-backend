@@ -24,6 +24,17 @@ export const requireOpenArchetypeQuiz = (_req: Request, res: Response, next: Nex
   });
 };
 
+// Public: sign-up asks this before the creator has an account, to decide
+// whether the quiz comes before onboarding.
+export const getArchetypeQuizStatus = (_req: Request, res: Response) => {
+  const now = new Date();
+  return res.status(200).json({
+    open: isArchetypeQuizOpen(now),
+    opensAt: ARCHETYPE_QUIZ_LAUNCH_AT.toISOString(),
+    now: now.toISOString(),
+  });
+};
+
 export const getMyArchetypeQuiz = async (req: Request, res: Response) => {
   try {
     return res.status(200).json(await getState(req.userId as string));
