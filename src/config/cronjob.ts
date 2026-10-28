@@ -359,6 +359,6 @@ new CronJob(
     }
   },
   null, // onComplete
-  isCronInstance, // start
+  true, // start
   'Asia/Kuala_Lumpur',
 );
