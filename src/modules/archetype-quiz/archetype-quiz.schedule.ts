@@ -20,8 +20,8 @@ const CATCH_UP_HOURS = 3;
 
 export const ARCHETYPE_QUIZ_PUSHES: ArchetypeQuizPush[] = [
   {
-    date: '2026-10-31',
-    time: '10:30',
+    date: '2026-10-28',
+    time: '14:00',
     audience: 'all',
     title: "LOL, you're such a control freak!",
     body: 'Find out which creator type you are. Take the quiz and face the truth.',
