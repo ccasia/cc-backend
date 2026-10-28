@@ -14,7 +14,7 @@ import {
   scrapedEngagementRate,
   type PostMetrics,
 } from './postMetricsAdapter';
-import { notScrapedToday, scrapeDay } from './scrapeDay';
+import { failedScrapeDays, notScrapedToday, scrapeDay } from './scrapeDay';
 
 const { DbNull } = Prisma;
 
@@ -93,7 +93,9 @@ const DEFAULT_POLL_INTERVAL_MS = 5_000;
  * Rejected links keep their SubmissionPostingUrl row; only `content` changes.
  * A row is current when the submission's content still names its post.
  */
-const isCurrentLink = (row: PostingUrlRow): boolean => {
+export const isCurrentLink = (
+  row: Pick<PostingUrlRow, 'postUrl' | 'shortCode' | 'mediaId'> & { submission: { content: string | null } },
+): boolean => {
   const content = row.submission.content ?? '';
   return [row.postUrl, row.shortCode, row.mediaId].some((value) => !!value && content.includes(value));
 };
@@ -116,9 +118,15 @@ export interface ScrapeFailure {
   jobIds: string[];
   partial: PostMetrics | null;
   at: string;
+  /** Failed days in a row. The daily cron stops at MAX_FAILED_SCRAPE_DAYS. */
+  streak?: number;
 }
 
-type FailureNote = Pick<ScrapeFailure, 'message' | 'jobIds' | 'partial'>;
+/**
+ * What a run learns before it ends. `priorFailure` is the link's failure from
+ * its last run, if that run failed. `claimedAt` is set once this run owns the link.
+ */
+type FailureNote = Pick<ScrapeFailure, 'message' | 'jobIds' | 'partial'> & { priorFailure?: unknown; claimedAt?: Date };
 
 type JobRun =
   | { ok: true; jobId: string; items: unknown[] }
@@ -146,9 +154,18 @@ const statusAfter = (outcome: ScrapeOutcome): string | null | undefined =>
 export async function scrapePostMetrics(postingUrlId: string, deps: PostScrapeDeps): Promise<ScrapeOutcome> {
   const now = deps.now ?? (() => new Date());
   const note: FailureNote = { message: '', jobIds: [], partial: null };
+  const toFailure = (code: ScrapeFailure['code'], message = note.message): ScrapeFailure => ({
+    code,
+    message,
+    jobIds: note.jobIds,
+    partial: note.partial,
+    at: now().toISOString(),
+    streak: failedScrapeDays(note.priorFailure) + 1,
+  });
+  // Once claimed, only this run's claim is updated: yesterday's run ending late must not overwrite today's.
   const setStatus = (metricsScrapeStatus: string | null, failure: ScrapeFailure | null) =>
     deps.store.submissionPostingUrl.updateMany({
-      where: { id: postingUrlId },
+      where: note.claimedAt ? { id: postingUrlId, metricsScrapedAt: note.claimedAt } : { id: postingUrlId },
       data: { metricsScrapeStatus, metricsScrapeFailure: failure ?? DbNull },
     });
 
@@ -156,13 +173,12 @@ export async function scrapePostMetrics(postingUrlId: string, deps: PostScrapeDe
   try {
     outcome = await runScrape(postingUrlId, deps, note);
   } catch (error) {
-    const failure = { ...note, code: 'ERROR' as const, message: (error as Error).message, at: now().toISOString() };
-    await setStatus('FAILED', failure).catch(() => undefined);
+    await setStatus('FAILED', toFailure('ERROR', (error as Error).message)).catch(() => undefined);
     throw error;
   }
   const status = statusAfter(outcome);
   if (status === 'FAILED') {
-    const failure: ScrapeFailure = { ...note, code: outcome, at: now().toISOString() };
+    const failure = toFailure(outcome);
     deps.log?.('Post scrape failed', { postingUrlId, ...failure });
     await setStatus(status, failure);
   } else if (status !== undefined) {
@@ -171,15 +187,19 @@ export async function scrapePostMetrics(postingUrlId: string, deps: PostScrapeDe
   return outcome;
 }
 
-/** Writes the day's `brightdata` snapshot for a link. Shared by the scrape and an admin's manual completion. */
+/**
+ * Writes the day's `brightdata` snapshot for a link. Shared by the scrape and an admin's manual completion.
+ * `snapshotOn` is the claim time, so a run that ends after midnight still fills the day it was started for.
+ */
 async function writeSnapshot(
   store: PostScrapeStore,
   row: PostingUrlRow,
   metrics: PostMetrics,
   rawMetrics: Record<string, unknown>,
   capturedAt: Date,
+  snapshotOn: Date = capturedAt,
 ): Promise<void> {
-  const snapshotDate = scrapeDay(capturedAt);
+  const snapshotDate = scrapeDay(snapshotOn);
   const postDate = scrapeDay(row.postingDate ?? capturedAt);
   const values = {
     daysSincePost: snapshotDate.diff(postDate, 'day'),
@@ -231,21 +251,24 @@ async function runScrape(postingUrlId: string, deps: PostScrapeDeps, note: Failu
     include: { submission: { select: { userId: true, status: true, content: true } } },
   });
   if (!row) return 'SKIPPED_NOT_FOUND';
+  note.priorFailure = row.metricsScrapeFailure;
   if (row.submission.status !== 'POSTED') return 'SKIPPED_NOT_POSTED';
   if (!isCurrentLink(row)) return 'SKIPPED_STALE_LINK';
 
+  const claimedAt = now();
   const snapshotKey = {
-    postUrl_snapshotDate: { postUrl: row.postUrl, snapshotDate: scrapeDay(now()).toDate() },
+    postUrl_snapshotDate: { postUrl: row.postUrl, snapshotDate: scrapeDay(claimedAt).toDate() },
   };
   // The API already read this post today and has real shares and saves. Never pay to overwrite them.
   const today = await store.dailyPostEngagementSnapshot.findUnique({ where: snapshotKey, select: { source: true } });
   if (today?.source === 'api') return 'SKIPPED_API_ROW_TODAY';
 
   const claimed = await store.submissionPostingUrl.updateMany({
-    where: { id: postingUrlId, ...notScrapedToday(now()) },
-    data: { metricsScrapedAt: now(), metricsScrapeStatus: 'RUNNING' },
+    where: { id: postingUrlId, ...notScrapedToday(claimedAt) },
+    data: { metricsScrapedAt: claimedAt, metricsScrapeStatus: 'RUNNING' },
   });
   if (claimed.count === 0) return 'SKIPPED_ALREADY_SCRAPED';
+  note.claimedAt = claimedAt;
 
   const platform = row.platform === 'TikTok' ? 'tiktok' : 'instagram';
   const context = { postingUrlId, postUrl: row.postUrl, platform };
@@ -326,9 +349,10 @@ async function runScrape(postingUrlId: string, deps: PostScrapeDeps, note: Failu
     // Nothing was billed, so give back today's claim and let a later enqueue try again.
     if (postRun.refused) {
       await store.submissionPostingUrl.updateMany({
-        where: { id: postingUrlId },
+        where: { id: postingUrlId, metricsScrapedAt: claimedAt },
         data: { metricsScrapedAt: row.metricsScrapedAt ?? null },
       });
+      note.claimedAt = undefined;
     }
     return failWith(postRun);
   }
@@ -376,7 +400,7 @@ async function runScrape(postingUrlId: string, deps: PostScrapeDeps, note: Failu
 
   // The jobs are paid for. If the write fails, the log keeps the numbers so they can be restored by hand.
   log('Post scraped', { ...context, jobIds: note.jobIds, ...metrics });
-  await writeSnapshot(store, row, metrics, { jobIds: note.jobIds, item: parsed.item }, now());
+  await writeSnapshot(store, row, metrics, { jobIds: note.jobIds, item: parsed.item }, now(), claimedAt);
   return 'SCRAPED';
 }
 

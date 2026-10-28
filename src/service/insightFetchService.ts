@@ -5,7 +5,8 @@ import { normalizeInsightResults, UrlData } from '@utils/insightNormalizationHel
 import { getManualCreatorEntries } from '@services/manualCreatorService';
 import { storeDailyPostEngagementResults } from '@services/postEngagementSnapshotService';
 import { queuePostScrape } from '@services/postMetricsScrape/queuePostScrape';
-import { isInScrapeWindow, scrapeDay } from '@services/postMetricsScrape/scrapeDay';
+import { isInScrapeWindow, isUnderFailureLimit, wasScrapedToday } from '@services/postMetricsScrape/scrapeDay';
+import { isCurrentLink } from '@services/postMetricsScrape/postMetricsScrapeService';
 import { prisma } from '@/src/prisma/prisma';
 
 /**
@@ -219,28 +220,32 @@ async function fetchAndStorePlatformInsights(
 const SCRAPE_FALLBACK_CODES = new Set(['ACCOUNT_NOT_CONNECTED', 'ACCESS_TOKEN_MISSING', 'TOKEN_EXPIRED']);
 
 /**
- * Queue today's scrape for posted links the API could not read. Only links
- * inside their campaign period fall back, so ended campaigns never become paid
- * jobs. The worker claims `metricsScrapedAt`, so a post is scraped once a day.
+ * Queue today's scrape for posted links the API could not read, by the same
+ * rules as the daily scrape cron: inside the campaign period, the current
+ * link, and not given up after repeated failed days. The worker claims
+ * `metricsScrapedAt`, so a post is scraped once a day.
  */
-function queueScrapeFallbacks(
+export function queueScrapeFallbacks(
   urls: any[],
   failures: { postUrl: string; reason: string }[],
   campaignEndDate: Date | null,
+  now: Date = new Date(),
 ): void {
-  const now = new Date();
-  const todayStart = scrapeDay(now).toDate();
   for (const { postUrl, reason } of failures) {
     if (!SCRAPE_FALLBACK_CODES.has(classifyRefreshFailure(reason))) continue;
     const postingUrl = urls.find((url) => url.postUrl === postUrl);
-    if (!postingUrl || postingUrl.submission?.status !== 'POSTED') continue;
-    if (postingUrl.metricsScrapedAt && new Date(postingUrl.metricsScrapedAt) >= todayStart) continue;
+    if (!postingUrl || postingUrl.submission?.status !== 'POSTED' || !isCurrentLink(postingUrl)) continue;
+    if (wasScrapedToday(postingUrl.metricsScrapedAt, now)) continue;
     if (!isInScrapeWindow(postingUrl.postingDate, campaignEndDate, now)) continue;
-    queuePostScrape({
-      postingUrlId: postingUrl.id,
-      campaignId: postingUrl.campaignId,
-      submissionId: postingUrl.submissionId,
-    }).catch((error: Error) => console.error(`   ❌ Failed to queue scrape fallback for ${postUrl}:`, error.message));
+    if (!isUnderFailureLimit(postingUrl.metricsScrapeFailure)) continue;
+    queuePostScrape(
+      {
+        postingUrlId: postingUrl.id,
+        campaignId: postingUrl.campaignId,
+        submissionId: postingUrl.submissionId,
+      },
+      now,
+    ).catch((error: Error) => console.error(`   ❌ Failed to queue scrape fallback for ${postUrl}:`, error.message));
   }
 }
 

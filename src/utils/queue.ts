@@ -78,8 +78,9 @@ export const postMetricsScrapeQueue = new Queue('post-metrics-scrape-queue', {
 });
 
 /**
- * The job ID dedupes a burst of enqueues for one post. The durable once-a-day
- * rule is `SubmissionPostingUrl.metricsScrapedAt`, checked by the worker.
+ * The job ID dedupes a burst of enqueues for one post on one day, so a run
+ * left from yesterday never blocks today's. The durable once-a-day rule is
+ * `SubmissionPostingUrl.metricsScrapedAt`, checked by the worker.
  */
 export interface PostScrapeJobData {
   postingUrlId: string;
@@ -88,8 +89,8 @@ export interface PostScrapeJobData {
   submissionId: string;
 }
 
-export async function enqueuePostScrape(data: PostScrapeJobData): Promise<void> {
-  const jobId = `post-scrape-${data.postingUrlId}`;
+export async function enqueuePostScrape(data: PostScrapeJobData, dayKey: string): Promise<void> {
+  const jobId = `post-scrape-${data.postingUrlId}-${dayKey}`;
   const existing = await postMetricsScrapeQueue.getJob(jobId);
 
   if (existing) {
