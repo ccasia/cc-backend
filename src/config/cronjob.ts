@@ -14,6 +14,7 @@ import {
 } from '@helper/notification';
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
+import { queueDailyPostScrapes } from '@services/postMetricsScrape/dailyPostScrapes';
 import { emitter } from './socketEmitter';
 import { queueDailyPostScrapes } from '@services/postMetricsScrape/dailyPostScrapes';
 import { snapshotLeaderboard } from '../modules/gamification';
