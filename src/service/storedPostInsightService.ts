@@ -2,6 +2,7 @@ import {
   getLatestCampaignPostEngagement,
   type LatestPostEngagementSnapshot,
 } from '@services/postEngagementSnapshotService';
+import { linkMatchesPostingUrl } from '@services/submissionUrlService';
 import { prisma } from '@/src/prisma/prisma';
 
 type ReportPlatform = 'Instagram' | 'TikTok';
@@ -56,9 +57,7 @@ export async function getStoredPostInsight(platform: ReportPlatform, userId: str
     getLatestCampaignPostEngagement(campaignId),
   ]);
 
-  const posting = postingUrls.find((row) =>
-    [row.postUrl, row.shortCode, row.mediaId].some((value) => !!value && url.includes(value)),
-  );
+  const posting = postingUrls.find((row) => linkMatchesPostingUrl(row, url));
   const platformSnapshots = snapshots.filter((snapshot) => snapshot.platform === platform);
   const snapshot = posting && platformSnapshots.find((item) => item.postUrl === posting.postUrl);
   if (!snapshot) return null;
