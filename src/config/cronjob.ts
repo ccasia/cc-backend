@@ -15,6 +15,7 @@ import {
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
 import { emitter } from './socketEmitter';
+import { queueDailyPostScrapes } from '@services/postMetricsScrape/dailyPostScrapes';
 import { snapshotLeaderboard } from '../modules/gamification';
 import { publishDueReleaseNotes } from '@modules/release-note';
 import { sendArchetypeQuizPushForToday } from '@modules/archetype-quiz';
@@ -238,6 +239,30 @@ new CronJob(
       });
     } catch (error) {
       console.error('[Cronjob] Daily insight collection failed:', error);
+    }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur',
+);
+
+// Daily Bright Data scrape - runs at 12 AM Asia/Kuala_Lumpur time
+// Scrapes posts of creators with no connected account until their campaign period ends
+new CronJob(
+  '0 0 * * *', // 12:00 AM daily
+  async function () {
+    console.log('[Cronjob] Starting daily post scrape at', dayjs().tz('Asia/Kuala_Lumpur').format());
+
+    try {
+      const result = await queueDailyPostScrapes();
+
+      console.log('[Cronjob] Daily post scrape queued:', {
+        evaluated: result.evaluated,
+        queued: result.queued,
+        timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+      });
+    } catch (error) {
+      console.error('[Cronjob] Daily post scrape failed:', error);
     }
   },
   null, // onComplete

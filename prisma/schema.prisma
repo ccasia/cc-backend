@@ -115,6 +115,7 @@ model User {
   threads                           Thread[]                           @relation("UserThreads")
   creatorNotesAbout                 CreatorNote[]                      @relation("CreatorNoteCreator")
   creatorNotesAuthored              CreatorNote[]                      @relation("CreatorNoteAuthor")
+  featuredCampaignVideos            CampaignFeaturedVideo[]
   creatorNoteReadStates             CreatorNoteReadState[]
   archetypeQuiz                     CreatorArchetypeQuiz?
 }
@@ -781,6 +782,7 @@ model Campaign {
   video                         Video[]
   creatorNotes                  CreatorNote[]
   creatorNoteReadStates         CreatorNoteReadState[]
+  featuredVideos                CampaignFeaturedVideo[]
 }
 
 model BookMarkCampaign {
@@ -1093,6 +1095,9 @@ model Pitch {
   /// Why that run gave no metrics, e.g. INSUFFICIENT_DATA. While set, an admin
   /// may enter Followers and ER by hand.
   metricsFailureCode        String?
+  /// When the pitch last moved to SENT_TO_CLIENT / AWAITING_APPROVAL. Set by the
+  /// "Pitch_set_sent_to_client_at" DB trigger, not app code. Null on older rows.
+  sentToClientAt            DateTime?
   approvalRequestCreators   ApprovalRequestCreator[]
   guestCreatorMetricAudits  GuestCreatorMetricAudit[]
   Notification              Notification[]
@@ -1213,18 +1218,18 @@ model PushToken {
 }
 
 model Submission {
-  id                    String                 @id @default(cuid())
+  id                    String                  @id @default(cuid())
   content               String?
   caption               String?
   campaignId            String
-  status                SubmissionStatus       @default(IN_PROGRESS)
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  status                SubmissionStatus        @default(IN_PROGRESS)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
   submissionDate        DateTime?
   dueDate               DateTime?
   userId                String
   submissionTypeId      String
-  isReview              Boolean                @default(false)
+  isReview              Boolean                 @default(false)
   startDate             DateTime?
   endDate               DateTime?
   videos                String[]
@@ -1234,7 +1239,7 @@ model Submission {
   completedAt           DateTime?
   nextsubmissionDate    DateTime?
   contentOrder          Int?
-  submissionVersion     String?                @default("v2")
+  submissionVersion     String?                 @default("v2")
   submittedByAdminId    String?
   approvedAt            DateTime?
   viewedAt              DateTime?
@@ -1244,19 +1249,20 @@ model Submission {
   photos                Photo[]
   publicFeedback        PublicFeedback[]
   rawFootages           RawFootage[]
-  admin                 Admin?                 @relation("ApprovedByAdmin", fields: [approvedByAdminId], references: [userId])
-  campaign              Campaign               @relation(fields: [campaignId], references: [id])
-  submissionType        SubmissionType         @relation(fields: [submissionTypeId], references: [id])
-  submittedByAdmin      Admin?                 @relation("SubmittedByAdmin", fields: [submittedByAdminId], references: [userId])
-  user                  User                   @relation(fields: [userId], references: [id])
+  admin                 Admin?                  @relation("ApprovedByAdmin", fields: [approvedByAdminId], references: [userId])
+  campaign              Campaign                @relation(fields: [campaignId], references: [id])
+  submissionType        SubmissionType          @relation(fields: [submissionTypeId], references: [id])
+  submittedByAdmin      Admin?                  @relation("SubmittedByAdmin", fields: [submittedByAdminId], references: [userId])
+  user                  User                    @relation(fields: [userId], references: [id])
   comments              SubmissionComment[]
-  dependencies          SubmissionDependency[] @relation("Dependencies")
-  dependentOn           SubmissionDependency[] @relation("DependentOn")
+  dependencies          SubmissionDependency[]  @relation("Dependencies")
+  dependentOn           SubmissionDependency[]  @relation("DependentOn")
   submissionPostingUrls SubmissionPostingUrl[]
   task                  Task[]
   uploadSessions        UploadSession[]
   video                 Video[]
   videoOfTheMonth       VideoOfTheMonth?
+  featuredVideos        CampaignFeaturedVideo[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
 }
@@ -1385,23 +1391,24 @@ model DailyPostEngagementSnapshot {
 }
 
 model ManualCreatorEntry {
-  id              String   @id @unique @default(cuid())
+  id              String                  @id @unique @default(cuid())
   campaignId      String
   creatorName     String
   creatorUsername String
   platform        String
   postUrl         String?
-  views           Int      @default(0)
-  likes           Int      @default(0)
-  shares          Int      @default(0)
+  views           Int                     @default(0)
+  likes           Int                     @default(0)
+  shares          Int                     @default(0)
   saved           Int?
-  engagementRate  Float    @default(0)
+  engagementRate  Float                   @default(0)
   createdBy       String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  comments        Int      @default(0)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  comments        Int                     @default(0)
   photoUrl        String?
-  campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign        Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  featuredVideos  CampaignFeaturedVideo[]
 
   @@index([campaignId])
 }
@@ -3182,6 +3189,28 @@ model CreatorNote {
   author     User      @relation("CreatorNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([campaignId, creatorId, createdAt])
+}
+
+// A posted video an admin starred for the client's campaign overview. Either one post URL of a
+// submission (its content can hold several posts) or one manual creator entry. A CHECK constraint
+// in the migration enforces exactly one of submissionId / manualEntryId.
+model CampaignFeaturedVideo {
+  id            String              @id @default(cuid())
+  campaignId    String
+  submissionId  String?
+  manualEntryId String?
+  postUrl       String?
+  platform      String
+  createdById   String
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  campaign      Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  submission    Submission?         @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  manualEntry   ManualCreatorEntry? @relation(fields: [manualEntryId], references: [id], onDelete: Cascade)
+  createdBy     User                @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, submissionId, postUrl])
+  @@unique([campaignId, manualEntryId])
 }
 
 model CreatorNoteReadState {

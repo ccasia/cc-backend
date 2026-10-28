@@ -107,7 +107,7 @@ router.post('/setupTwoFactor', authenticate, setupTwoFactor);
 
 router.post('/send-code', sendVerificationCode);
 router.post('/resend-code', resendVerificationCode);
-router.patch('/verify-code', verifyCode);
+router.patch('/verify-code', limiter, verifyCode);
 
 router.post('/claim-phone', authenticate, sendPhoneClaimCode);
 router.patch('/claim-phone/verify', authenticate, verifyPhoneClaim);
