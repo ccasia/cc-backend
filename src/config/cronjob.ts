@@ -17,6 +17,7 @@ import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshot
 import { emitter } from './socketEmitter';
 import { snapshotLeaderboard } from '../modules/gamification';
 import { publishDueReleaseNotes } from '@modules/release-note';
+import { syncLatestVersionsFromStores } from '@modules/app-version';
 import { reconcileStuckLogistics } from '../service/logisticsService';
 import { prisma } from '@/src/prisma/prisma';
 
@@ -331,6 +332,19 @@ new CronJob(
       }
     } catch (error) {
       console.error('[Cronjob] Scheduled release note publish failed:', error);
+    }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur',
+);
+
+new CronJob(
+  '20 * * * *', // hourly at :20 — raise mobile latestVersion once a store release is live
+  async function () {
+    const result = await syncLatestVersionsFromStores();
+    if (result.ios === 'updated' || result.android === 'updated') {
+      console.log('[Cronjob] App store version sync:', result);
     }
   },
   null, // onComplete

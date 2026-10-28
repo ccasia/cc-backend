@@ -87,6 +87,7 @@ model User {
   rawFootageFeedback                RawFootage[]                       @relation("RawFootageFeedback")
   rawFootage                        RawFootage[]
   releaseNotesCreated               ReleaseNote[]                      @relation("ReleaseNoteCreatedBy")
+  appVersionPoliciesUpdated         AppVersionPolicy[]                 @relation("AppVersionPolicyUpdatedBy")
   resetPasswordToken                ResetPasswordToken?
   seenMessages                      SeenMessage[]
   shortlisted                       ShortListedCreator[]
@@ -2627,6 +2628,17 @@ model ReleaseNoteItem {
   @@index([releaseNoteId])
 }
 
+model AppVersionPolicy {
+  platform       AppPlatform @id
+  minimumVersion String
+  latestVersion  String
+  storeUrl       String
+  message        String?
+  updatedAt      DateTime    @updatedAt
+  updatedById    String?
+  updatedBy      User?       @relation("AppVersionPolicyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+}
+
 model ReimbursementReceipt {
   id              String              @id @default(cuid())
   agreementId     String
@@ -3154,6 +3166,11 @@ enum ReleaseNoteItemType {
   NEW
   IMPROVED
   FIXED
+}
+
+enum AppPlatform {
+  IOS
+  ANDROID
 }
 
 enum ReimbursementStatus {

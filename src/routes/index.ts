@@ -53,6 +53,7 @@ import campaignCreationDraftRoute from './campaignCreationDraftRoute';
 import treasureHuntAdminRoute from './treasureHuntAdminRoute';
 import treasureHuntRoute from './treasureHuntRoute';
 import { releaseNoteRoute } from '@modules/release-note';
+import { appVersionAdminRoute } from '@modules/app-version';
 
 export const router = express.Router();
 
@@ -112,3 +113,4 @@ router.use('/upload-sessions', uploadRoute);
 router.use('/hunts', treasureHuntRoute);
 
 router.use('/release-notes', releaseNoteRoute);
+router.use('/app-versions', appVersionAdminRoute);
