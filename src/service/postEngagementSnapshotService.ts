@@ -833,6 +833,8 @@ export interface LatestPostEngagementSnapshot {
   source?: string;
   /** Our bucket's copy of the post thumbnail, saved when the post was scraped. */
   thumbnailUrl?: string | null;
+  /** The TikTok short-link code. The submission keeps the short link; `postUrl` is the resolved link. */
+  shortCode?: string | null;
 }
 
 /**
@@ -841,7 +843,7 @@ export interface LatestPostEngagementSnapshot {
  * older posts that are outside the daily capture window.
  */
 export async function getLatestCampaignPostEngagement(campaignId: string): Promise<LatestPostEngagementSnapshot[]> {
-  const [dailySnapshots, milestoneSnapshots, thumbnails] = await Promise.all([
+  const [dailySnapshots, milestoneSnapshots, postingUrls] = await Promise.all([
     prisma.dailyPostEngagementSnapshot.findMany({
       where: { campaignId },
       orderBy: { snapshotDate: 'desc' },
@@ -853,11 +855,11 @@ export async function getLatestCampaignPostEngagement(campaignId: string): Promi
       distinct: ['postUrl'],
     }),
     prisma.submissionPostingUrl.findMany({
-      where: { campaignId, thumbnailUrl: { not: null } },
-      select: { postUrl: true, thumbnailUrl: true },
+      where: { campaignId },
+      select: { postUrl: true, thumbnailUrl: true, shortCode: true },
     }),
   ]);
-  const thumbnailByPost = new Map(thumbnails.map((row) => [row.postUrl, row.thumbnailUrl]));
+  const postingUrlByPost = new Map(postingUrls.map((row) => [row.postUrl, row]));
 
   const latestByPost = new Map<string, LatestPostEngagementSnapshot>();
 
@@ -905,7 +907,8 @@ export async function getLatestCampaignPostEngagement(campaignId: string): Promi
 
   return Array.from(latestByPost.values(), (snapshot) => ({
     ...snapshot,
-    thumbnailUrl: thumbnailByPost.get(snapshot.postUrl) ?? null,
+    thumbnailUrl: postingUrlByPost.get(snapshot.postUrl)?.thumbnailUrl ?? null,
+    shortCode: postingUrlByPost.get(snapshot.postUrl)?.shortCode ?? null,
   }));
 }
 
