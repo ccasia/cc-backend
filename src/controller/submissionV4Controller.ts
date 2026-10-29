@@ -38,6 +38,7 @@ import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
 import { queueMissingThumbnails } from '@services/submissionThumbnailService';
 import { selectCurrentAgreementSubmission, selectAgreementSubmissions } from '@utils/submissionAgreement';
+import { validateAnnotationPayload } from '@utils/annotationValidation';
 import { getIo } from '../config/socket';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
 import { awardXp, onAgreementApproved } from '@/src/modules/gamification';
@@ -3381,11 +3382,11 @@ export const getComments = async (req: Request, res: Response) => {
 /**
  * Create a comment or reply on a submission.
  * POST /api/submissions/v4/submission/:submissionId/comments
- * Body: { text, timestamp?, videoId?, parentId? }
+ * Body: { text, timestamp?, videoId?, parentId?, annotation? }
  */
 export const createComment = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
-  const { text, parentId, timestamp, videoId, isClientDraft } = req.body;
+  const { text, parentId, timestamp, videoId, isClientDraft, annotation } = req.body;
   const sessionUserId = req.userId;
 
   if (!sessionUserId) {
@@ -3396,11 +3397,23 @@ export const createComment = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Comment text is required' });
   }
 
+  if (annotation != null) {
+    const annotationError = validateAnnotationPayload(annotation);
+    if (annotationError) {
+      return res.status(400).json({ error: annotationError });
+    }
+  }
+
   try {
     const user = await prisma.user.findUnique({ where: { id: sessionUserId } });
 
     if (!user) {
       return res.status(401).json({ error: 'Unauthorized: User not found' });
+    }
+
+    // Drawings are an admin-only, top-level feedback tool
+    if (annotation != null && (parentId || user.role === 'client' || user.role === 'creator')) {
+      return res.status(403).json({ error: 'Annotations can only be added by admins on top-level comments' });
     }
 
     // Validate videoId belongs to this submission if provided
@@ -3442,6 +3455,7 @@ export const createComment = async (req: Request, res: Response) => {
         parentId: parentId || null,
         userId: user.id,
         isClientDraft: shouldBeDraft,
+        ...(annotation != null ? { annotation, frameTimeMs: annotation.frameTimeMs } : {}),
         ...(autoForwardedByUserId
           ? {
               forwardedByUserId: autoForwardedByUserId,

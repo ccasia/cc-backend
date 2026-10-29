@@ -1541,6 +1541,8 @@ model SubmissionComment {
   editedText         String?
   timestamp          String?
   editedTimestamp    String?
+  annotation         Json?
+  frameTimeMs        Int?
   submissionId       String
   videoId            String?
   userId             String

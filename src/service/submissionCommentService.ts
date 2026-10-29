@@ -38,6 +38,8 @@ const scrubDeleted = (comment: any) => {
     comment.editedText = null;
     comment.timestamp = null;
     comment.editedTimestamp = null;
+    comment.annotation = null;
+    comment.frameTimeMs = null;
     comment.agreedBy = [];
   }
   if (comment.replies) comment.replies.forEach(scrubDeleted);
