@@ -32,6 +32,7 @@ import crypto from 'crypto';
 import connection from '../config/redis';
 import { getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
+import { isCurrentLink } from '@services/postMetricsScrape/postMetricsScrapeService';
 
 // Type definitions
 export interface UrlData {
@@ -1862,19 +1863,23 @@ export async function getCampaignSubmissionUrls(campaignId: string): Promise<Url
       try {
         const existingPostingUrls = await prisma.submissionPostingUrl.findMany({
           where: { campaignId },
-          select: { id: true, submissionId: true, platform: true, postUrl: true },
+          select: { id: true, submissionId: true, platform: true, postUrl: true, shortCode: true, mediaId: true },
         });
 
-        // Map by submissionId+platform so we can detect URL changes
-        const existingByKey = new Map<string, { id: string; postUrl: string }>();
+        // Group by submissionId+platform so we can detect URL changes
+        const existingByKey = new Map<string, typeof existingPostingUrls>();
         for (const p of existingPostingUrls) {
-          existingByKey.set(`${p.submissionId}|${p.platform}`, { id: p.id, postUrl: p.postUrl });
+          const key = `${p.submissionId}|${p.platform}`;
+          existingByKey.set(key, [...(existingByKey.get(key) ?? []), p]);
         }
 
         // Update or create — one row per submission+platform
         for (const urlData of allUrls) {
           const key = `${urlData.submissionId}|${urlData.platform}`;
-          const existing = existingByKey.get(key);
+          const rows = existingByKey.get(key) ?? [];
+          // A resolved short link or a link without tracking params is the same post. Rewriting it orphans its snapshots.
+          if (rows.some((row) => isCurrentLink({ ...row, submission: { content: urlData.url } }))) continue;
+          const existing = rows[0];
 
           // Extract shortCode for Instagram, mediaId for TikTok
           const shortCode = urlData.platform === 'Instagram' ? extractInstagramShortcode(urlData.url) : null;

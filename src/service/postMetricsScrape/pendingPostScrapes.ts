@@ -1,5 +1,5 @@
 import { prisma } from '@/src/prisma/prisma';
-import type { ScrapeFailure } from './postMetricsScrapeService';
+import { isCurrentLink, type ScrapeFailure } from './postMetricsScrapeService';
 
 /**
  * A status older than this is treated as stuck (for example, the worker
@@ -52,7 +52,10 @@ export interface FailedPostScrape {
   failure: ScrapeFailure | null;
 }
 
-/** Links of a campaign whose scrape FAILED, with the reason and any counters it did get. */
+/**
+ * Links of a campaign whose scrape FAILED, with the reason and any counters it did get.
+ * A replaced link keeps its FAILED row, so only links the submission still names are returned.
+ */
 export async function getFailedPostScrapes(campaignId: string): Promise<FailedPostScrape[]> {
   const rows = await prisma.submissionPostingUrl.findMany({
     where: { campaignId, metricsScrapeStatus: 'FAILED', submission: { status: 'POSTED' } },
@@ -61,12 +64,15 @@ export async function getFailedPostScrapes(campaignId: string): Promise<FailedPo
       submissionId: true,
       postUrl: true,
       platform: true,
+      shortCode: true,
+      mediaId: true,
       thumbnailUrl: true,
       metricsScrapeFailure: true,
+      submission: { select: { content: true } },
     },
   });
 
-  return rows.map((row) => ({
+  return rows.filter(isCurrentLink).map((row) => ({
     postingUrlId: row.id,
     submissionId: row.submissionId,
     postUrl: row.postUrl,
