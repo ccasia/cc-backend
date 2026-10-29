@@ -205,7 +205,8 @@ async function writeSnapshot(
     daysSincePost: snapshotDate.diff(postDate, 'day'),
     capturedAt,
     ...metrics,
-    reach: metrics.views,
+    // A scrape cannot see reach; 0 keeps it out of the campaign's reach total.
+    reach: 0,
     engagementRate: scrapedEngagementRate(metrics),
     rawMetrics,
     source: 'brightdata',
