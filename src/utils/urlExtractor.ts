@@ -140,18 +140,18 @@ function extractInstagramData(url: string): ExtractedUrlData {
 }
 
 /**
- * Extract TikTok video data
- * Handles short links (vm.tiktok.com, vt.tiktok.com) by following redirects
+ * Extract TikTok video or photo post data
+ * Handles short links (vm.tiktok.com, vt.tiktok.com, tiktok.com/t/) by following redirects
  */
 async function extractTikTokData(url: string): Promise<ExtractedUrlData> {
-  // TikTok video ID regex: /video/1234567890
-  const videoMatch = url.match(/\/video\/(\d+)/);
+  // TikTok post ID regex: /video/1234567890 or /photo/1234567890
+  const videoMatch = url.match(/\/(?:video|photo)\/(\d+)/);
 
   if (videoMatch) {
     const mediaId = videoMatch[1];
 
     // Extract username if present: /@username/video/ID
-    const usernameMatch = url.match(/\/@([a-zA-Z0-9_.]+)\/video\/\d+/);
+    const usernameMatch = url.match(/\/@([a-zA-Z0-9_.]+)\/(?:video|photo)\/\d+/);
     const username = usernameMatch?.[1];
 
     return {
@@ -164,20 +164,21 @@ async function extractTikTokData(url: string): Promise<ExtractedUrlData> {
     };
   }
 
-  // Check for short links (vm.tiktok.com, vt.tiktok.com)
-  if (url.includes('vm.tiktok.com') || url.includes('vt.tiktok.com')) {
+  // Check for short links (vm.tiktok.com, vt.tiktok.com, tiktok.com/t/)
+  const shortLinkMatch = url.match(/(?:(?:vm|vt)\.tiktok\.com|tiktok\.com\/t)\/([A-Za-z0-9_-]+)/);
+  if (shortLinkMatch) {
     // Extract short code from URL (e.g., ZS5NQoDLq from https://vt.tiktok.com/ZS5NQoDLq/)
-    const shortCode = url.match(/(?:vm|vt)\.tiktok\.com\/([A-Za-z0-9]+)/)?.[1];
+    const shortCode = shortLinkMatch[1];
 
     try {
       console.log(`🔄 Resolving TikTok short URL: ${url}`);
       const resolved = await resolveShortUrl(url);
       console.log(`✅ Resolved to: ${resolved}`);
 
-      const videoMatch = resolved.match(/\/video\/(\d+)/);
+      const videoMatch = resolved.match(/\/(?:video|photo)\/(\d+)/);
       if (videoMatch) {
         const mediaId = videoMatch[1];
-        const usernameMatch = resolved.match(/\/@([a-zA-Z0-9_.]+)\/video\/\d+/);
+        const usernameMatch = resolved.match(/\/@([a-zA-Z0-9_.]+)\/(?:video|photo)\/\d+/);
         const username = usernameMatch?.[1];
 
         return {

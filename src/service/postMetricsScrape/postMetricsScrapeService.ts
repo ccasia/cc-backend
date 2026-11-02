@@ -459,6 +459,9 @@ export async function completeFailedScrape(
   if (row.metricsScrapeStatus !== 'FAILED') {
     return { ok: false, status: 409, message: 'Only a failed scrape can be completed by hand' };
   }
+  if (!isCurrentLink(row)) {
+    return { ok: false, status: 409, message: 'The creator replaced this link. Refresh the page to see the new one.' };
+  }
 
   const isInstagram = row.platform !== 'TikTok';
   const partial = (row.metricsScrapeFailure as ScrapeFailure | null)?.partial ?? null;
