@@ -26,6 +26,8 @@ export interface ClientHomeCampaign {
   shortlist: { confirmed: number; total: number };
   submissions: { received: number; approved: number };
   posting: { posted: number; total: number };
+  /** One epoch-ms time per posted deliverable, so the client can count posts in any date range. */
+  postedAt: number[];
 }
 
 export interface ClientHomeTask {
