@@ -2,6 +2,7 @@ import {
   getLatestCampaignPostEngagement,
   type LatestPostEngagementSnapshot,
 } from '@services/postEngagementSnapshotService';
+import { linkMatchesPostingUrl } from '@services/submissionUrlService';
 import { prisma } from '@/src/prisma/prisma';
 
 type ReportPlatform = 'Instagram' | 'TikTok';
@@ -56,9 +57,7 @@ export async function getStoredPostInsight(platform: ReportPlatform, userId: str
     getLatestCampaignPostEngagement(campaignId),
   ]);
 
-  const posting = postingUrls.find((row) =>
-    [row.postUrl, row.shortCode, row.mediaId].some((value) => !!value && url.includes(value)),
-  );
+  const posting = postingUrls.find((row) => linkMatchesPostingUrl(row, url));
   const platformSnapshots = snapshots.filter((snapshot) => snapshot.platform === platform);
   const snapshot = posting && platformSnapshots.find((item) => item.postUrl === posting.postUrl);
   if (!snapshot) return null;
@@ -91,13 +90,25 @@ export async function getStoredPostInsight(platform: ReportPlatform, userId: str
   };
 }
 
-/** Submissions with at least one stored metrics snapshot, from a scrape or the API. */
-export async function findSubmissionsWithStoredMetrics(submissionIds: string[]): Promise<Set<string>> {
+/** One key per submission post: a submission can have an Instagram and a TikTok post. */
+export const storedMetricKey = (submissionId: string, platform: string): string =>
+  `${submissionId}:${platform.toLowerCase()}`;
+
+/** `storedMetricKey`s of the posts with at least one stored metrics snapshot, from a scrape or the API. */
+export async function findPostsWithStoredMetrics(submissionIds: string[]): Promise<Set<string>> {
   if (submissionIds.length === 0) return new Set();
   const where = { submissionId: { in: submissionIds } };
   const [daily, milestone] = await Promise.all([
-    prisma.dailyPostEngagementSnapshot.findMany({ where, distinct: ['submissionId'], select: { submissionId: true } }),
-    prisma.postEngagementSnapshot.findMany({ where, distinct: ['submissionId'], select: { submissionId: true } }),
+    prisma.dailyPostEngagementSnapshot.findMany({
+      where,
+      distinct: ['submissionId', 'platform'],
+      select: { submissionId: true, platform: true },
+    }),
+    prisma.postEngagementSnapshot.findMany({
+      where,
+      distinct: ['submissionId', 'platform'],
+      select: { submissionId: true, platform: true },
+    }),
   ]);
-  return new Set([...daily, ...milestone].map((row) => row.submissionId));
+  return new Set([...daily, ...milestone].map((row) => storedMetricKey(row.submissionId, row.platform)));
 }

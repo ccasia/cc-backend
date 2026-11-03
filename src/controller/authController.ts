@@ -2360,7 +2360,8 @@ export const mobileTokenRefresh = async (req: Request, res: Response) => {
 };
 
 export const checkEmailExistence = async (req: Request<{}, {}, {}, { email: string }>, res: Response) => {
-  const email = req.query.email;
+  // const email = req.query.email;
+  const { email } = req.query;
 
   if (!email) return res.status(400).json({ message: 'Email is required', success: false });
 

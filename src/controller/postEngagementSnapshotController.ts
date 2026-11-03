@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '@/src/prisma/prisma';
 import { getFailedPostScrapes, getPendingPostScrapes } from '@services/postMetricsScrape/pendingPostScrapes';
 import { completeFailedScrape, type PostScrapeStore } from '@services/postMetricsScrape/postMetricsScrapeService';
+import { resolveCampaignPostUrl } from '@services/submissionUrlService';
 import {
   getPostEngagementSnapshots,
   captureManualSnapshot,
@@ -142,8 +143,9 @@ export const getPostDailyTrendByUrl = async (req: Request, res: Response) => {
     }
 
     const parsedDays = days ? parseInt(days as string, 10) : undefined;
+    const storedPostUrl = await resolveCampaignPostUrl(req.params.campaignId, postUrl);
 
-    const trend = await getPostEngagementTrendByUrl(postUrl, {
+    const trend = await getPostEngagementTrendByUrl(storedPostUrl, {
       days: parsedDays && !Number.isNaN(parsedDays) ? parsedDays : undefined,
     });
 

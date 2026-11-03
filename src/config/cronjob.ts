@@ -15,9 +15,11 @@ import {
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
 import { emitter } from './socketEmitter';
+import { queueDailyPostScrapes } from '@services/postMetricsScrape/dailyPostScrapes';
 import { snapshotLeaderboard } from '../modules/gamification';
 import { publishDueReleaseNotes } from '@modules/release-note';
 import { syncLatestVersionsFromStores } from '@modules/app-version';
+import { sendArchetypeQuizPushForToday } from '@modules/archetype-quiz';
 import { reconcileStuckLogistics } from '../service/logisticsService';
 import { prisma } from '@/src/prisma/prisma';
 
@@ -245,6 +247,30 @@ new CronJob(
   'Asia/Kuala_Lumpur',
 );
 
+// Daily Bright Data scrape - runs at 12 AM Asia/Kuala_Lumpur time
+// Scrapes posts of creators with no connected account until their campaign period ends
+new CronJob(
+  '0 0 * * *', // 12:00 AM daily
+  async function () {
+    console.log('[Cronjob] Starting daily post scrape at', dayjs().tz('Asia/Kuala_Lumpur').format());
+
+    try {
+      const result = await queueDailyPostScrapes();
+
+      console.log('[Cronjob] Daily post scrape queued:', {
+        evaluated: result.evaluated,
+        queued: result.queued,
+        timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+      });
+    } catch (error) {
+      console.error('[Cronjob] Daily post scrape failed:', error);
+    }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur',
+);
+
 new CronJob(
   '0 1 * * *',
   async function () {
@@ -345,6 +371,30 @@ new CronJob(
     const result = await syncLatestVersionsFromStores();
     if (result.ios === 'updated' || result.android === 'updated') {
       console.log('[Cronjob] App store version sync:', result);
+    }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur',
+);
+
+new CronJob(
+  // Each quiz push has its own MYT send time, so check every minute. A run after a missed time
+  // catches up for a few hours; the push log makes sure each day sends only once.
+  '* * * * *',
+  async function () {
+    try {
+      const result = await sendArchetypeQuizPushForToday();
+
+      if (result.sent) {
+        console.log('[Cronjob] Archetype quiz push sent:', {
+          date: result.date,
+          recipients: result.recipients,
+          timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+        });
+      }
+    } catch (error) {
+      console.error('[Cronjob] Archetype quiz push failed:', error);
     }
   },
   null, // onComplete

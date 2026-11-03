@@ -5,6 +5,7 @@ import { batchFetchInsights, BatchInsightResult } from './socialMediaBatchServic
 import { getMetricValue } from '@utils/insightNormalizationHelper';
 import { onPostSnapshot } from '@/src/modules/gamification';
 import { prisma } from '@/src/prisma/prisma';
+import { savePublishedDates } from '@utils/platformPublishedAt';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -264,7 +265,8 @@ function extractMetrics(
   let comments = getMetricValue(metrics, ['comments', 'comment_count']);
   let shares = getMetricValue(metrics, ['shares', 'share_count']);
   let saved = platform === 'Instagram' ? getMetricValue(metrics, ['saved']) : 0;
-  let reach = platform === 'Instagram' ? getMetricValue(metrics, ['reach']) : views;
+  // TikTok has no reach metric; 0 keeps its views out of the campaign's reach total.
+  let reach = platform === 'Instagram' ? getMetricValue(metrics, ['reach']) : 0;
 
   let engagementRate = 0;
   if (platform === 'Instagram') {
@@ -281,7 +283,7 @@ function extractMetrics(
     comments = insight.video?.comment_count || 0;
     shares = insight.video?.share_count || 0;
     saved = 0;
-    reach = views;
+    reach = 0;
   }
 
   return {
@@ -466,6 +468,7 @@ export async function storeDailyPostEngagementResults(
           rawMetrics: result.insight,
         },
         update: {
+          postDate: postDate.toDate(),
           daysSincePost: snapshotStart.diff(postDate, 'day'),
           capturedAt: new Date(),
           views: metrics.views,
@@ -647,9 +650,6 @@ export async function captureDailyPostEngagementForUrl(
   const snapshotStart = dayjs(snapshotDate ?? new Date())
     .tz('Asia/Kuala_Lumpur')
     .startOf('day');
-  const postDate = dayjs(postingUrl.postingDate).tz('Asia/Kuala_Lumpur').startOf('day');
-  const daysSincePost = snapshotStart.diff(postDate, 'day');
-
   const results = await batchFetchInsights({
     platform,
     requests: [
@@ -668,6 +668,9 @@ export async function captureDailyPostEngagementForUrl(
     throw new Error(`Failed to fetch insights for ${postUrl}: ${results[0]?.error ?? 'no result'}`);
   }
 
+  await savePublishedDates(prisma.submissionPostingUrl, [postingUrl], results);
+  const postDate = dayjs(postingUrl.postingDate).tz('Asia/Kuala_Lumpur').startOf('day');
+  const daysSincePost = snapshotStart.diff(postDate, 'day');
   const metrics = extractMetrics(results[0].insight, platform);
 
   await prisma.dailyPostEngagementSnapshot.upsert({
@@ -697,6 +700,7 @@ export async function captureDailyPostEngagementForUrl(
       rawMetrics: results[0].insight,
     },
     update: {
+      postDate: postDate.toDate(),
       daysSincePost,
       capturedAt: new Date(),
       views: metrics.views,
@@ -833,6 +837,8 @@ export interface LatestPostEngagementSnapshot {
   source?: string;
   /** Our bucket's copy of the post thumbnail, saved when the post was scraped. */
   thumbnailUrl?: string | null;
+  /** The TikTok short-link code. The submission keeps the short link; `postUrl` is the resolved link. */
+  shortCode?: string | null;
 }
 
 /**
@@ -841,7 +847,7 @@ export interface LatestPostEngagementSnapshot {
  * older posts that are outside the daily capture window.
  */
 export async function getLatestCampaignPostEngagement(campaignId: string): Promise<LatestPostEngagementSnapshot[]> {
-  const [dailySnapshots, milestoneSnapshots, thumbnails] = await Promise.all([
+  const [dailySnapshots, milestoneSnapshots, postingUrls] = await Promise.all([
     prisma.dailyPostEngagementSnapshot.findMany({
       where: { campaignId },
       orderBy: { snapshotDate: 'desc' },
@@ -853,11 +859,11 @@ export async function getLatestCampaignPostEngagement(campaignId: string): Promi
       distinct: ['postUrl'],
     }),
     prisma.submissionPostingUrl.findMany({
-      where: { campaignId, thumbnailUrl: { not: null } },
-      select: { postUrl: true, thumbnailUrl: true },
+      where: { campaignId },
+      select: { postUrl: true, thumbnailUrl: true, shortCode: true },
     }),
   ]);
-  const thumbnailByPost = new Map(thumbnails.map((row) => [row.postUrl, row.thumbnailUrl]));
+  const postingUrlByPost = new Map(postingUrls.map((row) => [row.postUrl, row]));
 
   const latestByPost = new Map<string, LatestPostEngagementSnapshot>();
 
@@ -905,7 +911,8 @@ export async function getLatestCampaignPostEngagement(campaignId: string): Promi
 
   return Array.from(latestByPost.values(), (snapshot) => ({
     ...snapshot,
-    thumbnailUrl: thumbnailByPost.get(snapshot.postUrl) ?? null,
+    thumbnailUrl: postingUrlByPost.get(snapshot.postUrl)?.thumbnailUrl ?? null,
+    shortCode: postingUrlByPost.get(snapshot.postUrl)?.shortCode ?? null,
   }));
 }
 

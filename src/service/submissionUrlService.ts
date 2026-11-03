@@ -89,10 +89,10 @@ export async function extractAndStoreSubmissionUrls(
           mediaId: finalMediaId,
           postingDate: new Date(), // Assume posted if URL exists
         },
+        // postingDate is not reset here: a post scrape replaces it with the platform's real publish date.
         update: {
           shortCode: extracted.shortCode,
           mediaId: finalMediaId,
-          postingDate: new Date(),
           updatedAt: new Date(),
         },
       });
@@ -111,6 +111,26 @@ export async function extractAndStoreSubmissionUrls(
     failed: failedCount,
     invalid: invalidUrls.length,
   };
+}
+
+/** A link names a stored posting URL when it contains the URL, its short code or its media ID. */
+export const linkMatchesPostingUrl = (
+  row: { postUrl: string; shortCode: string | null; mediaId: string | null },
+  link: string,
+): boolean => [row.postUrl, row.shortCode, row.mediaId].some((value) => !!value && link.includes(value));
+
+/**
+ * The postUrl a campaign link is stored under. Short links are stored
+ * resolved and query strings are removed, so a raw link from submission
+ * content can differ from the key its snapshots use.
+ */
+export async function resolveCampaignPostUrl(campaignId: string, link: string): Promise<string> {
+  const rows = await prisma.submissionPostingUrl.findMany({
+    where: { campaignId },
+    select: { postUrl: true, shortCode: true, mediaId: true },
+  });
+  const match = rows.find((row) => row.postUrl === link) ?? rows.find((row) => linkMatchesPostingUrl(row, link));
+  return match?.postUrl ?? link;
 }
 
 /**

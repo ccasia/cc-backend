@@ -37,8 +37,11 @@ type FeaturedRecord = Prisma.VideoOfTheMonthGetPayload<{ include: typeof feature
 
 const resolveVideoUrl = (record: FeaturedRecord): string | null => {
   const videos = record.submission.video ?? [];
-  if (videos.length === 0) return null;
+
+  if (!videos.length) return null;
+
   const index = record.videoIndex >= 0 && record.videoIndex < videos.length ? record.videoIndex : 0;
+
   return videos[index]?.url ?? videos[0]?.url ?? null;
 };
 
@@ -146,7 +149,8 @@ export const createFeaturedVideo = async (input: CreateFeaturedInput) => {
   }
 
   const videos = submission.video ?? [];
-  if (videos.length === 0) {
+
+  if (!videos.length) {
     throw new Error('SUBMISSION_HAS_NO_VIDEO');
   }
 
@@ -209,6 +213,7 @@ export const generateFeaturedVideoThumbnail = async (id: string) => {
   if (!record) throw new Error('FEATURED_VIDEO_NOT_FOUND');
 
   const videoUrl = resolveVideoUrl(record);
+
   if (!videoUrl) throw new Error('SUBMISSION_HAS_NO_VIDEO');
 
   const thumbnailUrl = await createVideoOfTheMonthThumbnail(videoUrl, record.id);

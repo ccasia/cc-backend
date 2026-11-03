@@ -79,15 +79,15 @@ worker.on('failed', (job, error) => {
 /** Longest a live scrape can run: the post job, then a Reels discovery, plus slack for writes. */
 const POST_SCRAPE_MAX_RUN_MS = (postPollTimeoutSeconds() + config.pollTimeoutSeconds) * 1000 + 5 * 60_000;
 
-/** Links this process is scraping, so a shutdown can mark them FAILED. */
-const activePostScrapes = new Set<string>();
+/** Links this process is scraping, by job, so a shutdown can mark them FAILED. Yesterday's and today's run can overlap. */
+const activePostScrapes = new Map<string, string>();
 
-/** One Bright Data scrape per approved post, for creators with no connected account. */
+/** One Bright Data scrape per approved post per day, for creators with no connected account. */
 const postScrapeWorker = new Worker(
   'post-metrics-scrape-queue',
   async (job) => {
     const { postingUrlId, campaignId, submissionId } = job.data as PostScrapeJobData;
-    activePostScrapes.add(postingUrlId);
+    activePostScrapes.set(job.id!, postingUrlId);
     const outcome = await scrapePostMetrics(postingUrlId, {
       store: prisma as never,
       gateway: deps.gateway,
@@ -95,7 +95,7 @@ const postScrapeWorker = new Worker(
       discoveryPollTimeoutMs: config.pollTimeoutSeconds * 1000,
       log: (message, context) => console.log(`[post-scrape] ${message}`, context ?? ''),
       cacheThumbnail: cacheDiscoveryThumbnail,
-    }).finally(() => activePostScrapes.delete(postingUrlId));
+    }).finally(() => activePostScrapes.delete(job.id!));
     console.log(`[post-scrape] ${postingUrlId}: ${outcome}`);
     // A stalled job restarted after its worker died. Its claim belongs to that dead run.
     if (outcome === 'SKIPPED_ALREADY_SCRAPED' && job.attemptsStarted > 1) {
@@ -223,8 +223,8 @@ const shutdown = async (signal: string): Promise<void> => {
   console.log(`[engagement-worker] ${signal} received, closing`);
   // A scrape can run 10 minutes, longer than any stop grace period. Its result is lost either way.
   if (activePostScrapes.size > 0) {
-    await failInterruptedScrapes(prisma as never, { ids: [...activePostScrapes] }).catch((error: Error) =>
-      console.error('[post-scrape] could not mark interrupted scrapes FAILED:', error.message),
+    await failInterruptedScrapes(prisma as never, { ids: [...new Set(activePostScrapes.values())] }).catch(
+      (error: Error) => console.error('[post-scrape] could not mark interrupted scrapes FAILED:', error.message),
     );
   }
   await Promise.all([worker.close(), postScrapeWorker.close(), postingLinkApprovedWorker.close()]);

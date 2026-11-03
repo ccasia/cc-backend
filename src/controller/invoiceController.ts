@@ -1,5 +1,5 @@
-import { XeroClient, Contact, LineItem, Invoice, Phone } from 'xero-node';
-import jwt, { Secret } from 'jsonwebtoken';
+import { Contact, LineItem, Invoice, Phone } from 'xero-node';
+import jwt from 'jsonwebtoken';
 
 import { Request, Response } from 'express';
 
@@ -26,17 +26,11 @@ import fs from 'fs-extra';
 import path from 'path';
 import { randomUUID } from 'crypto';
 
-import {
-  createInvoiceService,
-  generateUniqueInvoiceNumber,
-  rejectInvoice,
-  sendToSpreadSheet,
-} from '@services/invoiceService';
+import { createInvoiceService, generateUniqueInvoiceNumber, rejectInvoice } from '@services/invoiceService';
 import dayjs from 'dayjs';
 import { getCreatorInvoiceLists } from '@services/submissionService';
 import { missingInvoices } from '@constants/missing-invoices';
-import { creatorAgreements } from './campaignController';
-import { bulkInvoiceQueue, enqueueInvoiceApproval } from '@utils/queue';
+import { bulkInvoiceQueue, enqueueInvoiceApproval, invoiceQueue } from '@utils/queue';
 import { APPROVABLE_INVOICE_STATUSES, BILLED_INVOICE_STATUSES } from '@utils/xeroInvoice';
 import { xero } from '@configs/xero';
 import { getFreshXeroTokenSet } from '@services/xeroClientService';
@@ -1449,6 +1443,43 @@ export const updateInvoice = async (req: Request, res: Response) => {
       });
 
       getIo().to(invoice.creatorId).emit('notification', creatorNotification);
+    }
+
+    const creatorUser = invoice.creator.user;
+    const creatorPaymentForm = creatorUser?.paymentForm;
+    const agreement = invoice.creator.user.creatorAgreement.find(
+      (item) => item.campaignId === campaignId && item.round === 1,
+    );
+
+    if (status === 'approved') {
+      await prisma.invoice.update({
+        where: { id: invoiceId },
+        data: { status: 'processing' },
+      });
+
+      await invoiceQueue.add(
+        'invoice-queue',
+        {
+          invoice,
+          invoiceId,
+          dueDate,
+          status,
+          invoiceFrom,
+          invoiceTo,
+          items,
+          totalAmount,
+          campaignId,
+          bankInfo,
+          newContact,
+          reason,
+          adminId: req.userId,
+          invoiceAttachment,
+        },
+        {
+          jobId: `invoice-${invoiceId}`,
+          removeOnComplete: true,
+        },
+      );
     }
 
     return res.status(200).json(invoice);

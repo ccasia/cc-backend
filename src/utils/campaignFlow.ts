@@ -53,3 +53,12 @@ export const campaignHasClient = (campaign: CampaignFlowInput): boolean =>
  */
 export const getEffectiveCampaignOrigin = (campaign: CampaignFlowInput): 'CLIENT' | 'ADMIN' =>
   campaignHasClient(campaign) ? 'CLIENT' : 'ADMIN';
+
+interface ManagerUserLike {
+  role?: string | null;
+  client?: unknown;
+}
+
+/** Whether a resolved campaign-manager user is a client user (client role or a Client profile). */
+export const isClientUser = (user?: ManagerUserLike | null): boolean =>
+  user?.role === 'client' || Boolean(user?.client);
