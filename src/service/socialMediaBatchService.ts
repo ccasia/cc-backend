@@ -1,11 +1,13 @@
 import { decryptToken, encryptToken } from '@helper/encrypt';
 import {
   getInstagramMedias,
+  getInstagramMediaTimestamp,
   getMediaInsight,
   refreshInstagramToken,
   refreshTikTokToken,
   getTikTokVideoById,
 } from '@services/socialMediaService';
+import { instagramPublishedAt, tiktokPublishedAt } from '@utils/platformPublishedAt';
 import axios from 'axios';
 import dayjs from 'dayjs';
 import { prisma } from '@/src/prisma/prisma';
@@ -28,7 +30,10 @@ export interface BatchInsightResult {
   userId: string;
   platform: 'Instagram' | 'TikTok';
   insight: any;
+  /** When this result was fetched. */
   timestamp: Date;
+  /** When the post went live on the platform. Null when the platform did not say. */
+  publishedAt?: Date | null;
   error?: string;
 }
 
@@ -76,6 +81,7 @@ export async function batchFetchInsights(config: BatchRequestConfig): Promise<Ba
           platform,
           insight: result.value,
           timestamp: new Date(),
+          publishedAt: result.value.publishedAt ?? null,
         });
         console.log(`✅ [${i + j + 1}/${requests.length}] ${platform} insight fetched for user ${request.userId}`);
       } else {
@@ -140,11 +146,13 @@ async function fetchInstagramInsight(req: {
 
     // 3. Get media ID from shortCode if needed
     let mediaId = req.mediaId;
+    let rawTimestamp: unknown;
     if (!mediaId && req.shortCode) {
       const instagramUser = creator.instagramUser;
       const { videos } = await getInstagramMedias(accessToken, instagramUser.media_count || 100);
       const video = videos.find((v: any) => v.shortcode === req.shortCode);
       mediaId = video?.id;
+      rawTimestamp = video?.timestamp;
 
       if (!mediaId) {
         throw new Error(`Could not find media for shortcode ${req.shortCode}`);
@@ -158,10 +166,19 @@ async function fetchInstagramInsight(req: {
     // 4. Fetch insight metrics
     const insight = await getMediaInsight(accessToken, mediaId);
 
+    // A missing publish date only keeps the stored one. It never fails the metrics.
+    if (rawTimestamp === undefined) {
+      rawTimestamp = await getInstagramMediaTimestamp(accessToken, mediaId).catch((error) => {
+        console.warn(`Instagram publish date not read for mediaId ${mediaId}:`, error?.message);
+        return null;
+      });
+    }
+
     return {
       mediaId,
       shortCode: req.shortCode,
       metrics: insight,
+      publishedAt: instagramPublishedAt(rawTimestamp),
     };
   } catch (error: any) {
     console.error(`Instagram fetch error for user ${req.userId}, mediaId ${req.mediaId}:`, error.message);
@@ -214,6 +231,7 @@ async function fetchTikTokInsight(req: { mediaId?: string; userId: string; campa
         share_count: videoObj.share_count || 0,
         download_count: videoObj.download_count || 0,
       },
+      publishedAt: tiktokPublishedAt(videoObj.create_time),
     };
   } catch (error: any) {
     console.error(`TikTok fetch error for user ${req.userId}, mediaId ${req.mediaId}:`, error.message);

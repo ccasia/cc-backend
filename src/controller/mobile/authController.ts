@@ -67,6 +67,7 @@ export const login = async (
           mode: 'insensitive',
           equals: email,
         },
+        role: 'creator',
       },
     });
 

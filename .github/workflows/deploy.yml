@@ -63,6 +63,10 @@ jobs:
                   username: ${{ secrets.GCP_SERVER_USER }}
                   key: ${{ secrets.GCP_SERVER_SSH_KEY }}
                   script: |
+                      # Stop at the first failing command so a failed pull (e.g. disk full)
+                      # fails the job instead of leaving the old container running behind a green run.
+                      set -e
+
                       IMAGE_URI=asia-southeast1-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/cc-backend/cc-backend
                       gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
 
@@ -76,6 +80,10 @@ jobs:
                       # Recreate just the cc-backend service with the new image.
                       # Other containers on the same network are untouched.
                       docker compose up -d cc-backend
+
+                      # Pulling :latest leaves the previous image untagged; remove those so the disk doesn't fill up.
+                      # A failed cleanup shouldn't fail an otherwise successful deploy.
+                      docker image prune -f || true
 
             - name: Send message to Lark
               uses: Nghi-NV/lark-message-action@v1

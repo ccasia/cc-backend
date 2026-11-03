@@ -44,18 +44,22 @@ import {
   handleKanbanSubmission,
   handleSubmissionNotification,
 } from '@services/submissionService';
-import { findSubmissionsWithStoredMetrics } from '@services/storedPostInsightService';
+import { findPostsWithStoredMetrics, storedMetricKey } from '@services/storedPostInsightService';
+import { currentPostingDate } from '@utils/platformPublishedAt';
 import { getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
 
-const INSTAGRAM_POST_REGEX = /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|reel|tv)\/[A-Za-z0-9_-]+/i;
-const TIKTOK_POST_REGEX = /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[^/]+\/(?:video|photo)\/\d+/i;
-const TIKTOK_MOBILE_REGEX = /(?:https?:\/\/)?(?:vt|vm|m)\.tiktok\.com\/[A-Za-z0-9_-]+/i;
+type ReportPlatform = 'Instagram' | 'TikTok';
 
-type ReportPlatform = 'Instagram' | 'TikTok' | null;
+// Creators can paste text around the link, so a match runs to the next space
+const REPORT_LINK_REGEX: Record<ReportPlatform, RegExp> = {
+  Instagram: /(?:https?:\/\/)?(?:[\w-]+\.)?instagram\.com\/(?:p|reel|tv)\/[\w-]+\S*/i,
+  TikTok:
+    /(?:https?:\/\/)?(?:[\w-]+\.)?(?:tiktok\.com\/@[^/\s]+\/(?:video|photo)\/\d+|(?:vt|vm|m)\.tiktok\.com\/[\w-]+)\S*/i,
+};
 
 const emitAgreementSubmissionUpdated = ({
   submissionId,
@@ -146,17 +150,13 @@ const emitV2SubmissionUpdated = ({
   }
 };
 
-const getSubmissionReportPlatform = (content?: string | null): ReportPlatform => {
-  if (!content) return null;
-
-  const isInstagramPost = INSTAGRAM_POST_REGEX.test(content);
-  const isTiktokPost = TIKTOK_POST_REGEX.test(content) || TIKTOK_MOBILE_REGEX.test(content);
-
-  if (!isInstagramPost && !isTiktokPost) return null;
-
-  // Keep existing table behavior where Instagram takes precedence if both exist in content.
-  return isInstagramPost ? 'Instagram' : 'TikTok';
-};
+/** The first post link of each platform in the submission. Each one is its own report row. */
+const getReportLinks = (content: string): { platform: ReportPlatform; postUrl: string }[] =>
+  (Object.keys(REPORT_LINK_REGEX) as ReportPlatform[]).flatMap((platform) => {
+    const match = content.match(REPORT_LINK_REGEX[platform])?.[0];
+    if (!match) return [];
+    return [{ platform, postUrl: /^https?:\/\//i.test(match) ? match : `https://${match}` }];
+  });
 
 /**
  * Extract URLs and schedule initial insight fetch for a submission (non-blocking background task)
@@ -888,7 +888,10 @@ async function getReportSubmissions(scope: Prisma.SubmissionWhereInput) {
       content: true,
       updatedAt: true,
       campaignId: true,
-      submissionPostingUrls: { select: { postingDate: true }, orderBy: { createdAt: 'asc' } },
+      submissionPostingUrls: {
+        select: { platform: true, postUrl: true, shortCode: true, mediaId: true, postingDate: true },
+        orderBy: { createdAt: 'asc' },
+      },
       video: { select: { url: true }, take: 1 },
       user: {
         select: {
@@ -918,30 +921,34 @@ async function getReportSubmissions(scope: Prisma.SubmissionWhereInput) {
     },
   });
 
-  const reportable = submissions
-    .map((submission) => ({ ...submission, reportPlatform: getSubmissionReportPlatform(submission.content) }))
-    .filter((submission) => submission.reportPlatform);
+  // A submission with an Instagram and a TikTok link gives one entry per platform
+  const reportable = submissions.flatMap((submission) =>
+    getReportLinks(submission.content ?? '').map((link) => ({ submission, ...link })),
+  );
 
-  const [tokenValidity, storedMetricIds] = await Promise.all([
-    readStoredTokenValidity([...new Set(reportable.map((submission) => submission.user.id))]),
-    findSubmissionsWithStoredMetrics(reportable.map((submission) => submission.id)),
+  const [tokenValidity, storedMetricPosts] = await Promise.all([
+    readStoredTokenValidity([...new Set(reportable.map(({ submission }) => submission.user.id))]),
+    findPostsWithStoredMetrics([...new Set(reportable.map(({ submission }) => submission.id))]),
   ]);
 
   return reportable
-    .map(({ submissionPostingUrls, video, ...submission }) => {
-      const isInstagram = submission.reportPlatform === 'Instagram';
+    .map(({ submission: { submissionPostingUrls, video, ...submission }, platform, postUrl }) => {
+      const isInstagram = platform === 'Instagram';
       const validity = tokenValidity.get(submission.user.id);
+      const platformUrls = submissionPostingUrls.filter((url) => url.platform === platform);
       return {
         ...submission,
+        reportPlatform: platform,
+        postUrl,
         userId: submission.user.id,
         // When the post went live, not when the submission row last changed
-        postingDate: submissionPostingUrls.find((url) => url.postingDate)?.postingDate ?? null,
+        postingDate: currentPostingDate(platformUrls, submission.content),
         video: video[0]?.url || null,
         isInstagramConnected: submission.user.creator?.isFacebookConnected || false,
         isTiktokConnected: submission.user.creator?.isTiktokConnected || false,
         isInstagramTokenValid: isInstagram ? !!validity?.instagram : null,
         isTiktokTokenValid: isInstagram ? null : !!validity?.tiktok,
-        hasStoredMetrics: storedMetricIds.has(submission.id),
+        hasStoredMetrics: storedMetricPosts.has(storedMetricKey(submission.id, platform)),
       };
     })
     .filter(

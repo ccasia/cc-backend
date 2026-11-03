@@ -283,118 +283,77 @@ export async function getEngagementHeatmap(campaignId: string, platform: string,
     manualEntriesByDate.get(dateKey)!.push(entry);
   });
 
-  // Transform snapshots into date-keyed map
-  const snapshotByDate = new Map<string, any>();
+  // Snapshots are stored per platform, so 'All' has one per platform each day
+  const snapshotsByDate = new Map<string, any[]>();
   snapshots.forEach((snapshot) => {
     const dateKey = dayjs(snapshot.snapshotDate).startOf('day').toISOString();
-    snapshotByDate.set(dateKey, snapshot);
+    if (!snapshotsByDate.has(dateKey)) {
+      snapshotsByDate.set(dateKey, []);
+    }
+    snapshotsByDate.get(dateKey)!.push(snapshot);
   });
 
   // Combine snapshot and manual entry data by date
-  const combinedDates = new Set([...Array.from(snapshotByDate.keys()), ...Array.from(manualEntriesByDate.keys())]);
+  const combinedDates = new Set([...Array.from(snapshotsByDate.keys()), ...Array.from(manualEntriesByDate.keys())]);
 
   const heatmapData = Array.from(combinedDates).map((dateKey) => {
-    const snapshot = snapshotByDate.get(dateKey);
-    const manualEntriesForDate = manualEntriesByDate.get(dateKey) || [];
+    const snapshotsForDate = snapshotsByDate.get(dateKey) || [];
+    // A snapshot already includes its platform's manual entries, so only add entries for
+    // platforms without a snapshot that day
+    const platformsWithSnapshot = new Set(snapshotsForDate.map((snapshot) => snapshot.platform));
+    const manualEntriesForDate = (manualEntriesByDate.get(dateKey) || []).filter(
+      (entry) => !platformsWithSnapshot.has(entry.platform),
+    );
 
-    // If we have both snapshot and manual entries, combine them
-    if (snapshot && manualEntriesForDate.length > 0) {
-      // Calculate totals from manual entries
-      const manualTotals = manualEntriesForDate.reduce(
+    // Each platform keeps its own rate: a snapshot's stored one, or one computed from the
+    // manual entries of a platform with no snapshot that day (no reach, so views stand in)
+    const platformRates = snapshotsForDate.map((snapshot) => ({
+      posts: snapshot.totalPosts,
+      views: snapshot.totalViews,
+      rate: snapshot.averageEngagementRate,
+    }));
+
+    const manualByPlatform = new Map<string, any[]>();
+    manualEntriesForDate.forEach((entry) => {
+      if (!manualByPlatform.has(entry.platform)) {
+        manualByPlatform.set(entry.platform, []);
+      }
+      manualByPlatform.get(entry.platform)!.push(entry);
+    });
+
+    manualByPlatform.forEach((entries, entryPlatform) => {
+      const totals = entries.reduce(
         (acc, entry) => ({
           views: acc.views + entry.views,
           likes: acc.likes + entry.likes,
+          comments: acc.comments + entry.comments,
           shares: acc.shares + entry.shares,
           saved: acc.saved + (entry.saved || 0),
         }),
-        { views: 0, likes: 0, shares: 0, saved: 0 },
+        { views: 0, likes: 0, comments: 0, shares: 0, saved: 0 },
       );
+      // Instagram counts saves, TikTok does not
+      const interactions =
+        totals.likes + totals.comments + totals.shares + (entryPlatform === 'Instagram' ? totals.saved : 0);
+      platformRates.push({
+        posts: entries.length,
+        views: totals.views,
+        rate: totals.views > 0 ? (interactions / totals.views) * 100 : 0,
+      });
+    });
 
-      // Combine with snapshot totals
-      const totalViews = snapshot.totalViews + manualTotals.views;
-      const totalLikes = snapshot.totalLikes + manualTotals.likes;
-      const totalShares = snapshot.totalShares + manualTotals.shares;
-      const totalSaved = snapshot.totalSaved + manualTotals.saved;
-      const totalPosts = snapshot.totalPosts + manualEntriesForDate.length;
+    // 'All' is the posts-weighted average of the platforms' rates, so Instagram reach never
+    // becomes the denominator for TikTok interactions
+    const totalPosts = platformRates.reduce((sum, item) => sum + item.posts, 0);
+    const totalViews = platformRates.reduce((sum, item) => sum + item.views, 0);
+    const engagementRate =
+      totalPosts > 0 ? platformRates.reduce((sum, item) => sum + item.rate * item.posts, 0) / totalPosts : 0;
 
-      // Calculate combined engagement rate
-      let engagementRate = snapshot.averageEngagementRate;
-      if (platform === 'Instagram') {
-        const denominator = snapshot.totalReach > 0 ? snapshot.totalReach : totalViews;
-        if (denominator > 0) {
-          engagementRate = ((totalLikes + snapshot.totalComments + totalShares + totalSaved) / denominator) * 100;
-        }
-      } else if (platform === 'TikTok') {
-        if (totalViews > 0) {
-          engagementRate = ((totalLikes + snapshot.totalComments + totalShares) / totalViews) * 100;
-        }
-      } else {
-        const denominator = snapshot.totalReach > 0 ? snapshot.totalReach : totalViews;
-        if (denominator > 0) {
-          engagementRate = ((totalLikes + snapshot.totalComments + totalShares + totalSaved) / denominator) * 100;
-        }
-      }
-
-      return {
-        date: new Date(dateKey),
-        engagementRate: parseFloat(engagementRate.toFixed(2)),
-        totalPosts,
-        totalViews,
-      };
-    }
-
-    // If we only have snapshot data
-    if (snapshot) {
-      return {
-        date: snapshot.snapshotDate,
-        engagementRate: snapshot.averageEngagementRate,
-        totalPosts: snapshot.totalPosts,
-        totalViews: snapshot.totalViews,
-      };
-    }
-
-    // If we only have manual entries for this date
-    if (manualEntriesForDate.length > 0) {
-      const manualTotals = manualEntriesForDate.reduce(
-        (acc, entry) => ({
-          views: acc.views + entry.views,
-          likes: acc.likes + entry.likes,
-          shares: acc.shares + entry.shares,
-          saved: acc.saved + (entry.saved || 0),
-        }),
-        { views: 0, likes: 0, shares: 0, saved: 0 },
-      );
-
-      // Calculate engagement rate for manual entries only
-      let engagementRate = 0;
-      if (platform === 'Instagram') {
-        if (manualTotals.views > 0) {
-          engagementRate = ((manualTotals.likes + manualTotals.shares + manualTotals.saved) / manualTotals.views) * 100;
-        }
-      } else if (platform === 'TikTok') {
-        if (manualTotals.views > 0) {
-          engagementRate = ((manualTotals.likes + manualTotals.shares) / manualTotals.views) * 100;
-        }
-      } else {
-        if (manualTotals.views > 0) {
-          engagementRate = ((manualTotals.likes + manualTotals.shares + manualTotals.saved) / manualTotals.views) * 100;
-        }
-      }
-
-      return {
-        date: new Date(dateKey),
-        engagementRate: parseFloat(engagementRate.toFixed(2)),
-        totalPosts: manualEntriesForDate.length,
-        totalViews: manualTotals.views,
-      };
-    }
-
-    // Fallback (shouldn't happen)
     return {
       date: new Date(dateKey),
-      engagementRate: 0,
-      totalPosts: 0,
-      totalViews: 0,
+      engagementRate: parseFloat(engagementRate.toFixed(2)),
+      totalPosts,
+      totalViews,
     };
   });
 
@@ -446,11 +405,13 @@ export async function getTopCreatorsTrend(campaignId: string, platform: string, 
         }
       });
 
-      // Remove duplicates (same creator might appear in multiple snapshots if fetched twice)
+      // Each creator once, by their best post. Snapshot lists are per post, and a creator can
+      // appear in both platforms' lists, so keep the higher views rather than whichever came first
       const uniqueCreators = new Map<string, any>();
       combinedCreators.forEach((creator) => {
         const key = `${creator.userId}-${creator.userName}`;
-        if (!uniqueCreators.has(key)) {
+        const current = uniqueCreators.get(key);
+        if (!current || (creator.views || 0) > (current.views || 0)) {
           uniqueCreators.set(key, creator);
         }
       });

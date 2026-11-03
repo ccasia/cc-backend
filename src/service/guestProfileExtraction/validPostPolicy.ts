@@ -55,7 +55,7 @@ const FLAGS: readonly { field: UnverifiableFlag; code: RejectedPost['code'] }[] 
 const isSafeCount = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
-function parsePublishedAt(raw: string | null, now: number): Date | null {
+export function parsePublishedAt(raw: string | null, now: number): Date | null {
   if (typeof raw !== 'string' || !raw.trim()) return null;
   const ms = Date.parse(raw);
   if (Number.isNaN(ms)) return null;

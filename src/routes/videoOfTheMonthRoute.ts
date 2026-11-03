@@ -22,7 +22,9 @@ router.get('/feed', getVideosOfTheMonth);
 // slug; god/advanced mode bypasses).
 router.get('/', isSalesAndMarketing, getCuratedVideos);
 router.get('/submissions', isSalesAndMarketing, getFeaturableSubmissions);
+
 router.post('/', isSalesAndMarketing, addVideoOfTheMonth);
+
 router.patch('/:id', isSalesAndMarketing, editVideoOfTheMonth);
 router.delete('/:id', isSalesAndMarketing, removeVideoOfTheMonth);
 

@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import {
   findReelViews,
   parsePostMetrics,
+  postPublishedAt,
   postThumbnail,
   scrapedEngagementRate,
   type PostMetrics,
@@ -202,10 +203,12 @@ async function writeSnapshot(
   const snapshotDate = scrapeDay(snapshotOn);
   const postDate = scrapeDay(row.postingDate ?? capturedAt);
   const values = {
+    postDate: postDate.toDate(),
     daysSincePost: snapshotDate.diff(postDate, 'day'),
     capturedAt,
     ...metrics,
-    reach: metrics.views,
+    // A scrape cannot see reach; 0 keeps it out of the campaign's reach total.
+    reach: 0,
     engagementRate: scrapedEngagementRate(metrics),
     rawMetrics,
     source: 'brightdata',
@@ -218,7 +221,6 @@ async function writeSnapshot(
       postUrl: row.postUrl,
       platform: row.platform,
       userId: row.submission.userId,
-      postDate: postDate.toDate(),
       snapshotDate: snapshotDate.toDate(),
       ...values,
     },
@@ -373,6 +375,19 @@ async function runScrape(postingUrlId: string, deps: PostScrapeDeps, note: Failu
   // Even when the views lookup below fails, the row can show the post.
   await saveThumbnail(deps, row, postThumbnail(platform, parsed.item));
 
+  // The link row was dated when it was submitted. The platform knows when the post really went live.
+  // The jobs are paid for, so a failed date write only keeps the old date.
+  const publishedAt = postPublishedAt(platform, parsed.item, now());
+  if (publishedAt && publishedAt.getTime() !== row.postingDate?.getTime()) {
+    try {
+      await store.submissionPostingUrl.updateMany({ where: { id: postingUrlId }, data: { postingDate: publishedAt } });
+      log('Post date set from the platform', { ...context, from: row.postingDate, to: publishedAt });
+      row.postingDate = publishedAt;
+    } catch (error) {
+      log('Post date not saved', { ...context, message: (error as Error).message });
+    }
+  }
+
   let { metrics } = parsed;
 
   if (parsed.reelLookup) {
@@ -457,6 +472,9 @@ export async function completeFailedScrape(
   if (!row || row.campaignId !== input.campaignId) return { ok: false, status: 404, message: 'Posting link not found' };
   if (row.metricsScrapeStatus !== 'FAILED') {
     return { ok: false, status: 409, message: 'Only a failed scrape can be completed by hand' };
+  }
+  if (!isCurrentLink(row)) {
+    return { ok: false, status: 409, message: 'The creator replaced this link. Refresh the page to see the new one.' };
   }
 
   const isInstagram = row.platform !== 'TikTok';
