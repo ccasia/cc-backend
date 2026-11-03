@@ -122,6 +122,8 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
     submissionCounts,
     sentToClient,
     approvedAgreementsCount,
+    postedSubmissions,
+    firstPostingLinks,
   ] = await Promise.all([
     getCompanyCredits(client.companyId),
     prisma.shortListedCreator.groupBy({
@@ -149,11 +151,44 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
       where: { campaignId: { in: campaignIds }, status: 'APPROVED', submissionType: { type: 'AGREEMENT_FORM' } },
       _count: { _all: true },
     }),
+    // Same "posted" rule as the posting stats below.
+    prisma.submission.findMany({
+      where: {
+        campaignId: { in: campaignIds },
+        OR: [
+          { submissionVersion: 'v4', status: 'POSTED', submissionType: { type: { in: V4_POSTABLE_TYPES } } },
+          {
+            status: 'APPROVED',
+            submissionType: { type: 'POSTING' },
+            OR: [{ submissionVersion: null }, { submissionVersion: { not: 'v4' } }],
+          },
+        ],
+      },
+      select: { id: true, campaignId: true, approvedAt: true, completedAt: true, updatedAt: true },
+    }),
+    // One aggregated row per submission, instead of loading every posting link.
+    prisma.submissionPostingUrl.groupBy({
+      by: ['submissionId'],
+      where: { campaignId: { in: campaignIds } },
+      _min: { createdAt: true },
+    }),
   ]);
 
   const typeById = new Map(submissionTypes.map((t) => [t.id, t.type]));
   const approvedAgreementsId = new Map(approvedAgreementsCount.map((r) => [r.campaignId, r._count._all]));
   const confirmedBy = new Map(shortlisted.map((row) => [row.campaignId, row._count._all]));
+
+  // There is no posted-at column; the first stored posting link is the closest record of it.
+  // Without a link, use the approval time: updatedAt moves on every later write.
+  const firstLinkAt = new Map(firstPostingLinks.map((row) => [row.submissionId, row._min.createdAt]));
+  const postedAtBy = new Map<string, number[]>();
+  for (const submission of postedSubmissions) {
+    const postedAt =
+      firstLinkAt.get(submission.id) ?? submission.approvedAt ?? submission.completedAt ?? submission.updatedAt;
+    const times = postedAtBy.get(submission.campaignId) ?? [];
+    times.push(postedAt.getTime());
+    postedAtBy.set(submission.campaignId, times);
+  }
 
   const statsBy = new Map<string, Pick<ClientHomeCampaign, 'submissions' | 'posting'>>();
 
@@ -207,6 +242,7 @@ export const getClientHome = async (userId: string): Promise<ClientHome> => {
       submissionVersion: campaign.submissionVersion,
       stage: stageOf(base),
       credits: { used: campaign.creditsUtilized ?? 0, assigned: campaign.campaignCredits ?? 0 },
+      postedAt: postedAtBy.get(campaign.id) ?? [],
       ...base,
     };
   });
