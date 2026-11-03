@@ -2622,7 +2622,15 @@ export const getCampaignById = async (req: Request, res: Response) => {
         },
         products: true,
         reservationConfig: true,
-        creatorAgreement: true,
+        creatorAgreement: {
+          include: {
+            productSeeding: {
+              orderBy: {
+                createdAt: 'desc',
+              },
+            },
+          },
+        },
         subscription: {
           where: {
             status: 'ACTIVE',
