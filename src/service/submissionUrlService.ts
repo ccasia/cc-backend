@@ -89,10 +89,10 @@ export async function extractAndStoreSubmissionUrls(
           mediaId: finalMediaId,
           postingDate: new Date(), // Assume posted if URL exists
         },
+        // postingDate is not reset here: a post scrape replaces it with the platform's real publish date.
         update: {
           shortCode: extracted.shortCode,
           mediaId: finalMediaId,
-          postingDate: new Date(),
           updatedAt: new Date(),
         },
       });

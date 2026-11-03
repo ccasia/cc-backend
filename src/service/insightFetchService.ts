@@ -7,6 +7,7 @@ import { storeDailyPostEngagementResults } from '@services/postEngagementSnapsho
 import { queuePostScrape } from '@services/postMetricsScrape/queuePostScrape';
 import { isInScrapeWindow, isUnderFailureLimit, wasScrapedToday } from '@services/postMetricsScrape/scrapeDay';
 import { isCurrentLink } from '@services/postMetricsScrape/postMetricsScrapeService';
+import { savePublishedDates } from '@utils/platformPublishedAt';
 import { prisma } from '@/src/prisma/prisma';
 
 /**
@@ -165,6 +166,9 @@ async function fetchAndStorePlatformInsights(
       batchSize: 3,
       delayMs: 200,
     });
+
+    // Before the snapshots, so they count days from when the post really went live.
+    await savePublishedDates(prisma.submissionPostingUrl, urls, results);
 
     const dailySnapshotResult = await storeDailyPostEngagementResults(urls, results, platform);
     queueScrapeFallbacks(urls, dailySnapshotResult.failures, campaignEndDate);

@@ -5,6 +5,7 @@ import { batchFetchInsights, BatchInsightResult } from './socialMediaBatchServic
 import { getMetricValue } from '@utils/insightNormalizationHelper';
 import { onPostSnapshot } from '@/src/modules/gamification';
 import { prisma } from '@/src/prisma/prisma';
+import { savePublishedDates } from '@utils/platformPublishedAt';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -467,6 +468,7 @@ export async function storeDailyPostEngagementResults(
           rawMetrics: result.insight,
         },
         update: {
+          postDate: postDate.toDate(),
           daysSincePost: snapshotStart.diff(postDate, 'day'),
           capturedAt: new Date(),
           views: metrics.views,
@@ -648,9 +650,6 @@ export async function captureDailyPostEngagementForUrl(
   const snapshotStart = dayjs(snapshotDate ?? new Date())
     .tz('Asia/Kuala_Lumpur')
     .startOf('day');
-  const postDate = dayjs(postingUrl.postingDate).tz('Asia/Kuala_Lumpur').startOf('day');
-  const daysSincePost = snapshotStart.diff(postDate, 'day');
-
   const results = await batchFetchInsights({
     platform,
     requests: [
@@ -669,6 +668,9 @@ export async function captureDailyPostEngagementForUrl(
     throw new Error(`Failed to fetch insights for ${postUrl}: ${results[0]?.error ?? 'no result'}`);
   }
 
+  await savePublishedDates(prisma.submissionPostingUrl, [postingUrl], results);
+  const postDate = dayjs(postingUrl.postingDate).tz('Asia/Kuala_Lumpur').startOf('day');
+  const daysSincePost = snapshotStart.diff(postDate, 'day');
   const metrics = extractMetrics(results[0].insight, platform);
 
   await prisma.dailyPostEngagementSnapshot.upsert({
@@ -698,6 +700,7 @@ export async function captureDailyPostEngagementForUrl(
       rawMetrics: results[0].insight,
     },
     update: {
+      postDate: postDate.toDate(),
       daysSincePost,
       capturedAt: new Date(),
       views: metrics.views,
