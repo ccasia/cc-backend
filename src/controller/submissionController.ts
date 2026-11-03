@@ -45,6 +45,7 @@ import {
   handleSubmissionNotification,
 } from '@services/submissionService';
 import { findSubmissionsWithStoredMetrics } from '@services/storedPostInsightService';
+import { currentPostingDate } from '@utils/platformPublishedAt';
 import { getIo } from '../config/socket';
 import { prisma } from '@/src/prisma/prisma';
 
@@ -888,7 +889,10 @@ async function getReportSubmissions(scope: Prisma.SubmissionWhereInput) {
       content: true,
       updatedAt: true,
       campaignId: true,
-      submissionPostingUrls: { select: { postingDate: true }, orderBy: { createdAt: 'asc' } },
+      submissionPostingUrls: {
+        select: { postUrl: true, shortCode: true, mediaId: true, postingDate: true },
+        orderBy: { createdAt: 'asc' },
+      },
       video: { select: { url: true }, take: 1 },
       user: {
         select: {
@@ -935,7 +939,7 @@ async function getReportSubmissions(scope: Prisma.SubmissionWhereInput) {
         ...submission,
         userId: submission.user.id,
         // When the post went live, not when the submission row last changed
-        postingDate: submissionPostingUrls.find((url) => url.postingDate)?.postingDate ?? null,
+        postingDate: currentPostingDate(submissionPostingUrls, submission.content),
         video: video[0]?.url || null,
         isInstagramConnected: submission.user.creator?.isFacebookConnected || false,
         isTiktokConnected: submission.user.creator?.isTiktokConnected || false,

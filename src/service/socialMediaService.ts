@@ -504,6 +504,14 @@ export const calculateAverageLikes = (medias: [{ like_count: number }]) => {
   return Math.round(totalLikes / numberOfPosts) || 0;
 };
 
+/** When the media was published, as Instagram's raw `timestamp` string. */
+export const getInstagramMediaTimestamp = async (accessToken: string, mediaId: string): Promise<unknown> => {
+  const response = await axios.get(`https://graph.instagram.com/v22.0/${mediaId}`, {
+    params: { access_token: accessToken, fields: 'timestamp' },
+  });
+  return response.data?.timestamp;
+};
+
 export const getMediaInsight = async (accessToken: string, mediaId: string) => {
   if (!accessToken || !mediaId) throw new Error(`Missing parameters: accessToken, mediaId`);
 
