@@ -3,13 +3,12 @@ import {
   getInstagramMedias,
   getInstagramMediaTimestamp,
   getMediaInsight,
-  refreshInstagramToken,
   refreshTikTokToken,
   getTikTokVideoById,
 } from '@services/socialMediaService';
+import { getUsableInstagramToken } from '@services/socialTokenRefreshService';
 import { instagramPublishedAt, tiktokPublishedAt } from '@utils/platformPublishedAt';
 import axios from 'axios';
-import dayjs from 'dayjs';
 import { prisma } from '@/src/prisma/prisma';
 
 export interface BatchRequestConfig {
@@ -240,8 +239,7 @@ async function fetchTikTokInsight(req: { mediaId?: string; userId: string; campa
 }
 
 /**
- * Ensure Instagram token is valid, refresh if expired
- * Copied from socialController.ts pattern
+ * Ensure Instagram token is valid, refreshing it before it expires
  */
 async function ensureValidInstagramToken(userId: string): Promise<string> {
   const creator = await prisma.creator.findFirst({
@@ -254,46 +252,15 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
     throw new Error('Creator is not connected to Instagram account');
   }
 
-  const encryptedAccessToken = creator.instagramUser?.accessToken;
-  if (!encryptedAccessToken) throw new Error('Access token not found');
+  const { accessToken, expiresIn } = creator.instagramUser;
+  if (!accessToken) throw new Error('Access token not found');
 
-  let accessToken = decryptToken(encryptedAccessToken as any);
-
-  // Check if token is expired
-  const isExpired = dayjs().isAfter(dayjs.unix(creator.instagramUser.expiresIn!));
-
-  if (isExpired) {
-    console.log(`🔄 Instagram token expired for user ${userId}, refreshing...`);
-
-    try {
-      // Refresh the token
-      const refreshedTokenData = await refreshInstagramToken(accessToken!);
-
-      // Encrypt the new token
-      const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
-
-      // Calculate new expiry time (60 days from now)
-      const currentTime = dayjs();
-      const newExpiresIn = currentTime.add(60, 'day').unix();
-
-      // Update in database
-      await prisma.instagramUser.update({
-        where: { creatorId: creator.id },
-        data: {
-          accessToken: newEncryptedAccessToken as any,
-          expiresIn: newExpiresIn,
-        },
-      });
-
-      accessToken = refreshedTokenData.access_token;
-      console.log(`✅ Instagram token refreshed for user ${userId}`);
-    } catch (error: any) {
-      console.error(`❌ Failed to refresh Instagram token for user ${userId}:`, error.message);
-      throw new Error(`Token refresh failed: ${error.message}`);
-    }
+  try {
+    return await getUsableInstagramToken({ creatorId: creator.id, accessToken, expiresIn });
+  } catch (error: any) {
+    console.error(`❌ Failed to refresh Instagram token for user ${userId}:`, error.message);
+    throw new Error(`Token refresh failed: ${error.message}`);
   }
-
-  return accessToken!;
 }
 
 /**
