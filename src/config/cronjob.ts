@@ -20,6 +20,7 @@ import { snapshotLeaderboard } from '../modules/gamification';
 import { publishDueReleaseNotes } from '@modules/release-note';
 import { sendArchetypeQuizPushForToday } from '@modules/archetype-quiz';
 import { reconcileStuckLogistics } from '../service/logisticsService';
+import { refreshDueInstagramTokens, refreshDueTiktokTokens } from '@services/socialTokenRefreshService';
 import { prisma } from '@/src/prisma/prisma';
 
 dayjs.extend(LocalizedFormat);
@@ -337,6 +338,24 @@ new CronJob(
     } catch (error) {
       console.error('[Cronjob] Logistics reconciliation failed:', error);
     }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur',
+);
+
+// Instagram tokens can only be refreshed before they expire, and TikTok refresh
+// tokens lapse after 180 days unused, so keep every connection alive here.
+new CronJob(
+  '30 3 * * *', // 03:30 AM daily
+  async function () {
+    const [instagram, tiktok] = await Promise.allSettled([refreshDueInstagramTokens(), refreshDueTiktokTokens()]);
+
+    console.log('[Cronjob] Social token refresh completed:', {
+      instagram: instagram.status === 'fulfilled' ? instagram.value : instagram.reason?.message,
+      tiktok: tiktok.status === 'fulfilled' ? tiktok.value : tiktok.reason?.message,
+      timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+    });
   },
   null, // onComplete
   true, // start
