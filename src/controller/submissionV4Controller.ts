@@ -15,11 +15,7 @@ import {
   PostingLinkAdd,
   V4ContentSubmission,
 } from '../types/submissionV4Types';
-import {
-  PostingLinkError,
-  normalizePostingLinks,
-  joinPostingLinksToContent,
-} from '../utils/postingLinkValidation';
+import { PostingLinkError, normalizePostingLinks, joinPostingLinksToContent } from '../utils/postingLinkValidation';
 import {
   getNextStatusAfterAdminAction,
   getNextStatusAfterClientAction,
@@ -3379,10 +3375,13 @@ export const getComments = async (req: Request, res: Response) => {
   }
 };
 
+// Submission statuses in which a client may attach a drawing to their feedback
+const CLIENT_ANNOTATION_STATUSES: SubmissionStatus[] = ['SENT_TO_CLIENT', 'CLIENT_FEEDBACK'];
+
 /**
  * Create a comment or reply on a submission.
  * POST /api/submissions/v4/submission/:submissionId/comments
- * Body: { text, timestamp?, videoId?, parentId?, annotation? }
+ * Body: { text, timestamp?, videoId?, parentId?, annotation? (admins; clients in CLIENT_ANNOTATION_STATUSES) }
  */
 export const createComment = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
@@ -3411,9 +3410,20 @@ export const createComment = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized: User not found' });
     }
 
-    // Drawings are an admin-only, top-level feedback tool
-    if (annotation != null && (parentId || user.role === 'client' || user.role === 'creator')) {
-      return res.status(403).json({ error: 'Annotations can only be added by admins on top-level comments' });
+    // Drawings are top-level feedback from admins, or from clients while the video is with
+    // them for review. Creators and view-only demo clients can't draw.
+    if (annotation != null) {
+      if (parentId || user.role === 'creator' || user.role === 'client_demo') {
+        return res
+          .status(403)
+          .json({ error: 'Annotations can only be added by admins and clients on top-level comments' });
+      }
+      if (user.role === 'client') {
+        const reviewed = await prisma.submission.findUnique({ where: { id: submissionId }, select: { status: true } });
+        if (!reviewed || !CLIENT_ANNOTATION_STATUSES.includes(reviewed.status)) {
+          return res.status(403).json({ error: 'Clients can only draw while the video is with them for review' });
+        }
+      }
     }
 
     // Validate videoId belongs to this submission if provided
