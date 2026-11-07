@@ -7,7 +7,7 @@ import {
   handleCreateBrand,
 } from '@services/companyService';
 import { logAdminChange } from '@services/campaignServices';
-import { Company, CustomPackage, Package } from '@prisma/client';
+import { Company, CompanyType, CustomPackage, Package } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
 import { ClientInvitation } from '@configs/nodemailer.config';
 import jwt, { Secret } from 'jsonwebtoken';
@@ -402,8 +402,13 @@ export const editCompany = async (req: Request, res: Response) => {
     companyAbout,
     companyObjectives,
     companyRegistrationNumber,
+    type,
   } = JSON.parse(req.body.data);
   const adminId = req.userId;
+
+  if (type && !Object.values(CompanyType).includes(type)) {
+    return res.status(400).json({ message: 'Invalid client type' });
+  }
 
   try {
     let logoURL = '';
@@ -423,6 +428,7 @@ export const editCompany = async (req: Request, res: Response) => {
       website: companyWebsite,
       registration_number: companyRegistrationNumber,
       ...(logoURL && { logo: logoURL }),
+      ...(type && { type: type as CompanyType }),
     };
 
     const updatedCompany = await prisma.company.update({
