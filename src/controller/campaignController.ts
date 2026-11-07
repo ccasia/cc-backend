@@ -3856,10 +3856,226 @@ export const getPitchById = async (req: Request, res: Response) => {
   }
 };
 
-export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: Response) => {
-  const { userId } = req.params;
+const SAFE_USER_OMIT = {
+  password: true,
+  twoFactorSecret: true,
+  xeroRefreshToken: true,
+  appleRefreshToken: true,
+  emailVerificationId: true,
+} satisfies Prisma.UserOmit;
 
-  const { cursor, limit = 10, search, status, excludeOwn, filterAdminId } = req.query;
+const PERSON_SELECT = { id: true, name: true, photoURL: true, role: true } satisfies Prisma.UserSelect;
+
+// Only what the campaign cards and lists render. Logs, pitches and shortlists load on demand.
+const campaignListInclude = {
+  brand: { select: { id: true, name: true, logo: true } },
+  company: { select: { id: true, name: true, logo: true } },
+  campaignBrief: { select: { images: true, industries: true, startDate: true, endDate: true, campaigns_do: true } },
+  campaignRequirement: { select: { country: true, countries: true } },
+  campaignAdmin: {
+    select: {
+      adminId: true,
+      role: true,
+      admin: { select: { userId: true, role: { select: { name: true } }, user: { select: PERSON_SELECT } } },
+    },
+  },
+} satisfies Prisma.CampaignInclude;
+
+const campaignListOmit = {
+  clientMagicToken: true,
+  bdInviteToken: true,
+  clientBriefSnapshot: true,
+  internalComments: true,
+  creditAllocationBreakdown: true,
+  editedByClientFields: true,
+  brandAbout: true,
+  brandTone: true,
+} satisfies Prisma.CampaignOmit;
+
+// Every word must match somewhere (campaign, company, brand or client name), in any order.
+const buildCampaignSearchWhere = (search?: string): Prisma.CampaignWhereInput => {
+  const terms = (search ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
+  if (!terms.length) return {};
+
+  return {
+    AND: terms.map((term) => {
+      const match = { contains: term, mode: 'insensitive' as const };
+      return {
+        OR: [
+          { name: match },
+          { company: { name: match } },
+          { brand: { name: match } },
+          { brand: { company: { name: match } } },
+          { campaignClients: { some: { client: { user: { name: match } } } } },
+        ],
+      };
+    }),
+  };
+};
+
+// Typo-tolerant search: when a search finds nothing, fix each unknown word to the closest known name word.
+const SEARCH_VOCAB_TTL_MS = 60_000;
+interface SearchVocabulary {
+  names: string[];
+  words: string[];
+  loadedAt: number;
+}
+let searchVocabCache: SearchVocabulary | null = null;
+
+let searchVocabLoading: Promise<SearchVocabulary> | null = null;
+
+const loadSearchVocabulary = async (): Promise<SearchVocabulary> => {
+  const [campaigns, companies, brands, clients] = await Promise.all([
+    prisma.campaign.findMany({ select: { name: true } }),
+    prisma.company.findMany({ select: { name: true } }),
+    prisma.brand.findMany({ select: { name: true } }),
+    prisma.campaignClient.findMany({ select: { client: { select: { user: { select: { name: true } } } } } }),
+  ]);
+
+  const names = [
+    ...campaigns.map((c) => c.name),
+    ...companies.map((c) => c.name),
+    ...brands.map((b) => b.name),
+    ...clients.map((c) => c.client?.user?.name),
+  ]
+    .filter((name): name is string => !!name)
+    .map((name) => name.toLowerCase());
+
+  const words = new Set<string>();
+  names.forEach((name) => name.split(/[^\p{L}\p{N}]+/u).forEach((word) => word.length >= 2 && words.add(word)));
+
+  searchVocabCache = { names: [...new Set(names)], words: [...words], loadedAt: Date.now() };
+  return searchVocabCache;
+};
+
+// Concurrent searches share one load instead of each reading every name.
+const getSearchVocabulary = () => {
+  if (searchVocabCache && Date.now() - searchVocabCache.loadedAt < SEARCH_VOCAB_TTL_MS) {
+    return Promise.resolve(searchVocabCache);
+  }
+  searchVocabLoading ??= loadSearchVocabulary().finally(() => {
+    searchVocabLoading = null;
+  });
+  return searchVocabLoading;
+};
+
+// Optimal string alignment distance: a swap of two letters ("nkie" -> "nike") counts as one edit.
+const editDistance = (a: string, b: string, max: number) => {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    let rowMin = Infinity;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      rowMin = Math.min(rowMin, d[i][j]);
+    }
+    if (rowMin > max) return max + 1;
+  }
+  return d[a.length][b.length];
+};
+
+const correctSearch = async (search: string): Promise<string | null> => {
+  if (!search.split(/\s+/).some((term) => term.length >= 3)) return null;
+
+  const { names, words } = await getSearchVocabulary();
+  let changed = false;
+
+  const corrected = search
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 6)
+    .map((term) => {
+      const lower = term.toLowerCase();
+      if (lower.length < 3 || names.some((name) => name.includes(lower))) return term;
+
+      const max = lower.length <= 5 ? 1 : 2;
+      let best: { word: string; distance: number } | null = null;
+      for (const word of words) {
+        const distance = editDistance(lower, word, max);
+        if (distance <= max && (!best || distance < best.distance)) best = { word, distance };
+        if (best?.distance === 1 && max === 1) break;
+      }
+      if (!best) return term;
+      changed = true;
+      return best.word;
+    });
+
+  return changed ? corrected.join(' ') : null;
+};
+
+// Data for the campaign log dialog, loaded only when it opens. Staff only: it includes pitch and credit details.
+export const getCampaignLogContext = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const viewer = await prisma.user.findUnique({ where: { id: req.userId }, select: { id: true, role: true } });
+    if (!viewer) return res.status(401).json({ message: 'Not authenticated.' });
+
+    if (viewer.role !== 'admin' && viewer.role !== 'superadmin') {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        campaignLogs: {
+          select: { id: true, createdAt: true, message: true, metadata: true, admin: { select: PERSON_SELECT } },
+        },
+        pitch: { select: { status: true, user: { select: PERSON_SELECT } } },
+        shortlisted: {
+          select: { userId: true, ugcVideos: true, creditPerVideo: true, user: { select: PERSON_SELECT } },
+        },
+      },
+    });
+
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+    return res.status(200).json(campaign);
+  } catch (error) {
+    return res.status(400).json({ message: 'Failed to load campaign log.' });
+  }
+};
+
+export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: Response) => {
+  const userId = req.userId;
+
+  const { cursor, limit = 10, status, excludeOwn, filterAdminId } = req.query;
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const searchWhere = buildCampaignSearchWhere(search);
+  let searchCorrection: string | null = null;
+
+  // Runs one page (plus the total on the first page). A search with no results retries with typos fixed.
+  const findPage = async (conditions: Prisma.CampaignWhereInput[]) => {
+    const query = (where: Prisma.CampaignWhereInput) =>
+      Promise.all([
+        prisma.campaign.findMany({
+          take: Number(limit),
+          ...(cursor && { skip: 1, cursor: { id: cursor as string } }),
+          where,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          omit: campaignListOmit,
+          include: campaignListInclude,
+        }),
+        cursor ? undefined : prisma.campaign.count({ where }),
+      ]);
+
+    const result = await query({ AND: [...conditions, searchWhere] });
+    if (cursor || !search || result[1] !== 0) return result;
+
+    const corrected = await correctSearch(search);
+    if (!corrected) return result;
+
+    const correctedResult = await query({ AND: [...conditions, buildCampaignSearchWhere(corrected)] });
+    if (correctedResult[1] === 0) return result;
+
+    searchCorrection = corrected;
+    return correctedResult;
+  };
 
   try {
     const user = await prisma.user.findUnique({
@@ -3874,10 +4090,12 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
           },
         },
         id: true,
+        role: true,
       },
     });
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (user.role === 'creator') return res.status(403).json({ message: 'Access denied.' });
 
     // Build filter by specific admin condition if provided
     const filterAdminCondition = filterAdminId
@@ -3912,242 +4130,17 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         }
       }
 
-      let companyIds: string[] = [];
-      let brandIds: string[] = [];
-      let clientIds: string[] = [];
+      const [campaigns, totalCount] = await findPage([statusCondition, filterAdminCondition]);
 
-      if (search) {
-        // 1. Find companies with matching names
-        const companies = await prisma.company.findMany({
-          where: {
-            name: {
-              contains: search as string,
-              mode: 'insensitive',
-            },
-          },
-          select: {
-            id: true,
-            name: true,
-          },
-        });
-
-        companyIds = companies.map((company) => company.id);
-        console.log(
-          'Found companies with matching names:',
-          companies.map((c) => c.name),
-        );
-
-        // 2. Find brands with matching names directly
-        const brandsByName = await prisma.brand.findMany({
-          where: {
-            name: {
-              contains: search as string,
-              mode: 'insensitive',
-            },
-          },
-          select: {
-            id: true,
-            name: true,
-          },
-        });
-
-        // 3. Also find brands that belong to companies with matching names
-        let brandsByCompany: { id: string; name: string }[] = [];
-        if (companyIds.length > 0) {
-          brandsByCompany = await prisma.brand.findMany({
-            where: {
-              companyId: {
-                in: companyIds,
-              },
-            },
-            select: {
-              id: true,
-              name: true,
-            },
-          });
-        }
-
-        // Combine and deduplicate brand IDs
-        const allBrands = [...brandsByName, ...brandsByCompany];
-        brandIds = [...new Set(allBrands.map((brand) => brand.id))];
-        console.log(
-          'Found brands:',
-          allBrands.map((b) => b.name),
-        );
-
-        // 4. Find clients with matching names
-        const clients = await prisma.client.findMany({
-          where: {
-            user: {
-              name: {
-                contains: search as string,
-                mode: 'insensitive',
-              },
-            },
-          },
-          select: {
-            userId: true,
-            user: {
-              select: {
-                name: true,
-              },
-            },
-          },
-        });
-
-        clientIds = clients.map((client) => client.userId);
-        console.log(
-          'Found clients with matching names:',
-          clients.map((c) => c.user?.name),
-        );
-      }
-
-      const campaigns: any = await prisma.campaign.findMany({
-        take: Number(limit),
-        ...(cursor && {
-          skip: 1,
-          cursor: { id: cursor as string },
-        }),
-        where: {
-          AND: [
-            statusCondition,
-            filterAdminCondition,
-            {
-              ...(search && {
-                OR: [
-                  {
-                    name: {
-                      contains: search as string,
-                      mode: 'insensitive',
-                    },
-                  },
-                  ...(companyIds.length > 0
-                    ? [
-                        {
-                          companyId: {
-                            in: companyIds,
-                          },
-                        },
-                      ]
-                    : []),
-
-                  ...(brandIds.length > 0
-                    ? [
-                        {
-                          brandId: {
-                            in: brandIds,
-                          },
-                        },
-                      ]
-                    : []),
-
-                  // Search by client ID (if any clients matched the search)
-                  ...(clientIds.length > 0
-                    ? [
-                        {
-                          campaignClient: {
-                            some: {
-                              clientId: {
-                                in: clientIds,
-                              },
-                            },
-                          },
-                        },
-                      ]
-                    : []),
-                ],
-              }),
-            },
-          ],
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        include: {
-          agreementTemplate: true,
-          submission: {
-            include: {
-              submissionType: true,
-              dependencies: true,
-            },
-          },
-          brand: { include: { company: { include: { subscriptions: true } } } },
-          company: true,
-          campaignTimeline: true,
-          campaignBrief: true,
-          campaignRequirement: true,
-          campaignLogs: {
-            include: {
-              admin: true,
-            },
-          },
-          campaignAdmin: {
-            include: {
-              admin: {
-                include: {
-                  role: true,
-                  user: {
-                    include: {
-                      agreementTemplate: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-          campaignSubmissionRequirement: true,
-          pitch: {
-            include: {
-              user: {
-                include: {
-                  creator: {
-                    include: {
-                      interests: true,
-                    },
-                  },
-
-                  paymentForm: true,
-                },
-              },
-            },
-          },
-          shortlisted: {
-            select: {
-              user: {
-                include: {
-                  creator: true,
-                },
-              },
-              userId: true,
-            },
-          },
-          campaignTasks: {
-            include: {
-              campaignTaskAdmin: true,
-            },
-          },
-          logistics: {
-            include: {
-              creator: true,
-              reservationDetails: {
-                select: {
-                  outlet: true,
-                  creatorRemarks: true,
-                },
-              },
-            },
-          },
-          creatorAgreement: true,
-        },
-      });
-
-      const totalActiveCampaigns = campaigns.filter((campaign: Campaign) => campaign.status === 'ACTIVE').length;
-      const totalComletedCampaigns = campaigns.filter((campaign: Campaign) => campaign.status === 'COMPLETED').length;
+      const totalActiveCampaigns = campaigns.filter((campaign) => campaign.status === 'ACTIVE').length;
+      const totalComletedCampaigns = campaigns.filter((campaign) => campaign.status === 'COMPLETED').length;
 
       if (campaigns.length == 0) {
         return res.status(200).json({
           data: {
             campaigns: [],
+            totalCount: totalCount ?? 0,
+            searchCorrection,
           },
           metaData: {
             lastCursor: null,
@@ -4161,12 +4154,15 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       const data = {
         data: {
           campaigns,
+          totalCount,
+          searchCorrection,
           totalCampaigns: campaigns?.length,
           totalActiveCampaigns,
           totalComletedCampaigns,
         },
         metaData: {
           lastCursor: lastCursor,
+          search: searchCorrection ?? search,
         },
       };
 
@@ -4197,137 +4193,32 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       user.admin?.role?.name === 'CSL';
     const showAllCompletedForCSM = isCSMAdmin && status === 'COMPLETED';
 
-    console.log('Non-superadmin user, status condition:', statusCondition);
-
-    const campaigns = await prisma.campaign.findMany({
-      take: Number(limit),
-      ...(cursor && {
-        skip: 1,
-        cursor: { id: cursor as string },
-      }),
-      where: {
-        AND: [
-          // CSM Admin on Completed tab: no campaignAdmin filter (show all completed). Otherwise filter by this user.
-          ...(showAllCompletedForCSM
-            ? []
-            : [
-                excludeOwn === 'true'
-                  ? {
-                      campaignAdmin: {
-                        none: {
-                          adminId: user.id,
-                        },
-                      },
-                    }
-                  : {
-                      campaignAdmin: {
-                        some: {
-                          adminId: user.id,
-                        },
-                      },
+    const [campaigns, totalCount] = await findPage([
+      // CSM Admin on Completed tab: no campaignAdmin filter (show all completed). Otherwise filter by this user.
+      ...(showAllCompletedForCSM
+        ? []
+        : [
+            excludeOwn === 'true'
+              ? {
+                  campaignAdmin: {
+                    none: {
+                      adminId: user.id,
                     },
-              ]),
-          // Force ACTIVE status when excludeOwn=true, otherwise use the provided status filter
-          excludeOwn === 'true' ? { status: 'ACTIVE' as CampaignStatus } : statusCondition,
-          // Filter by specific admin if provided
-          filterAdminCondition,
-          {
-            ...(search && {
-              name: {
-                contains: search as string,
-                mode: 'insensitive',
-              },
-            }),
-          },
-        ],
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      include: {
-        agreementTemplate: true,
-        submission: {
-          include: {
-            submissionType: true,
-            dependencies: true,
-          },
-        },
-        brand: { include: { company: { include: { subscriptions: true } } } },
-        company: true,
-        campaignTimeline: true,
-        campaignBrief: true,
-        campaignRequirement: true,
-        campaignLogs: {
-          include: {
-            admin: true,
-          },
-        },
-        campaignAdmin: {
-          include: {
-            admin: {
-              include: {
-                user: {
-                  include: {
-                    agreementTemplate: true,
+                  },
+                }
+              : {
+                  campaignAdmin: {
+                    some: {
+                      adminId: user.id,
+                    },
                   },
                 },
-              },
-            },
-          },
-        },
-        campaignSubmissionRequirement: true,
-        pitch: {
-          include: {
-            user: {
-              include: {
-                creator: {
-                  include: {
-                    interests: true,
-                  },
-                },
-
-                paymentForm: true,
-              },
-            },
-          },
-        },
-        shortlisted: {
-          select: {
-            user: {
-              include: {
-                creator: true,
-              },
-            },
-            userId: true,
-          },
-        },
-        campaignTasks: {
-          include: {
-            campaignTaskAdmin: true,
-          },
-        },
-        logistics: {
-          include: {
-            creator: true,
-            reservationDetails: {
-              select: {
-                outlet: true,
-                creatorRemarks: true,
-              },
-            },
-          },
-        },
-        creatorAgreement: true,
-      },
-    });
-
-    console.log(`Found ${campaigns.length} campaigns for non-superadmin user ${user.id}`);
-    if (campaigns.length > 0) {
-      console.log(
-        'Campaign statuses:',
-        campaigns.map((c) => ({ id: c.id, name: c.name, status: c.status })),
-      );
-    }
+          ]),
+      // Force ACTIVE status when excludeOwn=true, otherwise use the provided status filter
+      excludeOwn === 'true' ? { status: 'ACTIVE' as CampaignStatus } : statusCondition,
+      // Filter by specific admin if provided
+      filterAdminCondition,
+    ]);
 
     const totalActiveCampaigns = campaigns.filter((campaign) => campaign.status === 'ACTIVE').length;
 
@@ -4337,6 +4228,8 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       return res.status(200).json({
         data: {
           campaigns: [],
+          totalCount: totalCount ?? 0,
+          searchCorrection,
         },
         metaData: {
           lastCursor: null,
@@ -4350,12 +4243,15 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
     const data = {
       data: {
         campaigns,
+        totalCount,
+        searchCorrection,
         totalCampaigns: campaigns?.length,
         totalActiveCampaigns,
         totalComletedCampaigns,
       },
       metaData: {
         lastCursor: lastCursor,
+        search: searchCorrection ?? search,
       },
     };
 
