@@ -4793,6 +4793,9 @@ export const closeCampaign = async (req: Request, res: Response) => {
       logAdminChange(adminLogMessage, adminId, req);
     }
 
+    // Open campaign lists refetch, the same as after a stage change.
+    if (getIo()) getIo().emit('campaignStatus', { id });
+
     return res.status(200).json({
       message: 'Campaign closed successfully.',
       rejectedCreators: result.rejectedCount,
