@@ -3856,14 +3856,6 @@ export const getPitchById = async (req: Request, res: Response) => {
   }
 };
 
-const SAFE_USER_OMIT = {
-  password: true,
-  twoFactorSecret: true,
-  xeroRefreshToken: true,
-  appleRefreshToken: true,
-  emailVerificationId: true,
-} satisfies Prisma.UserOmit;
-
 const PERSON_SELECT = { id: true, name: true, photoURL: true, role: true } satisfies Prisma.UserSelect;
 
 // Only what the campaign cards and lists render. Logs, pitches and shortlists load on demand.
