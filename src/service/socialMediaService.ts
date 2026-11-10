@@ -272,7 +272,8 @@ export const refreshInstagramToken = async (accessToken: string) => {
 
     return refreshedToken.data;
   } catch (error) {
-    throw new Error('Error refresh instagram token');
+    const detail = error?.response?.data?.error?.message || error?.message || 'unknown error';
+    throw new Error(`Instagram refresh failed (${error?.response?.status ?? 'no-status'}): ${detail}`);
   }
 };
 

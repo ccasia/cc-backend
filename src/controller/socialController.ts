@@ -16,7 +16,6 @@ import {
   getMediaInsight,
   getPageId,
   getTikTokVideoById,
-  refreshInstagramToken,
   refreshTikTokToken,
   withCachedInstagramThumbnail,
   cacheInstagramThumbnail,
@@ -25,6 +24,7 @@ import {
   getTikTokMediaObject,
   getInstagramAudienceDemographics,
 } from '@services/socialMediaService';
+import { getUsableInstagramToken } from '@services/socialTokenRefreshService';
 import { batchRequests } from '@helper/batchRequests';
 import { getStoredPostInsight } from '@services/storedPostInsightService';
 import { onMediaKitConnected } from '@/src/modules/gamification';
@@ -2146,68 +2146,21 @@ export async function ensureValidInstagramToken(userId: string): Promise<string>
     throw new Error('Creator is not connected to instagram account');
   }
 
-  const encryptedAccessToken = creator.instagramUser?.accessToken;
-  if (!encryptedAccessToken) throw new Error('Access token not found');
+  const { accessToken, expiresIn } = creator.instagramUser;
+  if (!accessToken) throw new Error('Access token not found');
 
-  let accessToken = decryptToken(encryptedAccessToken as any);
-
-  // Check if token is expired
-  const isExpired = dayjs().isAfter(dayjs.unix(creator.instagramUser.expiresIn!));
-
-  if (isExpired) {
-    console.log('[InstagramTokenRefresh] Expired token detected', {
+  try {
+    return await getUsableInstagramToken({ creatorId: creator.id, accessToken, expiresIn });
+  } catch (refreshError) {
+    console.error('[InstagramTokenRefresh] Refresh failed', {
       userId,
       creatorId: creator.id,
-      expiresIn: creator.instagramUser.expiresIn,
+      previousExpiresIn: expiresIn,
       nowUnix: dayjs().unix(),
+      message: (refreshError as any)?.message,
     });
-
-    try {
-      // Refresh the token using the existing service
-      const refreshedTokenData = await refreshInstagramToken(accessToken!);
-
-      // Encrypt the new token
-      const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
-
-      // Calculate new expiry time
-      const currentTime = dayjs();
-      const newExpiryTime = currentTime.add(refreshedTokenData.expires_in, 'second').unix();
-
-      // Update the database with new token
-      await prisma.instagramUser.update({
-        where: {
-          creatorId: creator.id,
-        },
-        data: {
-          accessToken: newEncryptedAccessToken,
-          expiresIn: newExpiryTime,
-        },
-      });
-
-      accessToken = refreshedTokenData.access_token;
-      console.log('[InstagramTokenRefresh] Refresh succeeded', {
-        userId,
-        creatorId: creator.id,
-        newExpiresIn: newExpiryTime,
-      });
-    } catch (refreshError) {
-      console.error('[InstagramTokenRefresh] Refresh failed', {
-        userId,
-        creatorId: creator.id,
-        previousExpiresIn: creator.instagramUser.expiresIn,
-        nowUnix: dayjs().unix(),
-        status: (refreshError as any)?.response?.status,
-        statusText: (refreshError as any)?.response?.statusText,
-        responseData: (refreshError as any)?.response?.data || null,
-        message: (refreshError as any)?.message,
-      });
-      throw new Error(
-        'Instagram token expired and refresh failed. Creator needs to reconnect their Instagram account.',
-      );
-    }
+    throw new Error('Instagram token expired and refresh failed. Creator needs to reconnect their Instagram account.');
   }
-
-  return accessToken!;
 }
 
 // Local-dev only: deterministic mock insight payload keyed by post URL.
