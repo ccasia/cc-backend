@@ -477,13 +477,15 @@ export const updatePostingLink = async (submissionId: string, postingLinks: stri
       throw new PostingLinkError('Posting links are not required for UGC (No posting) campaigns');
     }
 
-    // Check if posting link can be added based on approval status
+    // Check if posting link can be added based on approval status.
+    // Only VIDEO submissions have Video rows; PHOTO/RAW_FOOTAGE are gated by the submission status alone.
     const { canAddPostingLink } = require('../utils/v4StatusUtils');
-    const videoStatus = submission.video[0]?.status || 'PENDING';
+    const isVideo = submission.submissionType.type === 'VIDEO';
+    const contentStatus = isVideo ? submission.video[0]?.status || 'PENDING' : 'APPROVED';
 
-    if (!canAddPostingLink(submission.status, videoStatus as any)) {
+    if (!canAddPostingLink(submission.status, contentStatus as any)) {
       throw new PostingLinkError(
-        `Cannot add posting link. Video must be fully approved first. Current status: ${submission.status}, Video status: ${videoStatus}`,
+        `Cannot add posting link. Content must be fully approved first. Current status: ${submission.status}`,
       );
     }
 
