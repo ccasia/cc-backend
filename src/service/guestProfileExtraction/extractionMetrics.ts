@@ -122,7 +122,7 @@ export async function collectExtractionMetrics(
     .map((r) => ({ platform: r.platform as SupportedPlatform, usd: toNumber(r.costUsd) }))
     .filter((r): r is { platform: SupportedPlatform; usd: number } => r.usd !== null && r.usd > 0);
 
-  const byPlatform = (['instagram', 'tiktok'] as SupportedPlatform[])
+  const byPlatform = (['instagram', 'tiktok', 'threads'] as SupportedPlatform[])
     .map((platform) => {
       const forPlatform = paid.filter((r) => r.platform === platform);
       return {

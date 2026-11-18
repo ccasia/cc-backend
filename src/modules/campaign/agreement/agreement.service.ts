@@ -26,6 +26,7 @@ import {
 export const normalizePlatform = (platform?: string | null): SocialPlatform | undefined => {
   if (platform === 'tiktok') return 'tiktok';
   if (platform === 'instagram') return 'instagram';
+  if (platform === 'threads') return 'threads';
   return undefined;
 };
 
@@ -95,6 +96,8 @@ export const persistActorFollowerCount = async ({
   resolvedFollower: ResolvedAgreementFollowerCount;
 }) => {
   if (isGuest || !resolvedFollower.isActorProvided) return;
+  // Threads has no per-platform manual column; its count lives on the snapshots only.
+  if (platform === 'threads') return;
 
   await prisma.creator.update({
     where: { userId },

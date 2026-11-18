@@ -1,5 +1,5 @@
 /**
- * Fill Creator.instagramProfileLink / tiktokProfileLink from a scrape.
+ * Fill Creator.instagramProfileLink / tiktokProfileLink / threadsProfileLink from a scrape.
  *
  * Additive. An existing link on that platform is left alone. The other
  * platform is never touched. This is a pasted/scraped URL, not a connected
@@ -11,12 +11,14 @@ const isBlank = (value: unknown): boolean => value == null || (typeof value === 
 export interface ProfileLinkPatch {
   instagramProfileLink?: string;
   tiktokProfileLink?: string;
+  threadsProfileLink?: string;
 }
 
 export function scrapedProfileLinkPatch(
   current: {
     instagramProfileLink?: string | null;
     tiktokProfileLink?: string | null;
+    threadsProfileLink?: string | null;
   } | null,
   platform: string | null | undefined,
   url: string | null | undefined,
@@ -30,6 +32,9 @@ export function scrapedProfileLinkPatch(
   if (platform === 'tiktok' && isBlank(current?.tiktokProfileLink)) {
     return { tiktokProfileLink: trimmed };
   }
+  if (platform === 'threads' && isBlank(current?.threadsProfileLink)) {
+    return { threadsProfileLink: trimmed };
+  }
   return {};
 }
 
@@ -38,6 +43,7 @@ interface CreatorLinkClient {
     findUnique(args: { where: { userId: string }; select?: any }): Promise<{
       instagramProfileLink?: string | null;
       tiktokProfileLink?: string | null;
+      threadsProfileLink?: string | null;
     } | null>;
     update(args: { where: { userId: string }; data: ProfileLinkPatch }): Promise<unknown>;
   };
@@ -51,12 +57,12 @@ export async function ensureScrapedProfileLink(
 ): Promise<void> {
   const current = await tx.creator.findUnique({
     where: { userId },
-    select: { instagramProfileLink: true, tiktokProfileLink: true },
+    select: { instagramProfileLink: true, tiktokProfileLink: true, threadsProfileLink: true },
   });
   if (!current) return;
 
   const patch = scrapedProfileLinkPatch(current, platform, url);
-  if (!patch.instagramProfileLink && !patch.tiktokProfileLink) return;
+  if (!patch.instagramProfileLink && !patch.tiktokProfileLink && !patch.threadsProfileLink) return;
 
   await tx.creator.update({ where: { userId }, data: patch });
 }

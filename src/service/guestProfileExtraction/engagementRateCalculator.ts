@@ -18,6 +18,8 @@ import { SAMPLE_SIZE } from './validPostPolicy';
 export const FORMULA_IDS: Record<SupportedPlatform, EngagementFormulaId> = {
   instagram: 'instagram_recent_10_median_view_v2',
   tiktok: 'tiktok_recent_10_median_view_v2',
+  // Profile only. Never passed to the calculator: Threads has no rate.
+  threads: 'threads_profile_v1',
 };
 
 const isSafeCount = (value: unknown): value is number =>
