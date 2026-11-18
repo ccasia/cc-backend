@@ -42,6 +42,8 @@ const FUTURE_SKEW_MS = 5 * 60 * 1000;
 const REQUIRED_COUNTERS: Record<SupportedPlatform, readonly ('likes' | 'comments' | 'shares' | 'views')[]> = {
   instagram: ['likes', 'comments', 'views'],
   tiktok: ['likes', 'comments', 'shares', 'views'],
+  // Unused: Threads is profile-only, so its adapter returns no candidates.
+  threads: ['likes', 'comments', 'views'],
 };
 
 const FLAGS: readonly { field: UnverifiableFlag; code: RejectedPost['code'] }[] = [

@@ -39,7 +39,7 @@ import {
 } from '../config/guestProfileExtractionConfig';
 import { parsePostMetrics } from '../service/postMetricsScrape/postMetricsAdapter';
 import { normalizeProfileUrl } from '../service/guestProfileExtraction/profileUrlNormalizer';
-import type { SupportedPlatform } from '../types/guestProfileExtraction';
+import type { PostPlatform, SupportedPlatform } from '../types/guestProfileExtraction';
 
 const FIXTURE_DIR = path.join(__dirname, '../../test/guestProfileExtraction/fixtures/brightdata');
 
@@ -303,7 +303,7 @@ async function main(): Promise<void> {
   if (args.includes('--post')) {
     for (const target of targets) {
       const [url, caseName = 'case'] = target.split(/=(?=[^=]*$)/);
-      const platform: SupportedPlatform = /tiktok\.com/i.test(url) ? 'tiktok' : 'instagram';
+      const platform: PostPlatform = /tiktok\.com/i.test(url) ? 'tiktok' : 'instagram';
       console.log(`\n== ${platform} post ${url} (${caseName})`);
       // eslint-disable-next-line no-await-in-loop
       const run = await runJob(http, 'post', POST_SCRAPERS[platform], [{ url }], timeout);
@@ -334,9 +334,21 @@ async function main(): Promise<void> {
     const scrapers = SCRAPERS[platform];
     console.log(`\n== ${platform} ${canonicalUrl} (${caseName})`);
 
+    // Profile-only platform (Threads): one profile job, no posts job.
+    if (!scrapers.posts) {
+      // eslint-disable-next-line no-await-in-loop
+      const profileRun = await runJob(http, 'profile', scrapers.profile, [{ url: canonicalUrl }], timeout);
+      const prof = profileRun.items.find((i) => !isErrorRow(i)) as Record<string, unknown> | undefined;
+      console.log(`  profile: ${profileRun.status} | ${profileRun.items.length} records | ${profileRun.seconds}s`);
+      if (prof) console.log(`    profile item keys: ${Object.keys(prof).sort().join(',')}`);
+      save(platform, caseName, 'profile', profileRun);
+      continue;
+    }
+    const { posts: postsJob } = scrapers;
+
     // eslint-disable-next-line no-await-in-loop
     const [postsRun, profileRun] = await Promise.all([
-      runJob(http, 'posts', scrapers.posts, [{ url: canonicalUrl, num_of_posts: posts }], timeout),
+      runJob(http, 'posts', postsJob, [{ url: canonicalUrl, num_of_posts: posts }], timeout),
       runJob(http, 'profile', scrapers.profile, [{ url: canonicalUrl }], timeout),
     ]);
     report(platform, postsRun, profileRun);
@@ -349,7 +361,7 @@ async function main(): Promise<void> {
       const alt = await runJob(
         http,
         'posts(discover_by=url)',
-        { ...scrapers.posts, discoverBy: 'url' },
+        { ...postsJob, discoverBy: 'url' },
         [{ url: canonicalUrl, num_of_posts: posts }],
         timeout,
       );

@@ -161,8 +161,10 @@ async function swapGuestInCampaign(
   // Carry the follower count the admin sourced onto the platform creator. It is recorded
   // per platform, so copy the platform-specific fields - the legacy manualFollowerCount is
   // not what the guest shortlist writes.
-  if (copyCreatorFields && platformUser.creator && guestCreator) {
-    const guestPlatform = guestShortlist?.selectedPlatform ?? guestPitch?.selectedPlatform;
+  // Threads has no per-platform column, so a Threads count is never copied into one.
+  const sourcedPlatform = guestShortlist?.selectedPlatform ?? guestPitch?.selectedPlatform;
+  if (copyCreatorFields && platformUser.creator && guestCreator && sourcedPlatform !== 'threads') {
+    const guestPlatform = sourcedPlatform;
     const manualCount =
       guestPlatform === 'tiktok' ? guestCreator.manualTiktokFollowerCount : guestCreator.manualInstagramFollowerCount;
     const followerCountToCopy = (manualCount ?? 0) > 0 ? manualCount : guestFollowerCount;

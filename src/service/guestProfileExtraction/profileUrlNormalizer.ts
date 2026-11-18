@@ -17,6 +17,19 @@ const HOSTS: Record<string, SupportedPlatform> = {
   'www.instagram.com': 'instagram',
   'tiktok.com': 'tiktok',
   'www.tiktok.com': 'tiktok',
+  'threads.com': 'threads',
+  'www.threads.com': 'threads',
+  'threads.net': 'threads',
+  'www.threads.net': 'threads',
+};
+
+/** Platforms whose profile path is `@name`. */
+const AT_PREFIXED: ReadonlySet<SupportedPlatform> = new Set(['tiktok', 'threads']);
+
+const AT_REQUIRED_MESSAGE: Record<SupportedPlatform, string> = {
+  instagram: '',
+  tiktok: 'A TikTok profile link contains @ before the name.',
+  threads: 'A Threads profile link contains @ before the name.',
 };
 
 /** Path segments that are product pages, not profiles. */
@@ -69,6 +82,20 @@ const RESERVED: Record<SupportedPlatform, ReadonlySet<string>> = {
     'passport',
     'login',
   ]),
+  threads: new Set([
+    'search',
+    'activity',
+    'login',
+    'settings',
+    'about',
+    'legal',
+    'privacy',
+    'terms',
+    't',
+    'post',
+    'intent',
+    'api',
+  ]),
 };
 
 const USERNAME: Record<SupportedPlatform, RegExp> = {
@@ -76,6 +103,8 @@ const USERNAME: Record<SupportedPlatform, RegExp> = {
   instagram: /^[a-z0-9._]{1,30}$/,
   // TikTok allows letters, digits, periods and underscores, up to 24.
   tiktok: /^[a-z0-9._]{1,24}$/,
+  // Threads handles are Instagram handles.
+  threads: /^[a-z0-9._]{1,30}$/,
 };
 
 const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
@@ -120,7 +149,7 @@ export function normalizeProfileUrl(input: string): NormalizeProfileUrlResult {
 
   const platform = HOSTS[url.hostname.toLowerCase()];
   if (!platform) {
-    return reject('UNSUPPORTED_HOST', 'Use an Instagram or TikTok profile link.');
+    return reject('UNSUPPORTED_HOST', 'Use an Instagram, TikTok, or Threads profile link.');
   }
 
   const segments = url.pathname.split('/').filter(Boolean);
@@ -134,9 +163,10 @@ export function normalizeProfileUrl(input: string): NormalizeProfileUrlResult {
   const [segment] = segments;
   let username: string;
 
-  if (platform === 'tiktok') {
+  const atPrefixed = AT_PREFIXED.has(platform);
+  if (atPrefixed) {
     if (!segment.startsWith('@')) {
-      return reject('NOT_A_PROFILE_URL', 'A TikTok profile link contains @ before the name.');
+      return reject('NOT_A_PROFILE_URL', AT_REQUIRED_MESSAGE[platform]);
     }
     username = decodeURIComponent(segment.slice(1)).toLowerCase();
   } else {
@@ -151,7 +181,7 @@ export function normalizeProfileUrl(input: string): NormalizeProfileUrlResult {
   }
 
   // Query and fragment may be supplied. They are not part of identity.
-  const path = platform === 'tiktok' ? `@${username}` : username;
+  const path = atPrefixed ? `@${username}` : username;
   const profile: CanonicalProfile = {
     platform,
     username,

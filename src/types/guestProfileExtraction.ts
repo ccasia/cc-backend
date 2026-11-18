@@ -6,7 +6,13 @@
  * and the formula registry see it.
  */
 
-export type SupportedPlatform = 'instagram' | 'tiktok';
+export type SupportedPlatform = 'instagram' | 'tiktok' | 'threads';
+
+/**
+ * Platforms with a posts scrape and a computed engagement rate. Threads is
+ * profile-only: its primary metric, Recent Views, is always typed by an admin.
+ */
+export type PostPlatform = Exclude<SupportedPlatform, 'threads'>;
 
 /* -------------------------------------------------------------- Identity */
 
@@ -253,7 +259,9 @@ export type EngagementFormulaId =
   | 'instagram_recent_5_followers_v1'
   | 'tiktok_recent_5_mean_view_rate_v1'
   | 'instagram_recent_10_median_view_v2'
-  | 'tiktok_recent_10_median_view_v2';
+  | 'tiktok_recent_10_median_view_v2'
+  /** Profile only: name, followers, bio, picture. No rate is computed. */
+  | 'threads_profile_v1';
 
 /**
  * `MISSING_FOLLOWER_COUNT` is unreachable from v2 onwards, because followers
