@@ -327,6 +327,7 @@ model Creator {
   profileLink                   String?
   instagramProfileLink          String?                   @db.VarChar(255)
   tiktokProfileLink             String?                   @db.VarChar(255)
+  threadsProfileLink            String?                   @db.VarChar(255)
   city                          String?                   @db.VarChar(100)
   country                       String?
   dietaryRestrictions           String?
@@ -2875,6 +2876,7 @@ enum PitchStatus {
 enum SocialPlatform {
   instagram
   tiktok
+  threads
 }
 
 enum OutreachStatus {

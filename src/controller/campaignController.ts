@@ -71,9 +71,10 @@ import {
   claimReceiptNonce,
   hashCreateRequest,
   isAutomaticGuestBatch,
-  parseEngagementRate,
   parseFollowerCount,
+  parsePrimaryMetric,
   provenanceFor,
+  RECENT_VIEWS_INVALID_MESSAGE,
   resolveCreateIdempotency,
   validateManualGuests,
   validateSubmittedGuests,
@@ -160,6 +161,9 @@ const getFollowerForPlatform = (creator: any, platform: SocialPlatform): number 
   const hasTiktokConnected = !!creator?.tiktokUser;
   const manualInstagramFollowers = creator?.manualInstagramFollowerCount || 0;
   const manualTiktokFollowers = creator?.manualTiktokFollowerCount || 0;
+
+  // Threads has no connected account and no per-platform manual count.
+  if (platform === 'threads') return 0;
 
   if (platform === 'tiktok') {
     if (hasTiktokConnected) return tiktokFollowers;
@@ -7448,7 +7452,13 @@ export const sendAdditionalAgreement = async (req: Request, res: Response) => {
           : await getStoredCampaignTier(normalizedPlatform, shortlisted);
         const { tier, followerCount: resolvedFollowerCount } = storedTier
           ? { tier: storedTier, followerCount: shortlisted?.followerCount ?? null }
-          : await resolveAgreedTier(creatorInput.userId, normalizedPlatform, creatorInput.followerCount || null);
+          : await resolveAgreedTier(
+              creatorInput.userId,
+              normalizedPlatform,
+              // A Threads count lives only on the shortlist snapshot, never on the creator.
+              creatorInput.followerCount ||
+                (normalizedPlatform === 'threads' ? Number(shortlisted?.followerCount) || null : null),
+            );
         if (!tier) {
           return res.status(400).json({
             message: `Could not resolve a credit tier for ${user.name || 'this creator'} — connect their media kit or set a follower count manually.`,
@@ -10713,10 +10723,14 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           creator.engagementRate !== undefined &&
           !(typeof creator.engagementRate === 'string' && creator.engagementRate.trim() === '');
         if (hasSubmittedEngagementRate) {
-          const parsedEngagementRate = parseEngagementRate(creator.engagementRate);
+          // Threads carries Recent Views in this slot, never a percent.
+          const parsedEngagementRate = parsePrimaryMetric(creator.selectedPlatform, creator.engagementRate);
           if (parsedEngagementRate === 'invalid') {
             return res.status(400).json({
-              message: 'Engagement rate for a manual platform creator must be between 0 and 1000.',
+              message:
+                creator.selectedPlatform === 'threads'
+                  ? RECENT_VIEWS_INVALID_MESSAGE
+                  : 'Engagement rate for a manual platform creator must be between 0 and 1000.',
             });
           }
 
@@ -10917,8 +10931,13 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         const selectedPlatform = resolvePlatform(verified?.platform, creator.selectedPlatform);
         const submittedFollowerCount = manualFollowerCountByCreator.get(creator) ?? creator.followerCount;
         const manualEngagementRate = manualEngagementRateByCreator.get(creator);
-        const hasPlatformMediaKit =
-          selectedPlatform === 'instagram' ? !!user.creator?.instagramUser : !!user.creator?.tiktokUser;
+        // Threads creators never have a connected account or media kit.
+        const isThreads = selectedPlatform === 'threads';
+        const hasPlatformMediaKit = isThreads
+          ? false
+          : selectedPlatform === 'instagram'
+            ? !!user.creator?.instagramUser
+            : !!user.creator?.tiktokUser;
         let resolvedFollowerCount = 0;
 
         await ensureScrapedProfileLink(
@@ -10943,7 +10962,12 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
         // If manual follower count provided, ALWAYS update the creator's manualFollowerCount and tier
         // This allows admins to correct follower count mistakes when re-adding creators
-        if (submittedFollowerCount && submittedFollowerCount > 0) {
+        if (isThreads) {
+          // A Threads count lives only on the pitch and shortlist snapshots,
+          // never in the creator's Instagram/TikTok columns or live tier.
+          const parsedThreadsFollowers = verified?.followerCount ?? parseFollowerCount(submittedFollowerCount);
+          resolvedFollowerCount = typeof parsedThreadsFollowers === 'number' ? parsedThreadsFollowers : 0;
+        } else if (submittedFollowerCount && submittedFollowerCount > 0) {
           const creatorRecord = await tx.creator.findUnique({
             where: { userId: user.id },
             include: { instagramUser: true, tiktokUser: true },
@@ -11000,8 +11024,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           resolvedFollowerCount = getFollowerForPlatform(user.creator, selectedPlatform);
         }
 
-        const connectedEngagementRate =
-          selectedPlatform === 'instagram'
+        const connectedEngagementRate = isThreads
+          ? null
+          : selectedPlatform === 'instagram'
             ? user.creator?.instagramUser?.engagement_rate
             : user.creator?.tiktokUser?.engagement_rate;
         const pitchEngagementRate =
@@ -12211,10 +12236,10 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               // `manualFollowerCount` is the single column the UI reads, so
               // both write paths keep it in step. The platform-specific
               // columns stay as extra detail. See risk R2.
+              // Threads has no platform column.
               manualFollowerCount: parsedFollowerCount,
-              ...(selectedPlatform === 'instagram'
-                ? { manualInstagramFollowerCount: parsedFollowerCount }
-                : { manualTiktokFollowerCount: parsedFollowerCount }),
+              ...(selectedPlatform === 'instagram' ? { manualInstagramFollowerCount: parsedFollowerCount } : {}),
+              ...(selectedPlatform === 'tiktok' ? { manualTiktokFollowerCount: parsedFollowerCount } : {}),
               ...(tier && {
                 creditTierId: tier.id,
                 tierUpdatedAt: new Date(),

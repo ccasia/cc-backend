@@ -28,8 +28,11 @@ export function classifyMetricProvenance(input: {
   final: MetricBaseline;
   /** Set when the admin confirmed a permitted manual fallback. */
   fallbackReason?: string | null;
+  /** Threads carries Recent Views in the rate slot. No fetch ever fills it. */
+  platform?: string | null;
 }): MetricProvenance {
   const { receiptVerified, original, final, fallbackReason } = input;
+  const isRecentViews = input.platform === 'threads';
 
   const editedFields = (['name', 'followerCount', 'engagementRate'] as const).filter((field) =>
     changed(original[field], final[field]),
@@ -43,9 +46,13 @@ export function classifyMetricProvenance(input: {
     // recorded, but it does not change where the numbers came from.
     const metricEdited = editedFields.some((field) => field !== 'name');
     source = metricEdited ? 'manual_override' : 'automatic';
-    if (editedFields.length > 0) {
-      overrideReason = `Admin edited ${editedFields.join(', ')} after the fetch.`;
-    }
+    // Typed Threads Recent Views is never a change to a fetched value.
+    const fetchedEdits = editedFields.filter((field) => !(isRecentViews && field === 'engagementRate'));
+    const reasons = [
+      fetchedEdits.length > 0 ? `Admin edited ${fetchedEdits.join(', ')} after the fetch.` : null,
+      isRecentViews && editedFields.includes('engagementRate') ? 'Threads recent views entered by hand.' : null,
+    ].filter(Boolean);
+    if (reasons.length > 0) overrideReason = reasons.join(' ');
     // Without a receipt the engagement rate decides the label. A blank rate
     // means there is no metric to describe, whatever else was entered.
   } else if (NOT_SET(final.engagementRate)) {

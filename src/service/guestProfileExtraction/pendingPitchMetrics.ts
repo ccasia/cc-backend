@@ -49,8 +49,16 @@ export async function assignCreditTier(
   tx: PendingPitchApplyStore,
   userId: string,
   followerCount: number,
-  platform: 'instagram' | 'tiktok' | string | null,
+  platform: 'instagram' | 'tiktok' | 'threads' | string | null,
 ): Promise<void> {
+  // A Threads count is a creator-level value only for a guest. A registered
+  // creator keeps it on the pitch and shortlist snapshots, so their live
+  // follower count and tier stay untouched.
+  if (platform === 'threads') {
+    const creator = await tx.creator.findUnique({ where: { userId }, select: { isGuest: true } });
+    if (!creator?.isGuest) return;
+  }
+
   const tier = await tx.creditTier.findFirst({
     where: {
       isActive: true,
@@ -64,9 +72,11 @@ export async function assignCreditTier(
     where: { userId },
     data: {
       manualFollowerCount: followerCount,
-      ...(platform === 'tiktok'
-        ? { manualTiktokFollowerCount: followerCount }
-        : { manualInstagramFollowerCount: followerCount }),
+      // Threads has no platform column: its count lives only in
+      // manualFollowerCount and the pitch/shortlist snapshots. An unknown
+      // platform keeps the old Instagram default.
+      ...(platform === 'tiktok' ? { manualTiktokFollowerCount: followerCount } : {}),
+      ...(platform !== 'tiktok' && platform !== 'threads' ? { manualInstagramFollowerCount: followerCount } : {}),
       ...(tier && { creditTierId: tier.id, tierUpdatedAt: new Date() }),
     },
   });
@@ -122,6 +132,7 @@ async function applyReadyToPitch(tx: PendingPitchApplyStore, pitch: any, extract
 
   const provenance = classifyMetricProvenance({
     receiptVerified: true,
+    platform: fresh.selectedPlatform ?? extraction.platform,
     original: { name: extraction.resultName ?? null, followerCount, engagementRate },
     final: {
       name: resultName || currentName || null,

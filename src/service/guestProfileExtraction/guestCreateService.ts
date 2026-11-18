@@ -56,12 +56,7 @@ export type GuestRejectionCode =
   | 'EXTRACTION_NOT_ATTACHABLE';
 
 /** Statuses that may be bound to a pitch before metrics exist. */
-export const ATTACHABLE_STATUSES = [
-  'QUEUED',
-  'RUNNING',
-  'POLLING',
-  'REQUIRES_RECONCILIATION',
-] as const;
+export const ATTACHABLE_STATUSES = ['QUEUED', 'RUNNING', 'POLLING', 'REQUIRES_RECONCILIATION'] as const;
 
 export type AcceptedExtraction = {
   kind: 'ready' | 'pending';
@@ -74,7 +69,7 @@ export type AcceptedExtraction = {
 };
 
 export interface AcceptedGuest {
-  /** Null when the link is outside Instagram and TikTok. */
+  /** Null when the link is outside Instagram, TikTok, and Threads. */
   canonicalProfileKey: string | null;
   canonicalProfileUrl: string | null;
   /** The raw link, used when there is no canonical form. */
@@ -82,6 +77,7 @@ export interface AcceptedGuest {
   platform: SupportedPlatform | null;
   name: string;
   followerCount: number | null;
+  /** Engagement rate percent, or Recent Views digits on Threads. */
   engagementRate: string | null;
   adminComments: string | null;
   /** Set for a receipt-backed row or an in-flight attach. */
@@ -147,6 +143,53 @@ export function parseEngagementRate(value: unknown): string | null | 'invalid' {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > MAX_ENGAGEMENT_RATE) return 'invalid';
   return parsed.toFixed(2);
+}
+
+/** Largest Recent Views value accepted for a Threads creator. */
+export const MAX_RECENT_VIEWS = 1_000_000_000_000;
+
+export const ENGAGEMENT_RATE_INVALID_MESSAGE = 'Engagement rate must be a percentage between 0 and 100.';
+export const RECENT_VIEWS_INVALID_MESSAGE = 'Enter recent views as a whole number, for example 1,300,000 or 1.3M.';
+
+const VIEWS_SUFFIX: Record<string, number> = { k: 1_000, m: 1_000_000, b: 1_000_000_000 };
+
+/**
+ * Threads Recent Views, typed by an admin from the Threads app.
+ *
+ * Accepts `1300000`, `1,300,000`, `1.3M`, `850k`, and `1.3M recent views`.
+ * Returns a whole-number digit string, never a percent. Threads hides this
+ * number from logged-out visitors, so it is never fetched.
+ */
+export function parseRecentViews(value: unknown): string | null | 'invalid' {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= 0 && value <= MAX_RECENT_VIEWS ? String(value) : 'invalid';
+  }
+  if (typeof value !== 'string') return 'invalid';
+  if (value.trim() === '') return null;
+
+  const raw = value.replace(/[,\s]/g, '').replace(/(?:recent)?views$/i, '');
+  let parsed: number;
+  if (/^\d+$/.test(raw)) {
+    parsed = Number(raw);
+  } else {
+    const short = /^(\d+(?:\.\d+)?)([kmb])$/i.exec(raw);
+    if (!short) return 'invalid';
+    parsed = Math.round(Number(short[1]) * VIEWS_SUFFIX[short[2].toLowerCase()]);
+  }
+  return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= MAX_RECENT_VIEWS ? String(parsed) : 'invalid';
+}
+
+/**
+ * The platform's primary metric, carried in the engagement-rate fields:
+ * Recent Views on Threads, the engagement rate percent everywhere else.
+ */
+export function parsePrimaryMetric(platform: string | null | undefined, value: unknown): string | null | 'invalid' {
+  return platform === 'threads' ? parseRecentViews(value) : parseEngagementRate(value);
+}
+
+export function primaryMetricInvalidMessage(platform: string | null | undefined): string {
+  return platform === 'threads' ? RECENT_VIEWS_INVALID_MESSAGE : ENGAGEMENT_RATE_INVALID_MESSAGE;
 }
 
 /* --------------------------------------------------------------- names */
@@ -248,22 +291,26 @@ export async function validateSubmittedGuests(
     }
 
     let follower = parseFollowerCount(guest.followerCount);
-    let rate = parseEngagementRate(guest.engagementRate);
+    let rate = parsePrimaryMetric(profile.platform, guest.engagementRate);
     // An in-flight attach ignores client-typed numbers, including junk left
     // in the modal. A receipt-backed row still rejects a bad override.
+    // Threads Recent Views is the exception: no fetch will fill it, so a bad
+    // typed value is rejected rather than silently dropped.
     if (guest.extractionId && !guest.completionReceipt) {
       if (follower === 'invalid') follower = null;
-      if (rate === 'invalid') rate = null;
-    } else {
-      if (follower === 'invalid') {
-        reject('INVALID_FOLLOWER_COUNT', 'Follower count must be a whole number above zero.');
-        continue;
-      }
-      if (rate === 'invalid') {
-        reject('INVALID_ENGAGEMENT_RATE', 'Engagement rate must be a percentage between 0 and 100.');
-        continue;
-      }
+      if (rate === 'invalid' && profile.platform !== 'threads') rate = null;
     }
+    if (follower === 'invalid') {
+      reject('INVALID_FOLLOWER_COUNT', 'Follower count must be a whole number above zero.');
+      continue;
+    }
+    if (rate === 'invalid') {
+      reject('INVALID_ENGAGEMENT_RATE', primaryMetricInvalidMessage(profile.platform));
+      continue;
+    }
+    // Threads Recent Views is never fetched, so a typed value is kept even on
+    // an in-flight attach, where every other typed number gives way to the fetch.
+    const typedRecentViews = profile.platform === 'threads' ? rate : null;
     const name = (guest.name ?? '').trim();
     const adminComments = (guest.adminComments ?? '').trim() || null;
 
@@ -350,7 +397,7 @@ export async function validateSubmittedGuests(
           platform: profile.platform,
           name: resolvedName || extraction.resultName || usernameFromCanonicalKey(profile.canonicalKey),
           followerCount: extraction.resultFollowerCount ?? null,
-          engagementRate: extraction.resultEngagementRate ?? null,
+          engagementRate: extraction.resultEngagementRate ?? typedRecentViews,
           adminComments,
           extraction: readyExtractionFields(extraction),
           baseline: {
@@ -376,7 +423,7 @@ export async function validateSubmittedGuests(
         platform: profile.platform,
         name: resolvedName,
         followerCount: null,
-        engagementRate: null,
+        engagementRate: typedRecentViews,
         adminComments,
         extraction: {
           kind: 'pending',
@@ -439,6 +486,7 @@ export function provenanceFor(guest: AcceptedGuest) {
     original: guest.baseline,
     final: { name: guest.name, followerCount: guest.followerCount, engagementRate: guest.engagementRate },
     fallbackReason: guest.fallbackReason,
+    platform: guest.platform,
   });
 }
 
@@ -573,18 +621,25 @@ export function validateManualGuests(guests: readonly SubmittedGuest[]): Validat
       continue;
     }
 
+    // A canonical link decides the platform. Only a link this backend cannot
+    // canonicalize falls back to what the admin picked.
+    const normalized = normalizeProfileUrl(link);
+    const submitted = (guest.selectedPlatform ?? '').trim().toLowerCase();
+    const fallbackPlatform: SupportedPlatform | null =
+      submitted === 'tiktok' || submitted === 'instagram' || submitted === 'threads' ? submitted : null;
+    const platform = normalized.ok ? normalized.profile.platform : fallbackPlatform;
+
     const follower = parseFollowerCount(guest.followerCount);
     if (follower === 'invalid') {
       reject('INVALID_FOLLOWER_COUNT', 'Follower count must be a whole number above zero.');
       continue;
     }
-    const rate = parseEngagementRate(guest.engagementRate);
+    const rate = parsePrimaryMetric(platform, guest.engagementRate);
     if (rate === 'invalid') {
-      reject('INVALID_ENGAGEMENT_RATE', 'Engagement rate must be a percentage between 0 and 100.');
+      reject('INVALID_ENGAGEMENT_RATE', primaryMetricInvalidMessage(platform));
       continue;
     }
 
-    const normalized = normalizeProfileUrl(link);
     const identity = normalized.ok ? normalized.profile.canonicalKey : link.toLowerCase();
     if (seen.has(identity)) {
       reject('DUPLICATE_PROFILE', 'This creator appears more than once in the batch.');
@@ -592,17 +647,11 @@ export function validateManualGuests(guests: readonly SubmittedGuest[]): Validat
     }
     seen.add(identity);
 
-    // A canonical link decides the platform. Only a link this backend cannot
-    // canonicalize falls back to what the admin picked.
-    const submitted = (guest.selectedPlatform ?? '').trim().toLowerCase();
-    const fallbackPlatform: SupportedPlatform | null =
-      submitted === 'tiktok' ? 'tiktok' : submitted === 'instagram' ? 'instagram' : null;
-
     accepted.push({
       canonicalProfileKey: normalized.ok ? normalized.profile.canonicalKey : null,
       canonicalProfileUrl: normalized.ok ? normalized.profile.canonicalUrl : null,
       rawProfileLink: link,
-      platform: normalized.ok ? normalized.profile.platform : fallbackPlatform,
+      platform,
       name,
       followerCount: follower,
       engagementRate: rate,
