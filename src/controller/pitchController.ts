@@ -3,7 +3,12 @@ import { Request, Response } from 'express';
 import { canManageCampaignCreators } from '@services/guestProfileExtraction/campaignCreatorPolicy';
 import { classifyMetricProvenance } from '@services/guestProfileExtraction/metricProvenance';
 import { normalizeProfileUrl } from '@services/guestProfileExtraction/profileUrlNormalizer';
-import { parseEngagementRate, parseFollowerCount } from '@services/guestProfileExtraction/guestCreateService';
+import {
+  parseFollowerCount,
+  parsePrimaryMetric,
+  primaryMetricInvalidMessage,
+  RECENT_VIEWS_INVALID_MESSAGE,
+} from '@services/guestProfileExtraction/guestCreateService';
 import {
   applyExtractionToPendingPitchesSafe,
   assignCreditTier,
@@ -2524,27 +2529,27 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Creator name and profile link are required' });
     }
 
-    // Numeric validation. A count must be a whole number above zero, and a
-    // rate must be a percentage between 0 and 100.
-    const parsedFollowerCount = parseFollowerCount(followerCount);
-    if (parsedFollowerCount === 'invalid') {
-      return res.status(400).json({ message: 'Follower count must be a whole number above zero.' });
-    }
-    const parsedEngagementRate = parseEngagementRate(engagementRate);
-    if (parsedEngagementRate === 'invalid') {
-      return res.status(400).json({ message: 'Engagement rate must be a percentage between 0 and 100.' });
-    }
-
     // Canonicalize a supported link so identity stays consistent. A link this
     // backend cannot canonicalize keeps its raw form, as it does today.
     const trimmedLink = profileLink.trim();
     const normalized = normalizeProfileUrl(trimmedLink);
-    if (!normalized.ok && /instagram\.com|tiktok\.com/i.test(trimmedLink)) {
+    if (!normalized.ok && /instagram\.com|tiktok\.com|threads\.(?:com|net)/i.test(trimmedLink)) {
       return res.status(400).json({ message: normalized.message, code: normalized.code });
     }
     const canonicalKey = normalized.ok ? normalized.profile.canonicalKey : null;
     const storedLink = normalized.ok ? normalized.profile.canonicalUrl : trimmedLink;
     const platform = normalized.ok ? normalized.profile.platform : (pitch.selectedPlatform ?? null);
+
+    // Numeric validation. A count must be a whole number above zero. The
+    // metric slot is a percentage, or Recent Views digits on Threads.
+    const parsedFollowerCount = parseFollowerCount(followerCount);
+    if (parsedFollowerCount === 'invalid') {
+      return res.status(400).json({ message: 'Follower count must be a whole number above zero.' });
+    }
+    const parsedEngagementRate = parsePrimaryMetric(platform, engagementRate);
+    if (parsedEngagementRate === 'invalid') {
+      return res.status(400).json({ message: primaryMetricInvalidMessage(platform) });
+    }
 
     if (canonicalKey) {
       const conflict = await prisma.guestProfileIdentityConflict.findUnique({
@@ -2626,12 +2631,26 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
         await tx.pitch.update({ where: { id: pitchId }, data: pitchUpdateData });
       }
 
+      // Agreements read the shortlist snapshot first, so keep it in step with
+      // the pitch, as the metrics endpoint and a finished fetch do.
+      const shortlistUpdateData = {
+        ...(followerCount !== undefined ? { followerCount: parsedFollowerCount } : {}),
+        ...(platform ? { selectedPlatform: platform } : {}),
+      };
+      if (Object.keys(shortlistUpdateData).length > 0) {
+        await tx.shortListedCreator.updateMany({
+          where: { userId: pitch.userId, campaignId: pitch.campaignId },
+          data: shortlistUpdateData,
+        });
+      }
+
       // No metrics sent (a scrape still owns them): no metric change to audit.
       if (followerCount === undefined && engagementRate === undefined) return;
 
       // An update has no receipt, so its provenance is manual or unavailable.
       const provenance = classifyMetricProvenance({
         receiptVerified: false,
+        platform,
         original: {
           name: pitch.user?.name ?? null,
           followerCount: pitch.followerCount ? Number(pitch.followerCount) : null,
@@ -2721,20 +2740,25 @@ export const updatePlatformCreatorMetrics = async (req: Request, res: Response) 
     if (pitch.pendingExtractionId) {
       return res.status(409).json({ message: 'The fetch for this creator is still running.', code: 'METRICS_PENDING' });
     }
-    if (!pitch.metricsFailureCode) {
+
+    const platform = pitch.selectedPlatform;
+    // Threads Recent Views is never fetched, so it is always typed by hand.
+    // Followers on Threads still open only after a failed fetch.
+    const isThreads = platform === 'threads';
+    const fetchFailed = Boolean(pitch.metricsFailureCode);
+    if (!fetchFailed && !isThreads) {
       return res.status(409).json({
         message: 'These numbers can only be entered by hand when the fetch failed.',
         code: 'METRICS_NOT_EDITABLE',
       });
     }
 
-    const platform = pitch.selectedPlatform;
-    // Same rule as the shortlist save: a connected account counts only once its
-    // stats are saved. A token-only row has no numbers, so the admin may type them.
-    const instagramConnected = creator.instagramUser?.followers_count != null;
-    const tiktokConnected = creator.tiktokUser?.follower_count != null;
-    const connected =
-      platform === 'instagram'
+    const instagramConnected = creator.isFacebookConnected || Boolean(creator.instagramUser);
+    const tiktokConnected = creator.isTiktokConnected || Boolean(creator.tiktokUser);
+    // Threads creators never have a connected account.
+    const connected = isThreads
+      ? false
+      : platform === 'instagram'
         ? instagramConnected
         : platform === 'tiktok'
           ? tiktokConnected
@@ -2746,16 +2770,34 @@ export const updatePlatformCreatorMetrics = async (req: Request, res: Response) 
       });
     }
 
-    const parsedFollowerCount = parseFollowerCount(followerCount);
+    // A Threads follower count from a successful fetch is not edited here, so
+    // a sent count is refused openly instead of being dropped.
+    const followersLocked = isThreads && !fetchFailed;
+    const followerSent = followerCount !== undefined && followerCount !== null && String(followerCount).trim() !== '';
+    if (followersLocked && followerSent) {
+      return res.status(400).json({
+        message: 'The follower count comes from the Threads profile. Enter recent views only.',
+        code: 'FOLLOWERS_NOT_EDITABLE',
+      });
+    }
+    const parsedFollowerCount = followersLocked ? null : parseFollowerCount(followerCount);
     if (parsedFollowerCount === 'invalid') {
       return res.status(400).json({ message: 'Follower count must be a whole number above zero.' });
     }
-    const parsedEngagementRate = parseEngagementRate(engagementRate);
+    const parsedEngagementRate = parsePrimaryMetric(platform, engagementRate);
     if (parsedEngagementRate === 'invalid') {
-      return res.status(400).json({ message: 'Engagement rate must be a percentage between 0 and 1,000.' });
+      return res.status(400).json({
+        message: isThreads ? RECENT_VIEWS_INVALID_MESSAGE : 'Engagement rate must be a percentage between 0 and 1,000.',
+      });
     }
     if (parsedFollowerCount === null && parsedEngagementRate === null) {
-      return res.status(400).json({ message: 'Enter a follower count or an engagement rate.' });
+      return res.status(400).json({
+        message: isThreads
+          ? fetchFailed
+            ? 'Enter a follower count or recent views.'
+            : 'Enter recent views.'
+          : 'Enter a follower count or an engagement rate.',
+      });
     }
 
     // An empty or missing field means "leave it as is", never "erase it". The
@@ -2779,8 +2821,8 @@ export const updatePlatformCreatorMetrics = async (req: Request, res: Response) 
 
       // Carries the rate into the creator's other campaigns, as a scrape does.
       // Only a typed rate is written; a blank one must not erase a rate that
-      // another campaign saved.
-      if (parsedEngagementRate !== null) {
+      // another campaign saved. Threads Recent Views stays on the pitch only.
+      if (parsedEngagementRate !== null && !isThreads) {
         const rate = Number(parsedEngagementRate);
         if (platform === 'tiktok') {
           await tx.creator.update({ where: { userId: pitch.userId }, data: { manualTiktokEngagementRate: rate } });
@@ -2791,6 +2833,7 @@ export const updatePlatformCreatorMetrics = async (req: Request, res: Response) 
 
       const provenance = classifyMetricProvenance({
         receiptVerified: false,
+        platform,
         original: {
           name: pitch.user?.name ?? null,
           followerCount: pitch.followerCount ? Number(pitch.followerCount) : null,
@@ -2815,7 +2858,9 @@ export const updatePlatformCreatorMetrics = async (req: Request, res: Response) 
           finalFollowerCount: provenance.final.followerCount,
           finalEngagementRate: provenance.final.engagementRate,
           source: provenance.source,
-          overrideReason: `Entered by hand after the fetch failed: ${pitch.metricsFailureCode}.`,
+          overrideReason: fetchFailed
+            ? `Entered by hand after the fetch failed: ${pitch.metricsFailureCode}.`
+            : 'Threads recent views entered by hand.',
           performedByUserId: userId as string,
           reviewerUserId: userId as string,
         },

@@ -8,7 +8,7 @@ interface FollowerData {
   manualFollowers?: number | null;
 }
 
-type PlatformType = 'instagram' | 'tiktok';
+type PlatformType = 'instagram' | 'tiktok' | 'threads';
 
 interface TierCalculationResult {
   followerCount: number;
@@ -54,6 +54,9 @@ export const getFollowerCountByPlatform = (
   const manualTiktok = data.manualTiktokFollowers ?? 0;
   const hasInstagramConnected = data.hasInstagramConnected ?? false;
   const hasTiktokConnected = data.hasTiktokConnected ?? false;
+
+  // Threads has no connected account and no per-platform manual count.
+  if (selectedPlatform === 'threads') return 0;
 
   if (selectedPlatform === 'tiktok') {
     if (hasTiktokConnected) return tiktok;
@@ -268,14 +271,25 @@ export const resolveLiveRowTier = async (
   if (!creator) throw new Error('Creator not found');
 
   const saved = pitch?.selectedPlatform;
-  const platform: PlatformType = saved === 'tiktok' || saved === 'instagram' ? saved : DEFAULT_AGREEMENT_PLATFORM;
+  const platform: PlatformType =
+    saved === 'tiktok' || saved === 'instagram' || saved === 'threads' ? saved : DEFAULT_AGREEMENT_PLATFORM;
+
+  // Threads has no connected account and no per-platform manual count.
+  const platformCounts =
+    platform === 'threads'
+      ? []
+      : [
+          platform === 'tiktok' ? creator.tiktokUser?.follower_count : creator.instagramUser?.followers_count,
+          platform === 'tiktok' ? creator.manualTiktokFollowerCount : creator.manualInstagramFollowerCount,
+        ];
 
   const followerCount =
+    // A registered creator's general manual count belongs to another platform,
+    // so a Threads row reads it only for a guest (whose count is the Threads one).
     [
-      platform === 'tiktok' ? creator.tiktokUser?.follower_count : creator.instagramUser?.followers_count,
-      platform === 'tiktok' ? creator.manualTiktokFollowerCount : creator.manualInstagramFollowerCount,
+      ...platformCounts,
       pitch?.followerCount,
-      creator.manualFollowerCount,
+      platform !== 'threads' || creator.isGuest ? creator.manualFollowerCount : null,
     ]
       .map(parsePositiveFollowerCount)
       .find((count) => count !== null) ?? 0;
@@ -427,10 +441,7 @@ export const updateManualFollowerCount = async (userId: string, followerCount: n
  */
 // Reads CreatorAgreement, not ShortListedCreator's single cached creditPerVideo — a
 // creator's rounds can each use a different platform/tier, so one cached value won't do.
-export const calculateCampaignCreditsUsed = async (
-  campaignId: string,
-  excludeUserId?: string,
-): Promise<number> => {
+export const calculateCampaignCreditsUsed = async (campaignId: string, excludeUserId?: string): Promise<number> => {
   const result = await prisma.creatorAgreement.aggregate({
     where: {
       campaignId,

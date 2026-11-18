@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { AdapterFailureCode, SupportedPlatform } from '@/src/types/guestProfileExtraction';
+import type { AdapterFailureCode, PostPlatform } from '@/src/types/guestProfileExtraction';
 import {
   asArray,
   counter,
@@ -118,7 +118,7 @@ function readTiktok(item: unknown): Read {
   };
 }
 
-export function parsePostMetrics(platform: SupportedPlatform, items: unknown): PostMetricsResult {
+export function parsePostMetrics(platform: PostPlatform, items: unknown): PostMetricsResult {
   const rows = asArray(items);
   const read = platform === 'instagram' ? readInstagram : readTiktok;
 
@@ -179,7 +179,7 @@ export function postPublishedAt(platform: SupportedPlatform, item: unknown, now:
 }
 
 /** The provider's thumbnail for one scraped post, or null. The URL expires, so the caller copies it. */
-export function postThumbnail(platform: SupportedPlatform, item: unknown): string | null {
+export function postThumbnail(platform: PostPlatform, item: unknown): string | null {
   const parsed = thumbnailSchema.safeParse(item);
   if (!parsed.success) return null;
   const t = parsed.data;

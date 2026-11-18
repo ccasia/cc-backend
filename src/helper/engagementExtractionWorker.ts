@@ -142,13 +142,17 @@ worker.on('ready', () => {
   // The datasets and contract versions are logged so a stale container is
   // easy to spot: Docker bakes `env_file` at container creation, so a
   // restarted (not recreated) container can run an older build. Never the token.
-  const describe = (platform: 'instagram' | 'tiktok') => {
+  const describe = (platform: 'instagram' | 'tiktok' | 'threads') => {
     const { posts, profile, contractVersion } = config.scrapers[platform];
-    return `${contractVersion} posts=${posts.datasetId}${posts.discoverBy ? `(${posts.discoverBy})` : ''} profile=${profile.datasetId}`;
+    const postsPart = posts
+      ? `posts=${posts.datasetId}${posts.discoverBy ? `(${posts.discoverBy})` : ''}`
+      : 'posts=none';
+    return `${contractVersion} ${postsPart} profile=${profile.datasetId}`;
   };
   console.log(`[engagement-worker] ready, concurrency ${config.workerConcurrency}`, {
     instagram: describe('instagram'),
     tiktok: describe('tiktok'),
+    threads: describe('threads'),
     pollTimeoutSeconds: config.pollTimeoutSeconds,
     maxPostsPerProfile: config.maxPostsPerProfile,
   });

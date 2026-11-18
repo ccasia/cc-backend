@@ -73,7 +73,7 @@ export async function resolveGuestByCanonicalProfile(
   if (byKey) {
     await renameIfChanged(tx, byKey.userId, byKey.user?.name ?? null, name);
     const linkPatch = scrapedProfileLinkPatch(byKey, profile.platform, profile.canonicalUrl);
-    if (linkPatch.instagramProfileLink || linkPatch.tiktokProfileLink) {
+    if (Object.keys(linkPatch).length > 0) {
       await tx.creator.update({ where: { id: byKey.id }, data: linkPatch });
     }
     return { userId: byKey.userId, isGuest: true, resolution: 'byCanonicalKey' };

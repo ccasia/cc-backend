@@ -1,4 +1,4 @@
-import type { SupportedPlatform } from '@/src/types/guestProfileExtraction';
+import type { PostPlatform, SupportedPlatform } from '@/src/types/guestProfileExtraction';
 
 /**
  * Backend-only configuration for guest profile extraction.
@@ -15,7 +15,11 @@ export interface ScraperJob {
 }
 
 export interface PlatformScrapers {
-  posts: ScraperJob;
+  /**
+   * Null for a profile-only platform (Threads). Its single job is the profile
+   * job, which is then the primary job: see `primaryJob`.
+   */
+  posts: ScraperJob | null;
   profile: ScraperJob;
   /**
    * The field contract the adapter was certified against.
@@ -84,8 +88,14 @@ export const BRIGHTDATA_API_BASE_URL = 'https://api.brightdata.com';
  *
  * TikTok posts use the "Posts by Profile Fast API". The profile dataset
  * supplies followers and the private flag, which no posts item carries.
+ *
+ * Threads is profile-only ("Threads - Profiles", collect by URL). Threads
+ * hides Recent Views from logged-out visitors, so there is no rate to compute
+ * and no posts job; an admin types Recent Views by hand.
  */
-export const SCRAPERS: Record<SupportedPlatform, PlatformScrapers> = {
+// `satisfies`, not a type annotation, so `SCRAPERS.instagram.posts` keeps its
+// non-null type for the analytics post scrape.
+export const SCRAPERS = {
   instagram: {
     posts: { datasetId: 'gd_lyclm20il4r5helnj', discoverBy: 'url_all_reels' },
     profile: { datasetId: 'gd_l1vikfch901nx3by4', discoverBy: null },
@@ -98,7 +108,22 @@ export const SCRAPERS: Record<SupportedPlatform, PlatformScrapers> = {
     contractVersion: 'brightdata-tt-2026-09',
     topUpExcludes: false,
   },
-};
+  threads: {
+    posts: null,
+    profile: { datasetId: 'gd_mde7jg3ld2h3hnnf2', discoverBy: null },
+    contractVersion: 'brightdata-th-2026-11',
+    topUpExcludes: false,
+  },
+} satisfies Record<SupportedPlatform, PlatformScrapers>;
+
+/** True when the platform runs only the profile job (no posts, no rate). */
+export const isProfileOnly = (scrapers: PlatformScrapers): boolean => scrapers.posts === null;
+
+/**
+ * The job whose snapshot ID lives in `actorRunId` and whose dataset ID lives
+ * in `actorId`: the posts job, or the profile job on a profile-only platform.
+ */
+export const primaryJob = (scrapers: PlatformScrapers): ScraperJob => scrapers.posts ?? scrapers.profile;
 
 const int = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseInt(value ?? '', 10);
@@ -128,7 +153,7 @@ const limit = (value: string | undefined): number => {
  * Reels (measured 2026-10-12: @f1 DeXWsHfGktR, DcGhVHqKcZL, DeXP0Ytj31G;
  * @jennierubyjane DcpYcekp94O). The discovery returned both on every Reel.
  */
-export const POST_SCRAPERS: Record<SupportedPlatform, ScraperJob> = {
+export const POST_SCRAPERS: Record<PostPlatform, ScraperJob> = {
   instagram: { datasetId: 'gd_lk5ns7kz21pck8jpis', discoverBy: null },
   tiktok: { datasetId: 'gd_lu702nij2f790tmv9h', discoverBy: null },
 };
@@ -177,7 +202,7 @@ export function loadExtractionConfig(env: NodeJS.ProcessEnv = process.env): Extr
   };
 }
 
-/** Which job an input is for. Both platforms run a posts job and a profile job. */
+/** Which job an input is for. Instagram and TikTok run both; Threads runs only the profile job. */
 export type ScraperJobPurpose = 'posts' | 'profile';
 
 /**

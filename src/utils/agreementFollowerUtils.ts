@@ -1,4 +1,4 @@
-export type AgreementPlatform = 'instagram' | 'tiktok';
+export type AgreementPlatform = 'instagram' | 'tiktok' | 'threads';
 
 type FollowerSnapshot = {
   selectedPlatform?: string | null;
@@ -64,21 +64,26 @@ const getSnapshotFollowerCount = (
 // A connected account outranks a manual entry, the way getFollowerCountByPlatform in
 // creditTierService does it. That helper stops at a connected account even when it reports 0; we
 // keep looking, because a count of 0 is not something an agreement can be priced from.
+// Threads has no connected account and no per-platform manual column: only snapshots apply.
 const getConnectedFollowerCount = (
   creator: CreatorFollowerData | undefined,
   selectedPlatform: AgreementPlatform,
-): number | null =>
-  selectedPlatform === 'tiktok'
+): number | null => {
+  if (selectedPlatform === 'threads') return null;
+  return selectedPlatform === 'tiktok'
     ? parsePositiveFollowerCount(creator?.tiktokUser?.follower_count)
     : parsePositiveFollowerCount(creator?.instagramUser?.followers_count);
+};
 
 const getManualFollowerCount = (
   creator: CreatorFollowerData | undefined,
   selectedPlatform: AgreementPlatform,
-): number | null =>
-  selectedPlatform === 'tiktok'
+): number | null => {
+  if (selectedPlatform === 'threads') return null;
+  return selectedPlatform === 'tiktok'
     ? parsePositiveFollowerCount(creator?.manualTiktokFollowerCount)
     : parsePositiveFollowerCount(creator?.manualInstagramFollowerCount);
+};
 
 export const resolveAgreementFollowerCount = ({
   actorRole,
