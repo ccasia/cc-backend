@@ -6,10 +6,10 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
-const pathToJSONKey = `config/test-cs.json`;
+const pathToJSONKey = `config/storage.json`;
 
 export const storage = new Storage({
-  keyFilename: process.env.NODE_ENV === 'development' ? 'src/config/test-cs.json' : 'config/test-cs.json',
+  keyFilename: process.env.NODE_ENV === 'development' ? 'src/config/storage.json' : 'config/storage.json',
 });
 
 const bucket = storage.bucket(process.env.BUCKET_NAME!);

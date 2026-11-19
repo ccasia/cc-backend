@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import dayjs from 'dayjs';
 import fs from 'fs';
 
-const pathToJSONKey = `${__dirname}/test-cs.json`;
+const pathToJSONKey = `${__dirname}/storage.json`;
 
 export const storage = new Storage({
   keyFilename: pathToJSONKey,

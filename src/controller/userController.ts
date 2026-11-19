@@ -21,9 +21,8 @@ import { prisma } from '@/src/prisma/prisma';
 // import { serializePermission } from '@utils/serializePermission';
 
 const storage = new Storage({
-  keyFilename: '@configs/test-cs.json',
+  keyFilename: '@configs/storage.json',
 });
-
 
 export const updateProfileAdmin = async (req: Request, res: Response) => {
   const { files } = req;
