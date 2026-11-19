@@ -59,14 +59,14 @@ router.post('/create', authenticate, createInvoice);
 
 router.post('/bulk-update', authenticate, bulkUpdateInvoices);
 
-router.patch('/updateStatus', updateInvoiceStatus);
+router.patch('/updateStatus', authenticate, isSuperAdmin, updateInvoiceStatus);
 
 router.patch('/update', authenticate, updateInvoice);
 
 router.delete('/:id', authenticate, isSuperAdmin, deleteInvoice);
 
 // Temporary function
-router.post('/generateInvoice', async (req, res) => {
+router.post('/generateInvoice', authenticate, isSuperAdmin, async (req, res) => {
   const { submissionId, invoiceAmount } = req.body;
 
   try {
