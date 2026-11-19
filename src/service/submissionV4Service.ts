@@ -7,6 +7,7 @@ import {
   normalizePostingLink,
   joinPostingLinksToContent,
 } from '../utils/postingLinkValidation';
+import { buildRoundVideoRanges, roundForContentOrder } from './submissionV4CompletionService';
 import { onSubmissionSubmitted } from '@/src/modules/gamification';
 import { prisma } from '@/src/prisma/prisma';
 
@@ -322,24 +323,19 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
     // Tag each VIDEO with its agreement round and that round's approval state, so a creator
     // can't act on round 2's videos before round 2 is signed (round 1 stays unaffected).
     if (userId) {
-      const agreements = await prisma.creatorAgreement.findMany({
-        where: { campaignId, userId, isSent: true },
-        orderBy: { round: 'asc' },
-        select: { round: true, videoCount: true },
-      });
+      const [agreements, shortlisted] = await Promise.all([
+        prisma.creatorAgreement.findMany({
+          where: { campaignId, userId, isSent: true },
+          orderBy: { round: 'asc' },
+          select: { round: true, videoCount: true },
+        }),
+        prisma.shortListedCreator.findFirst({
+          where: { campaignId, userId },
+          select: { ugcVideos: true },
+        }),
+      ]);
 
-      let cursor = 0;
-      const videoRoundRanges = agreements.map((a) => {
-        const count = a.videoCount ?? 0;
-        const start = cursor + 1;
-        cursor += count;
-        return { round: a.round, start, end: cursor };
-      });
-
-      const roundForContentOrder = (contentOrder: number | null | undefined): number => {
-        if (contentOrder == null) return 1;
-        return videoRoundRanges.find((r) => contentOrder >= r.start && contentOrder <= r.end)?.round ?? 1;
-      };
+      const videoRoundRanges = buildRoundVideoRanges(agreements, shortlisted?.ugcVideos);
 
       const agreementStatusByRound = new Map<number, string>();
       allSubmissions.forEach((s: any) => {
@@ -350,7 +346,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
 
       allSubmissions.forEach((s: any) => {
         if (s.submissionType.type === 'VIDEO') {
-          const round = roundForContentOrder(s.contentOrder);
+          const round = roundForContentOrder(videoRoundRanges, s.contentOrder);
           const status = agreementStatusByRound.get(round);
           s.round = round;
           s.isRoundApproved = status === 'APPROVED' || status === 'CLIENT_APPROVED';

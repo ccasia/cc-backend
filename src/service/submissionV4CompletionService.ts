@@ -22,33 +22,56 @@ interface RoundVideoRange {
   round: number;
   start: number;
   end: number;
+  isCountKnown: boolean;
 }
 
 /**
  * The cumulative VIDEO contentOrder range each sent agreement round owns, oldest round
  * first — round 1 owns 1..N1, round 2 owns (N1+1)..(N1+N2), etc. Mirrors how
  * appendAdditionalAgreementSubmissions numbers new VIDEO submissions when a round is sent.
+ *
+ * CreatorAgreement.videoCount was added without a backfill, so agreements sent before it
+ * existed have it null. For a creator with a single agreement, ShortListedCreator.ugcVideos
+ * holds the same number and is used instead. With several rounds ugcVideos isn't a reliable
+ * total (editing an agreement overwrites it with that round's count), so a missing count is
+ * left unknown.
  */
-async function getRoundVideoRanges(campaignId: string, userId: string): Promise<RoundVideoRange[]> {
-  const agreements = await prisma.creatorAgreement.findMany({
-    where: { campaignId, userId, isSent: true },
-    orderBy: { round: 'asc' },
-    select: { round: true, videoCount: true },
-  });
+export const buildRoundVideoRanges = (
+  agreements: { round: number; videoCount: number | null }[],
+  shortlistUgcVideos?: number | null,
+): RoundVideoRange[] => {
+  const fallbackCount =
+    agreements.length === 1 && shortlistUgcVideos != null && shortlistUgcVideos > 0 ? shortlistUgcVideos : null;
 
   let cursor = 0;
   return agreements.map((a) => {
-    const count = a.videoCount ?? 0;
+    const count = a.videoCount ?? fallbackCount;
     const start = cursor + 1;
-    cursor += count;
-    return { round: a.round, start, end: cursor };
+    cursor += count ?? 0;
+    return { round: a.round, start, end: cursor, isCountKnown: count != null };
   });
-}
+};
 
 /** Which round a VIDEO submission's contentOrder belongs to (PHOTO/RAW_FOOTAGE are single, one-time deliverables that always belong to round 1). */
-function roundForContentOrder(ranges: RoundVideoRange[], contentOrder: number | null | undefined): number {
+export const roundForContentOrder = (ranges: RoundVideoRange[], contentOrder: number | null | undefined): number => {
   if (contentOrder == null) return 1;
   return ranges.find((r) => contentOrder >= r.start && contentOrder <= r.end)?.round ?? 1;
+};
+
+async function getRoundVideoRanges(campaignId: string, userId: string): Promise<RoundVideoRange[]> {
+  const [agreements, shortlisted] = await Promise.all([
+    prisma.creatorAgreement.findMany({
+      where: { campaignId, userId, isSent: true },
+      orderBy: { round: 'asc' },
+      select: { round: true, videoCount: true },
+    }),
+    prisma.shortListedCreator.findFirst({
+      where: { campaignId, userId },
+      select: { ugcVideos: true },
+    }),
+  ]);
+
+  return buildRoundVideoRanges(agreements, shortlisted?.ugcVideos);
 }
 
 /**
@@ -155,6 +178,16 @@ export const checkV4SubmissionCompletion = async (
       };
     }
 
+    // Without a video count the round's range is empty, so its videos would never be checked
+    // and the round would pass vacuously (and get invoiced). Fail closed instead.
+    if (!targetRange.isCountKnown) {
+      return {
+        isComplete: false,
+        reason: `Agreement for round ${targetRound} has no video count set`,
+        missingDeliverables: [],
+      };
+    }
+
     const isUGCCampaign = campaign.campaignType === 'ugc';
     const missingDeliverables: string[] = [];
     let allComplete = true;
@@ -176,6 +209,17 @@ export const checkV4SubmissionCompletion = async (
     const photoSubmissions = targetRound === 1 ? submissions.filter((s) => s.submissionType.type === 'PHOTO') : [];
     const rawFootageSubmissions =
       targetRound === 1 ? submissions.filter((s) => s.submissionType.type === 'RAW_FOOTAGE') : [];
+
+    // The round owes videos but none fall in its range (e.g. contentOrder mismatch) — checking
+    // an empty list would pass, so treat it as incomplete rather than done.
+    const expectedVideoCount = targetRange.end - targetRange.start + 1;
+    if (expectedVideoCount > 0 && videoSubmissions.length === 0) {
+      return {
+        isComplete: false,
+        reason: `Round ${targetRound} expects ${expectedVideoCount} video(s) but none were found in its range`,
+        missingDeliverables: [],
+      };
+    }
 
     console.log(
       `📊 Submission breakdown - Videos: ${videoSubmissions.length}, Photos: ${photoSubmissions.length}, Raw Footage: ${rawFootageSubmissions.length}`,
