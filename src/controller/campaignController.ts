@@ -8781,6 +8781,25 @@ export const resendAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Agreement not found.' });
     }
 
+    // Completion and invoicing work out each round's videos from this count, so never send
+    // without it. Agreements created before videoCount existed have none: a resend reuses the
+    // creator's shortlist count, which is only reliable when this is their sole agreement.
+    let missingVideoCount: number | null = null;
+    if (!user.creator?.isGuest && (agreement.videoCount == null || agreement.videoCount <= 0)) {
+      const [shortlisted, agreementCount] = await Promise.all([
+        prisma.shortListedCreator.findFirst({ where: { userId, campaignId }, select: { ugcVideos: true } }),
+        prisma.creatorAgreement.count({ where: { userId, campaignId } }),
+      ]);
+
+      missingVideoCount = agreementCount === 1 && shortlisted?.ugcVideos ? shortlisted.ugcVideos : null;
+
+      if (!missingVideoCount || missingVideoCount <= 0) {
+        return res.status(400).json({
+          message: 'Number of videos must be set before sending this agreement. Edit the agreement to add it.',
+        });
+      }
+    }
+
     // Update the agreement status for resend
     await prisma.creatorAgreement.update({
       where: {
@@ -8790,6 +8809,7 @@ export const resendAgreement = async (req: Request, res: Response) => {
         isSent: true,
         completedAt: new Date(),
         approvedByAdminId: adminId,
+        ...(missingVideoCount && { videoCount: missingVideoCount }),
       },
     });
 
