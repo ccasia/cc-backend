@@ -680,12 +680,38 @@ export const deleteReceipt = async (userId: string, receiptId: string) => {
     throw new ReimbursementError(400, 'Only draft or rejected receipts can be removed');
   }
 
-  await prisma.reimbursementReceipt.delete({ where: { id: receiptId } });
+  // Removing the last receipt of a submitted batch reopens it. Otherwise the round stays
+  // "submitted" with nothing in it: the creator can't add a receipt and the invoice is held forever.
+  const remaining = await prisma.$transaction(async (tx) => {
+    await tx.reimbursementReceipt.delete({ where: { id: receiptId } });
+
+    const count = await tx.reimbursementReceipt.count({ where: { agreementId: agreement.id } });
+
+    if (!count && agreement.receiptsSubmittedAt) {
+      await tx.creatorAgreement.update({ where: { id: agreement.id }, data: { receiptsSubmittedAt: null } });
+    }
+
+    return count;
+  });
+
   await renumberReceipts(agreement.id);
   await deleteReceiptFile(receipt.fileUrl);
 
+  // Only a submitted receipt is worth a log line — drafts were never seen by an admin.
+  if (receipt.status === 'REJECTED') {
+    const reference = `RB-${agreement.id.slice(-4).toUpperCase()}-${receipt.order}`;
+
+    await logChange(
+      `Reimbursement ${reference} for ${agreement.user.name ?? 'creator'} was removed by the creator${
+        remaining ? '' : ' — receipts reopened for upload'
+      }`,
+      agreement.campaignId,
+      undefined,
+    );
+  }
+
   // Removing the last rejected receipt may leave every remaining one approved.
-  if (receipt.status === 'REJECTED') await releaseInvoiceIfReady(agreement);
+  if (receipt.status === 'REJECTED' && remaining) await releaseInvoiceIfReady(agreement);
 
   emitUpdate(agreement.campaignId, userId, agreement.round);
 };
