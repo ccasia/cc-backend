@@ -151,7 +151,7 @@ export function findReelViews(items: unknown, shortcode: string): Omit<PostMetri
   return null;
 }
 
-/** Engagement over views. Scraped Instagram rows carry 0 shares and saves, so they add nothing. */
+/** Engagement over views. Scraped Instagram rows carry 0 shares and saves unless an admin entered them. */
 export function scrapedEngagementRate(metrics: PostMetrics): number {
   if (metrics.views <= 0) return 0;
   return ((metrics.likes + metrics.comments + metrics.shares + metrics.saved) / metrics.views) * 100;

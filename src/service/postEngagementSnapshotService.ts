@@ -839,6 +839,8 @@ export interface LatestPostEngagementSnapshot {
   thumbnailUrl?: string | null;
   /** The TikTok short-link code. The submission keeps the short link; `postUrl` is the resolved link. */
   shortCode?: string | null;
+  /** For an admin entering counts by hand (POST .../post-scrapes/:postingUrlId/metrics). */
+  postingUrlId?: string | null;
 }
 
 /**
@@ -860,7 +862,7 @@ export async function getLatestCampaignPostEngagement(campaignId: string): Promi
     }),
     prisma.submissionPostingUrl.findMany({
       where: { campaignId },
-      select: { postUrl: true, thumbnailUrl: true, shortCode: true },
+      select: { id: true, postUrl: true, thumbnailUrl: true, shortCode: true },
     }),
   ]);
   const postingUrlByPost = new Map(postingUrls.map((row) => [row.postUrl, row]));
@@ -913,6 +915,7 @@ export async function getLatestCampaignPostEngagement(campaignId: string): Promi
     ...snapshot,
     thumbnailUrl: postingUrlByPost.get(snapshot.postUrl)?.thumbnailUrl ?? null,
     shortCode: postingUrlByPost.get(snapshot.postUrl)?.shortCode ?? null,
+    postingUrlId: postingUrlByPost.get(snapshot.postUrl)?.id ?? null,
   }));
 }
 
