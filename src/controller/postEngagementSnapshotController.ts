@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '@/src/prisma/prisma';
 import { getFailedPostScrapes, getPendingPostScrapes } from '@services/postMetricsScrape/pendingPostScrapes';
-import { completeFailedScrape, type PostScrapeStore } from '@services/postMetricsScrape/postMetricsScrapeService';
+import { enterMetricsByHand, type PostScrapeStore } from '@services/postMetricsScrape/postMetricsScrapeService';
 import { resolveCampaignPostUrl } from '@services/submissionUrlService';
 import {
   getPostEngagementSnapshots,
@@ -252,19 +252,25 @@ export const getFailedCampaignPostScrapes = async (req: Request, res: Response) 
 };
 
 /**
- * An admin enters the counters a failed scrape could not get.
+ * An admin enters the counters a scrape could not get, or read as 0.
  * POST /api/campaign/:campaignId/post-scrapes/:postingUrlId/metrics
- * Body: { views, likes?, comments?, shares? }
+ * Body: { views?, likes?, comments?, shares?, saved? }
  */
 export const completeFailedCampaignPostScrape = async (req: Request, res: Response) => {
   try {
-    const { views, likes, comments, shares } = req.body ?? {};
+    const { views, likes, comments, shares, saved } = req.body ?? {};
     const toCount = (value: unknown) =>
       value === undefined || value === null || value === '' ? undefined : Number(value);
-    const result = await completeFailedScrape(prisma as unknown as PostScrapeStore, {
+    const result = await enterMetricsByHand(prisma as unknown as PostScrapeStore, {
       campaignId: req.params.campaignId,
       postingUrlId: req.params.postingUrlId,
-      metrics: { views: toCount(views), likes: toCount(likes), comments: toCount(comments), shares: toCount(shares) },
+      metrics: {
+        views: toCount(views),
+        likes: toCount(likes),
+        comments: toCount(comments),
+        shares: toCount(shares),
+        saved: toCount(saved),
+      },
       adminId: req.userId as string,
     });
     if (!result.ok) return res.status(result.status).json({ success: false, message: result.message });

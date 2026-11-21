@@ -85,7 +85,11 @@ export async function getStoredPostInsight(platform: ReportPlatform, userId: str
     postUrl: snapshot.postUrl,
     source: snapshot.source === 'brightdata' ? 'brightdata' : 'api',
     capturedAt: snapshot.capturedAt,
-    unavailableMetrics: snapshot.source === 'brightdata' ? SCRAPE_UNAVAILABLE[platform] : [],
+    // An admin may have entered a private count by hand; reach is always a copy of views.
+    unavailableMetrics:
+      snapshot.source === 'brightdata'
+        ? SCRAPE_UNAVAILABLE[platform].filter((name) => name === 'reach' || !metrics[name])
+        : [],
     campaignInsights: platformSnapshots.map(toInsight),
   };
 }
