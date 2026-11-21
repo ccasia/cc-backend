@@ -50,6 +50,7 @@ import {
   editCampaignReference,
   linkNewAgreement,
   getAllCampaignsByAdminId,
+  getCampaignLogContext,
   removeCreatorFromCampaign,
   getCampaignsTotal,
   shortlistCreatorV2,
@@ -188,7 +189,8 @@ router.get('/getCreatorAgreements', authenticate, isSuperAdmin, getAllCreatorAgr
 router.get('/getMyCampaigns/:userId', authenticate, getMyCampaigns);
 
 // Get Campaigns by Admin ID
-router.get('/getAllCampaignsByAdminId/:userId', getAllCampaignsByAdminId);
+router.get('/getAllCampaignsByAdminId/:userId', authenticate, getAllCampaignsByAdminId);
+router.get('/:id/logContext', authenticate, getCampaignLogContext);
 
 router.get('/campaignStatus', authenticate, getCampaignStatus);
 
