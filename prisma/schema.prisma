@@ -406,6 +406,8 @@ model TiktokVideo {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   tiktokUser      TiktokUser? @relation(fields: [tiktokUserId], references: [id])
+
+  @@index([tiktokUserId])
 }
 
 model InstagramUser {
@@ -454,6 +456,8 @@ model InstagramVideo {
   shortCode       String?
   view_count      Int?
   instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
+
+  @@index([instagramUserId])
 }
 
 model MediaKit {
@@ -544,6 +548,8 @@ model Interest {
   rank    Int?
   userId  String
   creator Creator @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Finance {
@@ -1052,6 +1058,8 @@ model CampaignLog {
   metadata   Json?
   admin      User?    @relation(fields: [adminId], references: [id])
   campaign   Campaign @relation(fields: [campaignId], references: [id])
+
+  @@index([campaignId, createdAt])
 }
 
 model AdminLog {
@@ -1206,6 +1214,7 @@ model UserNotification {
   user           User         @relation(fields: [userId], references: [id])
 
   @@unique([userId, notificationId])
+  @@index([notificationId])
 }
 
 model PushToken {
@@ -1270,6 +1279,7 @@ model Submission {
   insightOcrResults     InsightOcrResult[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
+  @@index([campaignId])
 }
 
 model VideoOfTheMonth {
@@ -1444,6 +1454,8 @@ model Video {
   submission         Submission?         @relation(fields: [submissionId], references: [id])
   uploadSession      UploadSession?      @relation(fields: [uploadSessionId], references: [id])
   user               User?               @relation(fields: [userId], references: [id])
+
+  @@index([submissionId])
 }
 
 model RawFootage {
@@ -1538,6 +1550,8 @@ model Feedback {
   submissionComment   SubmissionComment? @relation(fields: [submissionCommentId], references: [id])
   submission          Submission         @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   video               Video?             @relation(fields: [videoId], references: [id])
+
+  @@index([submissionId, createdAt])
 }
 
 model SubmissionComment {
@@ -1610,6 +1624,8 @@ model Invoice {
   user            User?         @relation("CreatedBy", fields: [adminId], references: [id])
   campaign        Campaign      @relation(fields: [campaignId], references: [id])
   creator         Creator       @relation(fields: [creatorId], references: [userId])
+
+  @@index([campaignId])
 }
 
 model PaymentForm {
