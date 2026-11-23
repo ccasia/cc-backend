@@ -11,8 +11,10 @@ import {
   InsightImageResult,
   InsightPlatform,
   INSIGHT_OCR_MODEL,
+  isInsightOcrConfigured,
 } from '@services/insightOcrService';
 import { MAX_SCREENSHOTS } from '@utils/insightScreenshots';
+import { resolveMetricsReview, syncScreenshotMetrics } from './post-insights-metrics.service';
 
 export class PostInsightsError extends Error {
   constructor(
@@ -30,6 +32,7 @@ const POST_INSIGHTS_SELECT = {
   values: true,
   screenshots: true,
   conflicts: true,
+  metricsReview: true,
   createdAt: true,
   createdBy: { select: { id: true, name: true, role: true } },
 } as const;
@@ -74,20 +77,6 @@ const resolvePost = async (userId: string, campaignId: string, submissionId: str
   if (!isPost) throw new PostInsightsError(400, 'postUrl is not a post of this submission');
 
   return { creatorId: submission.userId };
-};
-
-// Company key first, then the uploader's own key, then the most recently saved key.
-// Creators have no key, so they use the newest admin key (old keys are more likely revoked).
-const resolveApiKey = async (userId: string) => {
-  if (process.env.GOOGLE_API_KEY) return process.env.GOOGLE_API_KEY;
-  const own = await prisma.aiModel.findFirst({ where: { userId, apiKey: { not: '' } }, select: { apiKey: true } });
-  if (own?.apiKey) return own.apiKey;
-  const latest = await prisma.aiModel.findFirst({
-    where: { apiKey: { not: '' } },
-    orderBy: { updatedAt: 'desc' },
-    select: { apiKey: true },
-  });
-  return latest?.apiKey ?? null;
 };
 
 export const listPostInsights = async (userId: string, campaignId: string, submissionId?: string) => {
@@ -148,10 +137,20 @@ const toRowData = (screenshots: StoredScreenshot[]) => {
   };
 };
 
-const readScreenshot = async (apiKey: string | null, file: UploadedFile): Promise<InsightImageResult> =>
-  apiKey
+/** Updates the post's analytics numbers from its screenshots. A failure here never fails the upload. */
+const syncMetrics = async (args: Parameters<typeof syncScreenshotMetrics>[0]) => {
+  try {
+    return await syncScreenshotMetrics(args);
+  } catch (error) {
+    console.error('Could not update the post numbers from its screenshots:', error);
+    return undefined;
+  }
+};
+
+// Without a key the screenshots are still saved, but their values are not read.
+const readScreenshot = async (file: UploadedFile): Promise<InsightImageResult> =>
+  isInsightOcrConfigured()
     ? extractInsightsFromImage({
-        apiKey,
         fileName: file.name,
         mimeType: file.mimetype,
         data: await fs.readFile(file.tempFilePath),
@@ -163,7 +162,7 @@ const readScreenshot = async (apiKey: string | null, file: UploadedFile): Promis
         fields: [],
         usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 },
         durationMs: 0,
-        error: 'No Gemini API key',
+        error: 'ANTHROPIC_API_KEY is not set',
       };
 
 /**
@@ -200,13 +199,13 @@ export const addPostInsightScreenshots = async ({
     );
   }
 
-  const [apiKey, uploader] = await Promise.all([
-    resolveApiKey(userId),
-    prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, name: true, role: true } }),
-  ]);
+  const uploader = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { id: true, name: true, role: true },
+  });
 
   // Read first, so screenshots from the other platform are never uploaded.
-  const images = await Promise.all(files.map((file) => readScreenshot(apiKey, file)));
+  const images = await Promise.all(files.map((file) => readScreenshot(file)));
 
   const platform = postPlatform(postUrl);
   const isOtherPlatform = (image: InsightImageResult) =>
@@ -237,8 +236,10 @@ export const addPostInsightScreenshots = async ({
     select: POST_INSIGHTS_SELECT,
   });
 
+  const metricsReview = await syncMetrics({ insightId: result.id, campaignId, submissionId, postUrl, actor: uploader });
+
   notifyChanged({ campaignId, submissionId, creatorId, actorId: userId });
-  return { ...result, skipped };
+  return { ...result, ...(metricsReview !== undefined && { metricsReview }), skipped };
 };
 
 /**
@@ -248,7 +249,13 @@ export const addPostInsightScreenshots = async ({
 export const removePostInsightScreenshot = async (userId: string, campaignId: string, id: string, url: string) => {
   const row = await prisma.insightOcrResult.findFirst({
     where: { id, campaignId },
-    select: { screenshots: true, createdById: true, submissionId: true, submission: { select: { userId: true } } },
+    select: {
+      screenshots: true,
+      createdById: true,
+      submissionId: true,
+      postUrl: true,
+      submission: { select: { userId: true } },
+    },
   });
   if (!row) throw new PostInsightsError(404, 'Insights not found');
 
@@ -262,9 +269,25 @@ export const removePostInsightScreenshot = async (userId: string, campaignId: st
   if (!isManager && uploaderId !== userId) throw new PostInsightsError(403, 'You can only remove your own screenshots');
 
   const rest = screenshots.filter((screenshot) => screenshot.url !== url);
-  const result = rest.length
+  let result = rest.length
     ? await prisma.insightOcrResult.update({ where: { id }, data: toRowData(rest), select: POST_INSIGHTS_SELECT })
     : await prisma.insightOcrResult.delete({ where: { id } }).then(() => null);
+
+  // Numbers already applied stay. A pending lower number is checked again against what is left.
+  if (result && row.submissionId && row.postUrl) {
+    const actor = await prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, name: true, role: true },
+    });
+    const metricsReview = await syncMetrics({
+      insightId: id,
+      campaignId,
+      submissionId: row.submissionId,
+      postUrl: row.postUrl,
+      actor,
+    });
+    if (metricsReview !== undefined) result = { ...result, metricsReview: metricsReview as Prisma.JsonValue };
+  }
 
   notifyChanged({
     campaignId,
@@ -273,4 +296,30 @@ export const removePostInsightScreenshot = async (userId: string, campaignId: st
     actorId: userId,
   });
   return result;
+};
+
+/** An admin uses the lower screenshot numbers (approve) or keeps the current ones. */
+export const reviewPostInsightMetrics = async (userId: string, campaignId: string, id: string, approve: boolean) => {
+  const { isManager } = await getAccess(userId, campaignId);
+  if (!isManager) throw new PostInsightsError(403, 'Only admins can review screenshot numbers');
+
+  const record = await prisma.insightOcrResult.findFirst({
+    where: { id, campaignId },
+    select: { submissionId: true, submission: { select: { userId: true } } },
+  });
+  if (!record) throw new PostInsightsError(404, 'Insights not found');
+
+  const result = await resolveMetricsReview({ insightId: id, actorId: userId, approve });
+  if (!result.ok && result.reason === 'post-not-found') {
+    throw new PostInsightsError(404, "This post's link was not found, so the screenshot numbers were not applied");
+  }
+  if (!result.ok) throw new PostInsightsError(409, 'There are no numbers waiting for review');
+
+  notifyChanged({
+    campaignId,
+    submissionId: record.submissionId,
+    creatorId: record.submission?.userId ?? null,
+    actorId: userId,
+  });
+  return { id, metricsReview: result.review };
 };

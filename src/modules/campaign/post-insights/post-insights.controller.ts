@@ -5,6 +5,7 @@ import {
   addPostInsightScreenshots,
   listPostInsights,
   removePostInsightScreenshot,
+  reviewPostInsightMetrics,
 } from './post-insights.service';
 
 const handleError = (res: Response, error: unknown, fallback: string) => {
@@ -65,5 +66,19 @@ export const removePostInsightScreenshotHandler = async (req: Request, res: Resp
     return result ? res.status(200).json(result) : res.status(204).send();
   } catch (error) {
     return handleError(res, error, 'Error removing the screenshot');
+  }
+};
+
+// POST /:id/metrics-review { approve: true } uses the lower screenshot numbers; false keeps the current ones.
+export const reviewPostInsightMetricsHandler = async (req: Request, res: Response) => {
+  const { campaignId, id } = req.params;
+  const { approve } = req.body ?? {};
+
+  if (typeof approve !== 'boolean') return res.status(400).json({ message: 'approve must be true or false' });
+
+  try {
+    return res.status(200).json(await reviewPostInsightMetrics(req.userId as string, campaignId, id, approve));
+  } catch (error) {
+    return handleError(res, error, 'Error reviewing the screenshot numbers');
   }
 };

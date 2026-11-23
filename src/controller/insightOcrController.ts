@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Request, Response } from 'express';
 import { prisma } from '@/src/prisma/prisma';
 import { uploadImage } from '@configs/cloudStorage.config';
-import { extractInsightsFromImage, INSIGHT_OCR_MODEL } from '@services/insightOcrService';
+import { extractInsightsFromImage, INSIGHT_OCR_MODEL, isInsightOcrConfigured } from '@services/insightOcrService';
 import { getScreenshots, MAX_SCREENSHOTS, removeTempFiles, validateScreenshots } from '@utils/insightScreenshots';
 
 export const extractInsightScreenshots = async (req: Request, res: Response) => {
@@ -13,16 +13,13 @@ export const extractInsightScreenshots = async (req: Request, res: Response) => 
     const invalid = validateScreenshots(files);
     if (invalid) return res.status(400).json({ message: invalid });
 
-    const aiModel = await prisma.aiModel.findFirst({ where: { userId: req.userId } });
-    const apiKey = aiModel?.apiKey || process.env.GOOGLE_API_KEY;
-    if (!apiKey) {
-      return res.status(400).json({ message: 'No Gemini API key. Add one in AI Report Configurations.' });
+    if (!isInsightOcrConfigured()) {
+      return res.status(503).json({ message: 'Insight OCR is not set up. Add ANTHROPIC_API_KEY to the backend .env.' });
     }
 
     const images = await Promise.all(
       files.map(async (file) =>
         extractInsightsFromImage({
-          apiKey,
           fileName: file.name,
           mimeType: file.mimetype,
           data: await fs.readFile(file.tempFilePath),

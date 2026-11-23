@@ -1,6 +1,14 @@
-export const INSIGHT_OCR_MODEL = 'gemini-3.5-flash-lite';
+import Anthropic from '@anthropic-ai/sdk';
+import sharp from 'sharp';
 
-const PRICE_PER_MILLION = { input: 0.3, output: 2.5 };
+export const INSIGHT_OCR_MODEL = 'claude-haiku-5-5';
+
+// Claude Haiku 5.5 rates for prompts up to 100K tokens. One screenshot is a few thousand tokens.
+const PRICE_PER_MILLION = { input: 0.1, output: 0.5 };
+
+// Claude Haiku 5.5 is on the high-resolution image tier.
+const MAX_IMAGE_EDGE = 2576;
+const MAX_IMAGE_TOKENS = 4784;
 
 export interface InsightField {
   key: string;
@@ -31,7 +39,7 @@ For each metric return:
 - key: snake_case key from the list below
 - label: the label as shown on screen
 - value: the value exactly as shown (for example "1,234", "9s", "57.5%", "16h:48m:08s")
-- box_2d: [ymin, xmin, ymax, xmax] normalized to 0-1000, tightly around the VALUE text only
+- box: [x1, y1, x2, y2] in pixel coordinates of the image (top-left and bottom-right corners), tightly around the VALUE text only
 
 Keys (both platforms):
 - views, viewers, avg_watch_time, total_play_time, follows (also "New followers"), profile_visits
@@ -58,25 +66,48 @@ Rules:
 - Never guess a value that is not visible.`;
 
 const RESPONSE_SCHEMA = {
-  type: 'OBJECT',
+  type: 'object',
+  additionalProperties: false,
+  required: ['platform', 'screen', 'fields'],
   properties: {
-    platform: { type: 'STRING', enum: ['instagram', 'tiktok', 'unknown'] },
-    screen: { type: 'STRING', enum: ['overview', 'engagement', 'audience', 'other'] },
+    platform: { type: 'string', enum: ['instagram', 'tiktok', 'unknown'] },
+    screen: { type: 'string', enum: ['overview', 'engagement', 'audience', 'other'] },
     fields: {
-      type: 'ARRAY',
+      type: 'array',
       items: {
-        type: 'OBJECT',
+        type: 'object',
+        additionalProperties: false,
+        required: ['key', 'label', 'value', 'box'],
         properties: {
-          key: { type: 'STRING' },
-          label: { type: 'STRING' },
-          value: { type: 'STRING' },
-          box_2d: { type: 'ARRAY', items: { type: 'INTEGER' } },
+          key: { type: 'string' },
+          label: { type: 'string' },
+          value: { type: 'string' },
+          box: {
+            type: 'array',
+            description: '[x1, y1, x2, y2] in pixels of the image',
+            items: { type: 'number' },
+          },
         },
-        required: ['key', 'label', 'value', 'box_2d'],
       },
     },
   },
-  required: ['platform', 'screen', 'fields'],
+};
+
+let client: Anthropic | null = null;
+
+export const isInsightOcrConfigured = () => !!process.env.ANTHROPIC_API_KEY;
+
+const getClient = () => {
+  if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set');
+  // A key that is not scoped to a workspace must name one on every request.
+  const workspaceId = process.env.ANTHROPIC_WORKSPACE_ID;
+  client ??= new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    timeout: 90_000,
+    maxRetries: 2,
+    ...(workspaceId && { defaultHeaders: { 'anthropic-workspace-id': workspaceId } }),
+  });
+  return client;
 };
 
 // "16h:48m:08s", "1m 5s" or "2h" -> seconds. Plain "8.8s" stays with parseInsightNumber.
@@ -101,20 +132,79 @@ export const parseInsightNumber = (value: string): number | null => {
   return base;
 };
 
-const toBox = (box: unknown): InsightField['box'] => {
+// The size Claude scales an image to (docs: vision-coordinates, "How Claude resizes and pads images").
+const roundHalfEven = (value: number) => {
+  const floor = Math.floor(value);
+  if (value - floor !== 0.5) return Math.round(value);
+  return floor % 2 === 0 ? floor : floor + 1;
+};
+
+const fitsModel = (width: number, height: number) =>
+  Math.ceil(width / 28) * 28 <= MAX_IMAGE_EDGE &&
+  Math.ceil(height / 28) * 28 <= MAX_IMAGE_EDGE &&
+  Math.ceil(width / 28) * Math.ceil(height / 28) <= MAX_IMAGE_TOKENS;
+
+export const modelImageSize = (width: number, height: number): [number, number] => {
+  if (fitsModel(width, height)) return [width, height];
+  if (height > width) {
+    const [h, w] = modelImageSize(height, width);
+    return [w, h];
+  }
+  const aspectRatio = width / height;
+  let lo = 1;
+  let hi = width;
+  while (lo + 1 < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (fitsModel(mid, Math.max(roundHalfEven(mid / aspectRatio), 1))) lo = mid;
+    else hi = mid;
+  }
+  return [lo, Math.max(roundHalfEven(lo / aspectRatio), 1)];
+};
+
+/**
+ * Turns the photo upright and scales it to the size Claude reads, so the pixel boxes Claude returns
+ * line up with the image we send. Images that already fit are sent unchanged.
+ */
+const prepareImage = async (data: Buffer) => {
+  const meta = await sharp(data).metadata();
+  const orientation = meta.orientation ?? 1;
+  const sideways = orientation >= 5;
+  const width = (sideways ? meta.height : meta.width) ?? 0;
+  const height = (sideways ? meta.width : meta.height) ?? 0;
+  if (!width || !height) throw new Error('Could not read the image size');
+
+  const [targetWidth, targetHeight] = modelImageSize(width, height);
+  if (orientation === 1 && targetWidth === width && targetHeight === height) return { data, width, height };
+
+  const resized = await sharp(data).rotate().resize(targetWidth, targetHeight).toBuffer();
+  return { data: resized, width: targetWidth, height: targetHeight };
+};
+
+// Claude returns [x1, y1, x2, y2] in pixels. The app stores [ymin, xmin, ymax, xmax] on a 0-1000 scale.
+export const toBox = (box: unknown, width: number, height: number): InsightField['box'] => {
   if (!Array.isArray(box) || box.length !== 4) return null;
   const nums = box.map(Number);
   if (nums.some((n) => !Number.isFinite(n))) return null;
-  return nums.map((n) => Math.min(1000, Math.max(0, n))) as InsightField['box'];
+
+  const clampX = (x: number) => Math.min(width, Math.max(0, x));
+  const clampY = (y: number) => Math.min(height, Math.max(0, y));
+  const [x1, x2] = [clampX(nums[0]), clampX(nums[2])].sort((a, b) => a - b);
+  const [y1, y2] = [clampY(nums[1]), clampY(nums[3])].sort((a, b) => a - b);
+  const scale = (value: number, size: number) => Math.round((value / size) * 1000);
+
+  return [scale(y1, height), scale(x1, width), scale(y2, height), scale(x2, width)];
+};
+
+const errorMessage = (error: unknown) => {
+  if (error instanceof Anthropic.APIError) return `Claude API error ${error.status ?? ''}: ${error.message}`;
+  return (error as Error).message;
 };
 
 export const extractInsightsFromImage = async ({
-  apiKey,
   fileName,
   mimeType,
   data,
 }: {
-  apiKey: string;
   fileName: string;
   mimeType: string;
   data: Buffer;
@@ -129,49 +219,54 @@ export const extractInsightsFromImage = async ({
   };
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${INSIGHT_OCR_MODEL}:generateContent`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        signal: AbortSignal.timeout(90_000),
-        body: JSON.stringify({
-          contents: [
+    const image = await prepareImage(data);
+
+    const response = await getClient().messages.create({
+      model: INSIGHT_OCR_MODEL,
+      max_tokens: 16000,
+      system: PROMPT,
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: RESPONSE_SCHEMA } },
+      messages: [
+        {
+          role: 'user',
+          content: [
             {
-              role: 'user',
-              parts: [{ inlineData: { mimeType, data: data.toString('base64') } }, { text: PROMPT }],
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: mimeType as Anthropic.Base64ImageSource['media_type'],
+                data: image.data.toString('base64'),
+              },
+              // We already scaled it. An error is better than a silent resize that moves every box.
+              transformations: { oversized_image: 'error' },
             },
+            { type: 'text', text: `This screenshot is ${image.width}x${image.height} pixels. Read its insights.` },
           ],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema: RESPONSE_SCHEMA,
-            maxOutputTokens: 8192,
-          },
-        }),
-      },
-    );
+        },
+      ],
+    });
 
-    const body = await res.json();
-    if (!res.ok) throw new Error(body?.error?.message || `Gemini request failed (${res.status})`);
+    if (response.stop_reason === 'refusal') {
+      throw new Error(`Claude declined to read this screenshot (${response.stop_details?.category ?? 'no reason'})`);
+    }
+    if (response.stop_reason === 'max_tokens') throw new Error('The reply was cut off before it finished');
 
-    const text = body?.candidates?.[0]?.content?.parts?.find((p: { text?: string }) => p.text)?.text;
-    if (!text) throw new Error('Gemini returned no content');
+    const text = response.content.find((block): block is Anthropic.TextBlock => block.type === 'text')?.text;
+    if (!text) throw new Error('Claude returned no content');
 
     const parsed = JSON.parse(text);
-    const meta = body.usageMetadata || {};
-    const inputTokens = meta.promptTokenCount || 0;
-    const outputTokens = (meta.candidatesTokenCount || 0) + (meta.thoughtsTokenCount || 0);
+    const { input_tokens: inputTokens, output_tokens: outputTokens } = response.usage;
 
     return {
       fileName,
       platform: ['instagram', 'tiktok'].includes(parsed.platform) ? parsed.platform : 'unknown',
       screen: parsed.screen || 'other',
-      fields: (parsed.fields || []).map((f: { key: string; label: string; value: string; box_2d: unknown }) => ({
+      fields: (parsed.fields || []).map((f: { key: string; label: string; value: string; box: unknown }) => ({
         key: f.key,
         label: f.label,
         value: f.value,
         number: parseInsightNumber(f.value),
-        box: toBox(f.box_2d),
+        box: toBox(f.box, image.width, image.height),
       })),
       usage: {
         inputTokens,
@@ -181,8 +276,9 @@ export const extractInsightsFromImage = async ({
       durationMs: Date.now() - startedAt,
     };
   } catch (error) {
-    console.warn(`Insight OCR could not read ${fileName}: ${(error as Error).message}`);
-    return { ...empty, durationMs: Date.now() - startedAt, error: (error as Error).message };
+    const message = errorMessage(error);
+    console.warn(`Insight OCR could not read ${fileName}: ${message}`);
+    return { ...empty, durationMs: Date.now() - startedAt, error: message };
   }
 };
 
