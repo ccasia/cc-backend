@@ -293,7 +293,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
 
     const {
       // Campaign general info
-      campaignTitle,
+      campaignTitle: rawCampaignTitle,
       campaignDescription,
       campaignStartDate,
       campaignEndDate,
@@ -355,6 +355,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       specialNotesInstructions,
       needAds,
     } = campaignData;
+    const campaignTitle = rawCampaignTitle?.trim();
 
     // Validate required fields
     if (!campaignTitle || !campaignDescription) {
