@@ -111,6 +111,7 @@ model User {
   video                             Video[]
   xpTransactions                    XpTransaction[]
   aiModel                           AiModel?
+  insightOcrResults                 InsightOcrResult[]
   refreshTokens                     RefreshToken[]
   threads                           Thread[]                           @relation("UserThreads")
   creatorNotesAbout                 CreatorNote[]                      @relation("CreatorNoteCreator")
@@ -784,6 +785,7 @@ model Campaign {
   creatorNotes                  CreatorNote[]
   creatorNoteReadStates         CreatorNoteReadState[]
   featuredVideos                CampaignFeaturedVideo[]
+  insightOcrResults             InsightOcrResult[]
 }
 
 model BookMarkCampaign {
@@ -1264,6 +1266,7 @@ model Submission {
   video                 Video[]
   videoOfTheMonth       VideoOfTheMonth?
   featuredVideos        CampaignFeaturedVideo[]
+  insightOcrResults     InsightOcrResult[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
 }
@@ -2089,6 +2092,32 @@ model AiModel {
   user            User?    @relation(fields: [userId], references: [id])
 
   @@map("ai_model")
+}
+
+model InsightOcrResult {
+  id            String      @id @default(cuid())
+  model         String
+  values        Json
+  screenshots   Json
+  totalCostUsd  Float
+  conflicts     Int         @default(0)
+  // { pending?: { values, current, uploadedBy, at }, dismissed?: { views: 998 } }. Lower screenshot numbers wait here for an admin.
+  metricsReview Json?
+  createdById   String
+  createdBy     User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  // Set when the screenshots belong to an approved post. Null for Insight OCR Test runs.
+  campaignId    String?
+  campaign      Campaign?   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  submissionId  String?
+  submission    Submission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  postUrl       String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([submissionId, postUrl])
+  @@index([createdById, createdAt])
+  @@index([campaignId])
+  @@map("insight_ocr_result")
 }
 
 model WhatsappSetting {

@@ -138,7 +138,13 @@ export interface ScrapeFailure {
   at: string;
   /** Failed days in a row. The daily cron stops at MAX_FAILED_SCRAPE_DAYS. */
   streak?: number;
+  /** Numbers an admin entered so far. The post is completed once every missing number is in. */
+  entered?: ManualMetricsInput;
 }
+
+/** The admin's draft numbers on a failed link, kept when a retry fails again. */
+const enteredOf = (failure: unknown): ManualMetricsInput | undefined =>
+  (failure as ScrapeFailure | null)?.entered ?? undefined;
 
 /**
  * What a run learns before it ends. `priorFailure` is the link's failure from
@@ -179,6 +185,7 @@ export async function scrapePostMetrics(postingUrlId: string, deps: PostScrapeDe
     partial: note.partial,
     at: now().toISOString(),
     streak: failedScrapeDays(note.priorFailure) + 1,
+    ...(enteredOf(note.priorFailure) && { entered: enteredOf(note.priorFailure) }),
   });
   // Once claimed, only this run's claim is updated: yesterday's run ending late must not overwrite today's.
   const setStatus = (metricsScrapeStatus: string | null, failure: ScrapeFailure | null) =>
@@ -454,17 +461,20 @@ export async function failInterruptedScrapes(
 export type ManualMetricsInput = Partial<Record<keyof PostMetrics, number>>;
 
 export type ManualCompletionResult =
-  | { ok: true; metrics: PostMetrics }
+  | { ok: true; complete: true; metrics: PostMetrics }
+  | { ok: true; complete: false; entered: ManualMetricsInput }
   | { ok: false; status: 404 | 409 | 400; message: string };
 
 const isCount = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
 /**
- * An admin enters a post's counts by hand. For a FAILED scrape: the ones it could not get
- * (views, likes and comments are required). For a scraped post: ones it read as 0, such as
- * Instagram shares and saves, which are private. Counts not entered keep their scraped value,
- * and later scrapes keep the entered ones (see keepKnownCounts).
+ * An admin enters a post's counts by hand.
+ * For a FAILED scrape: the ones it could not get, one number or all at once. Views, likes and
+ * comments are required, and shares on TikTok. Until all are in, the numbers are kept as a draft
+ * on the failure. For a scraped post: ones it read as 0, such as Instagram shares and saves, which
+ * are private. Counts not entered keep their value, and later scrapes keep the entered ones
+ * (see keepKnownCounts).
  */
 export async function enterMetricsByHand(
   store: PostScrapeStore,
@@ -479,38 +489,67 @@ export async function enterMetricsByHand(
     return { ok: false, status: 409, message: 'This post is being scraped now. Try again in a few minutes.' };
   }
 
-  const failed = row.metricsScrapeStatus === 'FAILED';
-  const last = failed ? null : await lastSnapshot(store, row.postUrl);
-  // Numbers from the creator's connected account are real; never replace them.
-  if (!failed && last?.source !== 'brightdata') {
-    return { ok: false, status: 409, message: 'Only scraped numbers can be edited by hand' };
+  const given = Object.entries(input.metrics).filter(([, value]) => value !== undefined);
+  if (!given.every(([, value]) => isCount(value))) {
+    return { ok: false, status: 400, message: 'Every count must be a whole number of 0 or more' };
   }
-  const base = failed ? ((row.metricsScrapeFailure as ScrapeFailure | null)?.partial ?? null) : last;
-  const pick = (key: keyof PostMetrics) => input.metrics[key] ?? base?.[key];
-  const metrics = {
-    views: pick('views'),
-    likes: pick('likes'),
-    comments: pick('comments'),
+  const capturedAt = input.now ?? new Date();
+
+  if (row.metricsScrapeStatus !== 'FAILED') {
+    const last = await lastSnapshot(store, row.postUrl);
+    // Numbers from the creator's connected account are real; never replace them.
+    if (!last || last.source !== 'brightdata') {
+      return { ok: false, status: 409, message: 'Only scraped numbers can be edited by hand' };
+    }
+    const metrics: PostMetrics = {
+      views: input.metrics.views ?? last.views,
+      likes: input.metrics.likes ?? last.likes,
+      comments: input.metrics.comments ?? last.comments,
+      shares: input.metrics.shares ?? last.shares,
+      saved: input.metrics.saved ?? last.saved,
+    };
+    const manual = { by: input.adminId, at: capturedAt.toISOString(), entered: input.metrics };
+    // A scraped post keeps its raw item, where the caption is read from.
+    await writeSnapshot(store, row, metrics, { ...(last.rawMetrics as object), manual }, capturedAt);
+    return { ok: true, complete: true, metrics };
+  }
+
+  const failure = row.metricsScrapeFailure as ScrapeFailure | null;
+  const isInstagram = row.platform !== 'TikTok';
+  const partial = failure?.partial ?? null;
+  const entered: ManualMetricsInput = { ...failure?.entered, ...Object.fromEntries(given) };
+  const pick = (key: keyof PostMetrics) => entered[key] ?? partial?.[key];
+
+  const required: (keyof PostMetrics)[] = ['views', 'likes', 'comments', ...(isInstagram ? [] : ['shares' as const])];
+  if (!required.every((key) => isCount(pick(key)))) {
+    await store.submissionPostingUrl.updateMany({
+      where: { id: row.id, metricsScrapeStatus: 'FAILED' },
+      data: { metricsScrapeFailure: { ...failure, entered } },
+    });
+    return { ok: true, complete: false, entered };
+  }
+
+  const metrics: PostMetrics = {
+    views: pick('views') as number,
+    likes: pick('likes') as number,
+    comments: pick('comments') as number,
     shares: pick('shares') ?? 0,
     saved: pick('saved') ?? 0,
   };
-  if (!Object.values(metrics).every(isCount)) {
-    return { ok: false, status: 400, message: 'Every count must be a whole number of 0 or more' };
-  }
 
-  const capturedAt = input.now ?? new Date();
-  const manual = { by: input.adminId, at: capturedAt.toISOString(), entered: input.metrics };
   await writeSnapshot(
     store,
     row,
-    metrics as PostMetrics,
-    // A scraped post keeps its raw item, where the caption is read from.
-    failed ? { manual, failure: row.metricsScrapeFailure } : { ...(last!.rawMetrics as object), manual },
+    metrics,
+    {
+      manual: { by: input.adminId, at: capturedAt.toISOString(), entered },
+      failure: row.metricsScrapeFailure,
+    },
     capturedAt,
   );
   await store.submissionPostingUrl.updateMany({
     where: { id: row.id },
     data: { metricsScrapeStatus: 'SCRAPED', metricsScrapeFailure: DbNull },
   });
-  return { ok: true, metrics: metrics as PostMetrics };
+  return { ok: true, complete: true, metrics };
 }

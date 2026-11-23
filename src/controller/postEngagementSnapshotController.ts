@@ -255,6 +255,7 @@ export const getFailedCampaignPostScrapes = async (req: Request, res: Response) 
  * An admin enters the counters a scrape could not get, or read as 0.
  * POST /api/campaign/:campaignId/post-scrapes/:postingUrlId/metrics
  * Body: { views?, likes?, comments?, shares?, saved? }
+ * A failed scrape returns { complete: false, entered } until every missing number is in, then { complete: true, metrics }.
  */
 export const completeFailedCampaignPostScrape = async (req: Request, res: Response) => {
   try {
@@ -274,7 +275,10 @@ export const completeFailedCampaignPostScrape = async (req: Request, res: Respon
       adminId: req.userId as string,
     });
     if (!result.ok) return res.status(result.status).json({ success: false, message: result.message });
-    return res.status(200).json({ success: true, data: result.metrics });
+    const data = result.complete
+      ? { complete: true, metrics: result.metrics }
+      : { complete: false, entered: result.entered };
+    return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error completing failed post scrape:', error);
     return res.status(500).json({ success: false, message: 'Failed to save the metrics' });

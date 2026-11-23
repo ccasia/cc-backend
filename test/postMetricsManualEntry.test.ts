@@ -60,7 +60,7 @@ describe('enterMetricsByHand', () => {
     });
     const result = await enter(store, { shares: 12, saved: 7 });
 
-    expect(result).toEqual({ ok: true, metrics: { ...counts, shares: 12, saved: 7 } });
+    expect(result).toEqual({ ok: true, complete: true, metrics: { ...counts, shares: 12, saved: 7 } });
     const { update } = upserts[0];
     expect(update.engagementRate).toBeCloseTo(10.4); // (80 + 5 + 12 + 7) / 1000
     expect(update.rawMetrics.item).toEqual({ caption: 'hi' });
@@ -73,9 +73,16 @@ describe('enterMetricsByHand', () => {
     expect(upserts).toHaveLength(0);
   });
 
-  it('still needs views, likes and comments for a failed scrape', async () => {
+  it('keeps a failed scrape as a draft until views, likes and comments are in', async () => {
+    const { store, upserts } = fakeStore('FAILED', null);
+    expect(await enter(store, { shares: 3 })).toEqual({ ok: true, complete: false, entered: { shares: 3 } });
+    expect(upserts).toHaveLength(0);
+    expect(await enter(store, { views: 500, likes: 20, comments: 1 })).toMatchObject({ ok: true, complete: true });
+    expect(upserts).toHaveLength(1);
+  });
+
+  it('refuses counts that are not whole numbers', async () => {
     const { store } = fakeStore('FAILED', null);
-    expect(await enter(store, { shares: 3 })).toMatchObject({ ok: false, status: 400 });
-    expect(await enter(store, { views: 500, likes: 20, comments: 1 })).toMatchObject({ ok: true });
+    expect(await enter(store, { views: -1 })).toMatchObject({ ok: false, status: 400 });
   });
 });

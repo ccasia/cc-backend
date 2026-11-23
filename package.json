@@ -35,6 +35,7 @@
     "check-discovery-samples": "ts-node -r tsconfig-paths/register src/scripts/checkDiscoveryProfiles.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.10.0",
     "@dotenvx/dotenvx": "^1.9.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
