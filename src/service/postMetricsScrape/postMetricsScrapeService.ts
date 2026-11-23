@@ -69,45 +69,27 @@ export interface PostScrapeStore {
   };
   dailyPostEngagementSnapshot: {
     findUnique(args: unknown): Promise<{ source: string } | null>;
-    findFirst(args: unknown): Promise<Partial<Record<UnscrapedField, number>> | null>;
+    findFirst(args: unknown): Promise<(PostMetrics & { source: string; rawMetrics: unknown }) | null>;
     upsert(args: unknown): Promise<unknown>;
   };
 }
 
-type UnscrapedField = 'shares' | 'saved';
-
-/** Counts the scrape cannot read. It writes 0 for them, which is not a real 0. */
-const UNSCRAPED_FIELDS: Record<string, UnscrapedField[]> = {
-  Instagram: ['shares', 'saved'],
-  TikTok: ['saved'],
-};
+/** The post's newest stored counts, from any day. */
+const lastSnapshot = (store: PostScrapeStore, postUrl: string) =>
+  store.dailyPostEngagementSnapshot.findFirst({
+    where: { postUrl },
+    orderBy: { snapshotDate: 'desc' },
+    select: { views: true, likes: true, comments: true, shares: true, saved: true, source: true, rawMetrics: true },
+  });
 
 /**
- * The last known count (from a screenshot, the API or an admin) of each field the scrape cannot read.
- * A field with no earlier count is left out, so it stays 0 and the row shows "–".
+ * Counts only grow, so a scrape that reads 0 keeps the last known count. This is what keeps
+ * Instagram shares and saves an admin entered by hand: a public scrape never sees them.
  */
-export async function keepUnscrapedCounts(
-  store: Pick<PostScrapeStore, 'dailyPostEngagementSnapshot'>,
-  row: Pick<PostingUrlRow, 'platform' | 'postUrl'>,
-  metrics: PostMetrics,
-): Promise<Partial<Record<UnscrapedField, number>>> {
-  const fields = (UNSCRAPED_FIELDS[row.platform] ?? []).filter((field) => !(metrics[field] > 0));
-  const found = await Promise.all(
-    fields.map((field) =>
-      store.dailyPostEngagementSnapshot.findFirst({
-        where: { postUrl: row.postUrl, [field]: { gt: 0 } },
-        orderBy: { snapshotDate: 'desc' },
-        select: { [field]: true },
-      }),
-    ),
-  );
-  const kept: Partial<Record<UnscrapedField, number>> = {};
-  fields.forEach((field, i) => {
-    const value = found[i]?.[field];
-    if (value) kept[field] = value;
-  });
-  return kept;
-}
+export const keepKnownCounts = (scraped: PostMetrics, last: Partial<PostMetrics> | null): PostMetrics =>
+  Object.fromEntries(
+    Object.entries(scraped).map(([key, value]) => [key, value || last?.[key as keyof PostMetrics] || 0]),
+  ) as unknown as PostMetrics;
 
 export interface PostScrapeDeps {
   store: PostScrapeStore;
@@ -440,18 +422,11 @@ async function runScrape(postingUrlId: string, deps: PostScrapeDeps, note: Failu
     }
     metrics = { ...metrics, ...reel };
   }
+  metrics = keepKnownCounts(metrics, await lastSnapshot(store, row.postUrl));
 
   // The jobs are paid for. If the write fails, the log keeps the numbers so they can be restored by hand.
   log('Post scraped', { ...context, jobIds: note.jobIds, ...metrics });
-  const kept = await keepUnscrapedCounts(store, row, metrics);
-  await writeSnapshot(
-    store,
-    row,
-    { ...metrics, ...kept },
-    { jobIds: note.jobIds, item: parsed.item, ...(Object.keys(kept).length > 0 && { kept }) },
-    now(),
-    claimedAt,
-  );
+  await writeSnapshot(store, row, metrics, { jobIds: note.jobIds, item: parsed.item }, now(), claimedAt);
   return 'SCRAPED';
 }
 
@@ -494,13 +469,14 @@ const isCount = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
 /**
- * An admin completes a FAILED scrape by hand, one number or all at once.
- * Counters the scrape did get stay unless the admin overrides them. Views, likes
- * and comments are required, and shares on TikTok. Until all are in, the numbers
- * are kept as a draft on the failure. Instagram shares and saves stay 0 unless
- * entered (insight screenshots show them).
+ * An admin enters a post's counts by hand.
+ * For a FAILED scrape: the ones it could not get, one number or all at once. Views, likes and
+ * comments are required, and shares on TikTok. Until all are in, the numbers are kept as a draft
+ * on the failure. For a scraped post: ones it read as 0, such as Instagram shares and saves, which
+ * are private. Counts not entered keep their value, and later scrapes keep the entered ones
+ * (see keepKnownCounts).
  */
-export async function completeFailedScrape(
+export async function enterMetricsByHand(
   store: PostScrapeStore,
   input: { campaignId: string; postingUrlId: string; metrics: ManualMetricsInput; adminId: string; now?: Date },
 ): Promise<ManualCompletionResult> {
@@ -509,13 +485,33 @@ export async function completeFailedScrape(
     include: { submission: { select: { userId: true, status: true, content: true } } },
   });
   if (!row || row.campaignId !== input.campaignId) return { ok: false, status: 404, message: 'Posting link not found' };
-  if (row.metricsScrapeStatus !== 'FAILED') {
-    return { ok: false, status: 409, message: 'Only a failed scrape can be completed by hand' };
+  if (row.metricsScrapeStatus === 'QUEUED' || row.metricsScrapeStatus === 'RUNNING') {
+    return { ok: false, status: 409, message: 'This post is being scraped now. Try again in a few minutes.' };
   }
 
   const given = Object.entries(input.metrics).filter(([, value]) => value !== undefined);
   if (!given.every(([, value]) => isCount(value))) {
-    return { ok: false, status: 400, message: 'Numbers must be whole numbers of 0 or more' };
+    return { ok: false, status: 400, message: 'Every count must be a whole number of 0 or more' };
+  }
+  const capturedAt = input.now ?? new Date();
+
+  if (row.metricsScrapeStatus !== 'FAILED') {
+    const last = await lastSnapshot(store, row.postUrl);
+    // Numbers from the creator's connected account are real; never replace them.
+    if (!last || last.source !== 'brightdata') {
+      return { ok: false, status: 409, message: 'Only scraped numbers can be edited by hand' };
+    }
+    const metrics: PostMetrics = {
+      views: input.metrics.views ?? last.views,
+      likes: input.metrics.likes ?? last.likes,
+      comments: input.metrics.comments ?? last.comments,
+      shares: input.metrics.shares ?? last.shares,
+      saved: input.metrics.saved ?? last.saved,
+    };
+    const manual = { by: input.adminId, at: capturedAt.toISOString(), entered: input.metrics };
+    // A scraped post keeps its raw item, where the caption is read from.
+    await writeSnapshot(store, row, metrics, { ...(last.rawMetrics as object), manual }, capturedAt);
+    return { ok: true, complete: true, metrics };
   }
 
   const failure = row.metricsScrapeFailure as ScrapeFailure | null;
@@ -533,16 +529,14 @@ export async function completeFailedScrape(
     return { ok: true, complete: false, entered };
   }
 
-  // Instagram shares and saves are private to a scrape. Insight screenshots can still give them.
   const metrics: PostMetrics = {
     views: pick('views') as number,
     likes: pick('likes') as number,
     comments: pick('comments') as number,
-    shares: isInstagram ? (entered.shares ?? 0) : (pick('shares') as number),
-    saved: entered.saved ?? 0,
+    shares: pick('shares') ?? 0,
+    saved: pick('saved') ?? 0,
   };
 
-  const capturedAt = input.now ?? new Date();
   await writeSnapshot(
     store,
     row,

@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/src/prisma/prisma';
 import { linkMatchesPostingUrl } from '@services/submissionUrlService';
 import {
-  completeFailedScrape,
+  enterMetricsByHand,
   type PostScrapeStore,
   type ScrapeFailure,
 } from '@services/postMetricsScrape/postMetricsScrapeService';
@@ -121,8 +121,12 @@ const writeScreenshotSnapshot = async (row: PostingRow, metrics: Metrics, actorI
     ...merged,
     reach: latest?.reach || merged.views,
     engagementRate: scrapedEngagementRate(merged),
-    rawMetrics: { screenshot: { insightId, by: actorId, applied: metrics } } as Prisma.InputJsonValue,
-    source: 'screenshot',
+    // Keeps the scraped raw item (the caption) and source, as a hand entry does.
+    rawMetrics: {
+      ...(latest?.rawMetrics as object | null),
+      screenshot: { insightId, by: actorId, applied: metrics },
+    } as Prisma.InputJsonValue,
+    source: (latest && 'source' in latest && latest.source) || 'screenshot',
   };
 
   await prisma.dailyPostEngagementSnapshot.upsert({
@@ -150,7 +154,7 @@ const applyMetrics = async (row: PostingRow, metrics: Metrics, actorId: string, 
   }
 
   // A failed scrape takes them as its draft and completes once every missing number is in.
-  const result = await completeFailedScrape(prisma as unknown as PostScrapeStore, {
+  const result = await enterMetricsByHand(prisma as unknown as PostScrapeStore, {
     campaignId: row.campaignId,
     postingUrlId: row.id,
     metrics,
