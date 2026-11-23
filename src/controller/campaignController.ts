@@ -281,7 +281,7 @@ const MAPPING: Record<string, string> = {
 export const createCampaign = async (req: Request, res: Response) => {
   const {
     campaignId,
-    campaignTitle,
+    campaignTitle: rawCampaignTitle,
     campaignBrand,
     hasBrand,
     client,
@@ -324,6 +324,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     availabilityRules,
     allowMultipleBookings,
   }: Campaign = JSON.parse(req.body.data);
+  const campaignTitle = rawCampaignTitle?.trim();
 
   // Also read optional fields not in the Campaign interface
   const rawBody: any = (() => {
@@ -911,7 +912,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     // General info fields
     campaignId,
     campaignStage,
-    campaignName,
+    campaignName: rawCampaignName,
     campaignDescription,
     brandAbout,
     campaignStartDate,
@@ -989,6 +990,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     creationDraftRevision,
     isNdaRequired,
   } = rawData;
+  const campaignName = rawCampaignName?.trim();
 
   const clientManagers = Array.isArray(rawData?.clientManagers) ? rawData.clientManagers : [];
 
@@ -1552,7 +1554,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
   const rawData = JSON.parse(req.body.data);
   const {
     // General info
-    campaignName,
+    campaignName: rawCampaignName,
     campaignDescription,
     brandAbout,
     campaignStartDate,
@@ -1623,6 +1625,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
     specialNotesInstructions,
     needAds,
   } = rawData;
+  const campaignName = rawCampaignName?.trim() || undefined;
 
   const isClientCampaign = rawData?.isClientCampaign === true;
 
@@ -4816,7 +4819,7 @@ export const closeCampaign = async (req: Request, res: Response) => {
 export const editCampaignInfo = async (req: Request, res: Response) => {
   const {
     id,
-    name,
+    name: rawName,
     description,
     campaignIndustries,
     isKWSPCampaign,
@@ -4830,6 +4833,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
     postingStartDate,
     postingEndDate,
   } = req.body;
+  const name = rawName?.trim();
   const adminId = req.userId;
 
   const publicURL: string[] = [];
