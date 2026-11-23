@@ -259,6 +259,7 @@ export const createDemoCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Invalid campaign data format' });
     }
 
+    campaignData.campaignTitle = campaignData.campaignTitle?.trim();
     const { campaignTitle, campaignDescription, campaignStartDate, campaignEndDate } = campaignData;
 
     if (!campaignTitle || !campaignDescription) {
