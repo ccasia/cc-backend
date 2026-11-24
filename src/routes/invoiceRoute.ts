@@ -66,7 +66,7 @@ router.patch('/update', authenticate, updateInvoice);
 router.delete('/:id', authenticate, isSuperAdmin, deleteInvoice);
 
 // Temporary function
-router.post('/generateInvoice', authenticate, isSuperAdmin, async (req, res) => {
+router.post('/generateInvoice', async (req, res) => {
   const { submissionId, invoiceAmount } = req.body;
 
   try {
