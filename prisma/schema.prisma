@@ -1296,6 +1296,8 @@ model SubmissionPostingUrl {
   metricsScrapeStatus  String?
   metricsScrapeFailure Json?
   thumbnailUrl         String?
+  /// When this link was last approved. Starts its 7-day Bright Data scrape window. Null for backfilled rows.
+  approvedAt           DateTime?
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
   campaign             Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -1304,6 +1306,7 @@ model SubmissionPostingUrl {
   @@unique([submissionId, platform, postUrl])
   @@index([submissionId])
   @@index([campaignId, platform, createdAt])
+  @@index([approvedAt])
 }
 
 model InsightSnapshot {

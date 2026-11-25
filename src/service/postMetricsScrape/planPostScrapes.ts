@@ -50,8 +50,9 @@ export async function planPostScrapes(submissionId: string): Promise<PlanResult>
 
   // Rows touched by this extraction are the submission's current links.
   // Older rows can belong to a link that was rejected and replaced.
+  // This job runs on approval, so it also stamps `approvedAt`, which starts the 7-day scrape window.
   const extractedSince = new Date();
-  await extractAndStoreSubmissionUrls(submissionId, submission.content);
+  await extractAndStoreSubmissionUrls(submissionId, submission.content, { approvedAt: extractedSince });
 
   const [postingUrls, creator] = await Promise.all([
     prisma.submissionPostingUrl.findMany({

@@ -22,19 +22,22 @@ export const notScrapedToday = (now: Date) => ({
 export const wasScrapedToday = (scrapedAt: Date | null | undefined, now: Date): boolean =>
   !!scrapedAt && !dayjs(scrapedAt).isBefore(scrapeDay(now));
 
+/** Days of analytics the report needs after a posting link is approved. */
+export const SCRAPE_WINDOW_DAYS = 7;
+
 /**
  * A link is scraped every day from the day its posting link was approved
- * until the campaign's last day. The 12 AM run after that day also counts,
- * because it is the run that reads the last day's final totals.
+ * (day 0) through day 7, whatever the campaign's end date. The 12 AM run on
+ * day 7 reads day 6's final totals, which completes the 7 days.
+ *
+ * `approvedAt` is stamped by the approval job and reset on re-approval. A
+ * backfilled row never gets one, so it is never scraped by the cron.
  */
-export function isInScrapeWindow(
-  postingDate: Date | null | undefined,
-  campaignEndDate: Date | null | undefined,
-  now: Date,
-): boolean {
-  if (!postingDate || !campaignEndDate) return false;
+export function isInScrapeWindow(link: { approvedAt: Date | null | undefined }, now: Date): boolean {
+  if (!link.approvedAt) return false;
   const today = scrapeDay(now);
-  return !today.isBefore(scrapeDay(postingDate)) && !today.isAfter(scrapeDay(campaignEndDate).add(1, 'day'));
+  const start = scrapeDay(link.approvedAt);
+  return !today.isBefore(start) && !today.isAfter(start.add(SCRAPE_WINDOW_DAYS, 'day'));
 }
 
 /**
