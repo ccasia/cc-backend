@@ -26,7 +26,7 @@ import { enqueueExtraction } from '@utils/queue';
 const startSchema = z.object({
   clientRowId: z.string().min(1).max(64),
   profileLink: z.string().min(1).max(2048),
-  expectedPlatform: z.enum(['instagram', 'tiktok', 'threads']).optional(),
+  expectedPlatform: z.enum(['instagram', 'tiktok']).optional(),
 });
 
 const idempotencyKeySchema = z.string().min(8).max(120);
@@ -77,7 +77,7 @@ export const startGuestProfileExtraction = async (req: Request, res: Response) =
     if (body.error.issues.some((issue) => issue.path[0] === 'expectedPlatform')) {
       return res.status(400).json({
         code: 'UNSUPPORTED_PLATFORM',
-        message: 'expectedPlatform must be instagram, tiktok, or threads.',
+        message: 'expectedPlatform must be instagram or tiktok. Threads numbers are entered by hand.',
       });
     }
 

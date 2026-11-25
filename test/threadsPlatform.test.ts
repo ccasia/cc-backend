@@ -1,5 +1,5 @@
 import { SCRAPERS, type ExtractionConfig } from '../src/config/guestProfileExtractionConfig';
-import type { JobSnapshot, ScraperGateway } from '../src/service/guestProfileExtraction/brightDataGateway';
+import type { ScraperGateway } from '../src/service/guestProfileExtraction/brightDataGateway';
 import {
   parsePrimaryMetric,
   parseRecentViews,
@@ -9,25 +9,10 @@ import {
 import { classifyMetricProvenance } from '../src/service/guestProfileExtraction/metricProvenance';
 import {
   processExtraction,
+  startExtraction,
   type ExtractionDeps,
 } from '../src/service/guestProfileExtraction/guestProfileExtractionService';
 import { normalizeProfileUrl } from '../src/service/guestProfileExtraction/profileUrlNormalizer';
-import { parseThreadsOutput } from '../src/service/guestProfileExtraction/scraperAdapters/threadsAdapter';
-
-const sampleRow = {
-  url: 'https://www.threads.com/@pandapandiy_',
-  profile_name: null,
-  profile_id: '65557397377',
-  about_formatted: '🇲🇾',
-  number_of_followers: 36,
-  website: null,
-  instagram_profile_url: 'https://www.instagram.com/pandapandiy_',
-  profile_picture: 'https://scontent.example.com/avatar.jpg',
-  verified: false,
-  threads: [{ likes: 3, comments: 1 }],
-  timestamp: '2026-11-18T00:00:00.000Z',
-  input: { url: 'https://www.threads.com/@pandapandiy_' },
-};
 
 describe('Threads profile URL normalization', () => {
   it.each([
@@ -179,67 +164,7 @@ describe('parseRecentViews', () => {
   });
 });
 
-describe('parseThreadsOutput', () => {
-  it('reads the sample shape into a profile with no candidates', () => {
-    expect(parseThreadsOutput({ items: [sampleRow], expectedUsername: 'pandapandiy_' })).toEqual({
-      ok: true,
-      profile: {
-        platform: 'threads',
-        username: 'pandapandiy_',
-        displayName: null,
-        biography: '🇲🇾',
-        profilePictureUrl: 'https://scontent.example.com/avatar.jpg',
-        followerCount: 36,
-        isPrivate: false,
-      },
-      candidates: [],
-    });
-  });
-
-  it('matches a threads.net URL and a differently cased handle', () => {
-    const result = parseThreadsOutput({
-      items: [{ ...sampleRow, url: 'https://threads.net/@PandaPandiy_', profile_name: 'Panda' }],
-      expectedUsername: 'pandapandiy_',
-    });
-    expect(result).toMatchObject({ ok: true, profile: { displayName: 'Panda', followerCount: 36 } });
-  });
-
-  it('fails a row for another handle as PROFILE_NOT_FOUND', () => {
-    const result = parseThreadsOutput({ items: [sampleRow], expectedUsername: 'someoneelse' });
-    expect(result).toMatchObject({ ok: false, code: 'PROFILE_NOT_FOUND' });
-  });
-
-  it('fails an empty result as PROFILE_NOT_FOUND', () => {
-    expect(parseThreadsOutput({ items: [], expectedUsername: 'pandapandiy_' })).toMatchObject({
-      ok: false,
-      code: 'PROFILE_NOT_FOUND',
-    });
-  });
-
-  it('maps an error row', () => {
-    const result = parseThreadsOutput({
-      items: [{ error: 'Page does not exist', error_code: 'dead_page', input: { url: sampleRow.url } }],
-      expectedUsername: 'pandapandiy_',
-    });
-    expect(result).toEqual({ ok: false, code: 'PROFILE_NOT_FOUND', message: 'dead_page: Page does not exist' });
-  });
-
-  it('fails a row with no url as PROVIDER_SCHEMA_CHANGED', () => {
-    const { url: _url, ...noUrl } = sampleRow;
-    expect(parseThreadsOutput({ items: [noUrl], expectedUsername: 'pandapandiy_' })).toMatchObject({
-      ok: false,
-      code: 'PROVIDER_SCHEMA_CHANGED',
-    });
-  });
-
-  it('reports a failed job as PROVIDER_FAILURE', () => {
-    expect(
-      parseThreadsOutput({ items: [], error: { code: 'X', message: 'boom' }, expectedUsername: 'a' }),
-    ).toMatchObject({ ok: false, code: 'PROVIDER_FAILURE' });
-  });
-});
-
-describe('processExtraction for Threads', () => {
+describe('Threads is never scraped', () => {
   const config: ExtractionConfig = {
     token: 't',
     scrapers: SCRAPERS,
@@ -255,7 +180,43 @@ describe('processExtraction for Threads', () => {
     featureEnabled: true,
   };
 
-  it('runs one profile job and writes a READY row with no rate', async () => {
+  const makeGateway = (): ScraperGateway => ({
+    startJob: jest.fn(async () => ({ ok: true as const, runId: 'sd_x' })),
+    getJob: jest.fn(),
+    listItems: jest.fn(),
+    cancelJob: jest.fn(),
+    findRecentJobs: jest.fn(async () => []),
+  });
+
+  it('has no Threads scraper configured', () => {
+    expect(Object.keys(SCRAPERS).sort()).toEqual(['instagram', 'tiktok']);
+  });
+
+  it('rejects a Threads link before any persistence or paid job', async () => {
+    const gateway = makeGateway();
+    const store: any = {
+      guestProfileIdentityConflict: { findUnique: jest.fn() },
+      guestProfileExtraction: { create: jest.fn(), findFirst: jest.fn() },
+    };
+    const deps = { store, gateway, config, enqueue: jest.fn() } as unknown as ExtractionDeps;
+
+    const outcome = await startExtraction(
+      {
+        campaignId: 'c1',
+        requesterUserId: 'u1',
+        profileLink: 'https://www.threads.com/@pandapandiy_',
+        idempotencyKey: 'key-12345678',
+      },
+      deps,
+    );
+
+    expect(outcome).toMatchObject({ status: 'rejected', code: 'UNSUPPORTED_PLATFORM' });
+    expect(store.guestProfileExtraction.create).not.toHaveBeenCalled();
+    expect(deps.enqueue).not.toHaveBeenCalled();
+    expect(gateway.startJob).not.toHaveBeenCalled();
+  });
+
+  it('fails a queued legacy Threads row without starting a job', async () => {
     const record: any = {
       id: 'ext-1',
       status: 'QUEUED',
@@ -265,58 +226,19 @@ describe('processExtraction for Threads', () => {
       actorRunId: null,
       profileActorRunId: null,
     };
-    const updates: any[] = [];
     const store: any = {
       guestProfileExtraction: {
         findUnique: jest.fn(async () => record),
-        update: jest.fn(async ({ data }: any) => {
-          updates.push(data);
-          Object.assign(record, data);
-          return record;
-        }),
+        update: jest.fn(async ({ data }: any) => Object.assign(record, data)),
       },
     };
-    const done: JobSnapshot = { jobId: 'sd_th', state: 'SUCCEEDED', errorMessage: null };
-    const gateway: ScraperGateway = {
-      startJob: jest.fn(async () => ({ ok: true as const, runId: 'sd_th' })),
-      getJob: jest.fn(async () => done),
-      listItems: jest.fn(async () => [sampleRow]),
-      cancelJob: jest.fn(async () => undefined),
-      findRecentJobs: jest.fn(async () => []),
-    };
-    const deps: ExtractionDeps = {
-      store,
-      gateway,
-      config,
-      enqueue: jest.fn(),
-      sleep: async () => undefined,
-      cacheThumbnail: async () => 'https://storage.example.com/avatar.jpg',
-    };
+    const gateway = makeGateway();
+    const deps: ExtractionDeps = { store, gateway, config, enqueue: jest.fn() };
 
     await processExtraction('ext-1', deps);
 
-    expect(gateway.startJob).toHaveBeenCalledTimes(1);
-    expect(gateway.startJob).toHaveBeenCalledWith({
-      datasetId: 'gd_mde7jg3ld2h3hnnf2',
-      discoverBy: null,
-      input: [{ url: 'https://www.threads.com/@pandapandiy_' }],
-    });
-    expect(updates[0]).toMatchObject({ actorRunId: 'sd_th', actorId: 'gd_mde7jg3ld2h3hnnf2' });
-    expect(record).toMatchObject({
-      status: 'READY',
-      profileActorRunId: null,
-      resultName: 'pandapandiy_',
-      resultFollowerCount: 36,
-      resultBiography: '🇲🇾',
-      resultProfilePictureUrl: 'https://storage.example.com/avatar.jpg',
-      resultEngagementRate: null,
-      sampleSize: 0,
-      formulaVersion: 'threads_profile_v1',
-      selectedPosts: [],
-      candidatePosts: [],
-    });
-    expect(typeof record.receiptNonce).toBe('string');
-    expect(typeof record.receiptDigest).toBe('string');
+    expect(gateway.startJob).not.toHaveBeenCalled();
+    expect(record).toMatchObject({ status: 'FAILED', failureCode: 'UNSUPPORTED_PLATFORM' });
   });
 });
 
