@@ -9,10 +9,13 @@
 export type SupportedPlatform = 'instagram' | 'tiktok' | 'threads';
 
 /**
- * Platforms with a posts scrape and a computed engagement rate. Threads is
- * profile-only: its primary metric, Recent Views, is always typed by an admin.
+ * Platforms Bright Data scrapes. Threads is never scraped: CS types its
+ * followers and Recent Views by hand.
  */
 export type PostPlatform = Exclude<SupportedPlatform, 'threads'>;
+
+export const isScrapedPlatform = (platform: string | null | undefined): platform is PostPlatform =>
+  platform === 'instagram' || platform === 'tiktok';
 
 /* -------------------------------------------------------------- Identity */
 
@@ -260,7 +263,7 @@ export type EngagementFormulaId =
   | 'tiktok_recent_5_mean_view_rate_v1'
   | 'instagram_recent_10_median_view_v2'
   | 'tiktok_recent_10_median_view_v2'
-  /** Profile only: name, followers, bio, picture. No rate is computed. */
+  /** Legacy Threads profile scrape (removed). Kept so old rows still type-check. */
   | 'threads_profile_v1';
 
 /**

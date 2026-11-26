@@ -39,7 +39,7 @@ import {
 } from '../config/guestProfileExtractionConfig';
 import { parsePostMetrics } from '../service/postMetricsScrape/postMetricsAdapter';
 import { normalizeProfileUrl } from '../service/guestProfileExtraction/profileUrlNormalizer';
-import type { PostPlatform, SupportedPlatform } from '../types/guestProfileExtraction';
+import { isScrapedPlatform, type PostPlatform, type SupportedPlatform } from '../types/guestProfileExtraction';
 
 const FIXTURE_DIR = path.join(__dirname, '../../test/guestProfileExtraction/fixtures/brightdata');
 
@@ -331,20 +331,13 @@ async function main(): Promise<void> {
       continue;
     }
     const { platform, canonicalUrl } = normalized.profile;
-    const scrapers = SCRAPERS[platform];
-    console.log(`\n== ${platform} ${canonicalUrl} (${caseName})`);
-
-    // Profile-only platform (Threads): one profile job, no posts job.
-    if (!scrapers.posts) {
-      // eslint-disable-next-line no-await-in-loop
-      const profileRun = await runJob(http, 'profile', scrapers.profile, [{ url: canonicalUrl }], timeout);
-      const prof = profileRun.items.find((i) => !isErrorRow(i)) as Record<string, unknown> | undefined;
-      console.log(`  profile: ${profileRun.status} | ${profileRun.items.length} records | ${profileRun.seconds}s`);
-      if (prof) console.log(`    profile item keys: ${Object.keys(prof).sort().join(',')}`);
-      save(platform, caseName, 'profile', profileRun);
+    if (!isScrapedPlatform(platform)) {
+      console.error(`skip ${rawUrl}: ${platform} is not scraped`);
       continue;
     }
+    const scrapers = SCRAPERS[platform];
     const { posts: postsJob } = scrapers;
+    console.log(`\n== ${platform} ${canonicalUrl} (${caseName})`);
 
     // eslint-disable-next-line no-await-in-loop
     const [postsRun, profileRun] = await Promise.all([

@@ -2742,8 +2742,7 @@ export const updatePlatformCreatorMetrics = async (req: Request, res: Response) 
     }
 
     const platform = pitch.selectedPlatform;
-    // Threads Recent Views is never fetched, so it is always typed by hand.
-    // Followers on Threads still open only after a failed fetch.
+    // Threads is never fetched, so its followers and Recent Views are always typed by hand.
     const isThreads = platform === 'threads';
     const fetchFailed = Boolean(pitch.metricsFailureCode);
     if (!fetchFailed && !isThreads) {
@@ -2770,17 +2769,7 @@ export const updatePlatformCreatorMetrics = async (req: Request, res: Response) 
       });
     }
 
-    // A Threads follower count from a successful fetch is not edited here, so
-    // a sent count is refused openly instead of being dropped.
-    const followersLocked = isThreads && !fetchFailed;
-    const followerSent = followerCount !== undefined && followerCount !== null && String(followerCount).trim() !== '';
-    if (followersLocked && followerSent) {
-      return res.status(400).json({
-        message: 'The follower count comes from the Threads profile. Enter recent views only.',
-        code: 'FOLLOWERS_NOT_EDITABLE',
-      });
-    }
-    const parsedFollowerCount = followersLocked ? null : parseFollowerCount(followerCount);
+    const parsedFollowerCount = parseFollowerCount(followerCount);
     if (parsedFollowerCount === 'invalid') {
       return res.status(400).json({ message: 'Follower count must be a whole number above zero.' });
     }
@@ -2793,9 +2782,7 @@ export const updatePlatformCreatorMetrics = async (req: Request, res: Response) 
     if (parsedFollowerCount === null && parsedEngagementRate === null) {
       return res.status(400).json({
         message: isThreads
-          ? fetchFailed
-            ? 'Enter a follower count or recent views.'
-            : 'Enter recent views.'
+          ? 'Enter a follower count or recent views.'
           : 'Enter a follower count or an engagement rate.',
       });
     }
@@ -2860,7 +2847,7 @@ export const updatePlatformCreatorMetrics = async (req: Request, res: Response) 
           source: provenance.source,
           overrideReason: fetchFailed
             ? `Entered by hand after the fetch failed: ${pitch.metricsFailureCode}.`
-            : 'Threads recent views entered by hand.',
+            : 'Threads numbers entered by hand.',
           performedByUserId: userId as string,
           reviewerUserId: userId as string,
         },

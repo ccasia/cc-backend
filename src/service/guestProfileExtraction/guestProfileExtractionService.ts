@@ -3,24 +3,22 @@ import crypto from 'crypto';
 import {
   buildJobInput,
   buildTopUpInput,
-  isProfileOnly,
-  primaryJob,
   topUpBatchSize,
   type ExtractionConfig,
 } from '@configs/guestProfileExtractionConfig';
-import type {
-  AdapterResult,
-  CanonicalProfile,
-  ExtractedProfile,
-  MetricBaseline,
-  SupportedPlatform,
+import {
+  isScrapedPlatform,
+  type AdapterResult,
+  type CanonicalProfile,
+  type MetricBaseline,
+  type PostPlatform,
+  type SupportedPlatform,
 } from '@/src/types/guestProfileExtraction';
 import { RateLimitedError, type JobSnapshot, type ScraperGateway } from './brightDataGateway';
 import { computeEngagementRate, formatEngagementRatePercent } from './engagementRateCalculator';
 import { createReceiptNonce, digestResult } from './extractionReceiptService';
 import { normalizeProfileUrl } from './profileUrlNormalizer';
 import { parseInstagramOutput } from './scraperAdapters/instagramAdapter';
-import { parseThreadsOutput } from './scraperAdapters/threadsAdapter';
 import { parseTiktokOutput } from './scraperAdapters/tiktokAdapter';
 import { applyValidPostPolicy, markSampleInCandidates, selectSample } from './validPostPolicy';
 
@@ -30,9 +28,7 @@ import { applyValidPostPolicy, markSampleInCandidates, selectSample } from './va
  * The order is fixed and the tests hold it in place:
  *  1. Persist the extraction row.
  *  2. Enqueue the job.
- *  3. Persist the Bright Data snapshot ID (posts job, then profile job). A
- *     profile-only platform (Threads) runs one job, the profile job, and
- *     keeps its ID in `actorRunId`; `profileActorRunId` stays null.
+ *  3. Persist the Bright Data snapshot ID (posts job, then profile job).
  *  4. Poll, until `pollTimeoutSeconds`; a job past the deadline is canceled.
  *
  * An ambiguous start becomes REQUIRES_RECONCILIATION. It never starts a second
@@ -152,6 +148,16 @@ export async function startExtraction(input: StartExtractionInput, deps: Extract
     };
   }
 
+  // Threads is never scraped. CS types its numbers by hand.
+  if (!isScrapedPlatform(profile.platform)) {
+    return {
+      status: 'rejected',
+      code: 'UNSUPPORTED_PLATFORM',
+      message: 'Threads numbers are entered by hand. Type the follower count and recent views.',
+    };
+  }
+  const scrapedPlatform: PostPlatform = profile.platform;
+
   const conflict = await store.guestProfileIdentityConflict.findUnique({
     where: { canonicalProfileKey: profile.canonicalKey },
   });
@@ -163,11 +169,11 @@ export async function startExtraction(input: StartExtractionInput, deps: Extract
     };
   }
 
-  const scrapers = config.scrapers[profile.platform];
+  const scrapers = config.scrapers[scrapedPlatform];
   const fingerprint = workFingerprint({
     canonicalProfileKey: profile.canonicalKey,
     platform: profile.platform,
-    datasetId: primaryJob(scrapers).datasetId,
+    datasetId: scrapers.posts.datasetId,
     contractVersion: scrapers.contractVersion,
     maxPostsPerProfile: config.maxPostsPerProfile,
   });
@@ -232,8 +238,8 @@ export async function startExtraction(input: StartExtractionInput, deps: Extract
     canonicalProfileUrl: profile.canonicalUrl,
     platform: profile.platform,
     // Column names predate Bright Data: `actorId` holds the posts dataset ID
-    // (the profile dataset ID on Threads) and `actorBuild` the contract version.
-    actorId: primaryJob(scrapers).datasetId,
+    // and `actorBuild` the adapter contract version.
+    actorId: scrapers.posts.datasetId,
     actorBuild: scrapers.contractVersion,
     idempotencyKey: input.idempotencyKey,
     requestFingerprint: fingerprint,
@@ -373,21 +379,14 @@ async function markFailed(deps: ExtractionDeps, id: string, code: string, messag
 }
 
 function runAdapter(
-  platform: SupportedPlatform,
+  platform: PostPlatform,
   items: unknown[],
   expectedUsername: string,
   profileItems: unknown[] | null,
 ): AdapterResult {
-  switch (platform) {
-    case 'instagram':
-      return parseInstagramOutput({ items, profileItems, expectedUsername });
-    case 'tiktok':
-      return parseTiktokOutput({ items, profileItems, expectedUsername });
-    case 'threads':
-      return parseThreadsOutput({ items, expectedUsername });
-    default:
-      throw new Error(`No scraper adapter for platform ${String(platform)}.`);
-  }
+  return platform === 'instagram'
+    ? parseInstagramOutput({ items, profileItems, expectedUsername })
+    : parseTiktokOutput({ items, profileItems, expectedUsername });
 }
 
 /**
@@ -435,17 +434,20 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
   if ((TERMINAL_STATUSES as readonly string[]).includes(record.status)) return;
   if (record.status === 'REQUIRES_RECONCILIATION') return;
 
-  const platform = record.platform as SupportedPlatform;
+  // A Threads row queued before scraping was removed. Never start a paid job for it.
+  if (!isScrapedPlatform(record.platform)) {
+    await markFailed(deps, extractionId, 'UNSUPPORTED_PLATFORM', 'Threads numbers are entered by hand.');
+    return;
+  }
+  const platform: PostPlatform = record.platform;
   const scrapers = config.scrapers[platform];
-  const profileOnly = isProfileOnly(scrapers);
-  const firstJob = primaryJob(scrapers);
   let runId: string | null = record.actorRunId ?? null;
 
   if (!runId) {
     const started = await deps.gateway.startJob({
-      datasetId: firstJob.datasetId,
-      discoverBy: firstJob.discoverBy,
-      input: buildJobInput(platform, record.canonicalProfileUrl, config, profileOnly ? 'profile' : 'posts'),
+      datasetId: scrapers.posts.datasetId,
+      discoverBy: scrapers.posts.discoverBy,
+      input: buildJobInput(platform, record.canonicalProfileUrl, config, 'posts'),
     });
 
     if (!started.ok && started.ambiguous) {
@@ -470,7 +472,7 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
       where: { id: extractionId },
       data: {
         actorRunId: runId,
-        actorId: firstJob.datasetId,
+        actorId: scrapers.posts.datasetId,
         actorBuild: scrapers.contractVersion,
         status: 'RUNNING',
         startedAt: now(deps),
@@ -479,13 +481,12 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
     });
   }
 
-  // Instagram and TikTok, and only once. The profile job supplies followers and
-  // the private flag, and the rate does not depend on it, so nothing in here
-  // may fail the extraction. The catch covers the store as well as the
-  // provider: a worker running an older Prisma Client would otherwise throw on
-  // the column and lose a job that had already been paid for. A profile-only
-  // platform already started its profile job above, as the primary job.
-  if (!profileOnly && !record.profileActorRunId) {
+  // Both platforms, and only once. The profile job supplies followers and the
+  // private flag, and the rate does not depend on it, so nothing in here may
+  // fail the extraction. The catch covers the store as well as the provider:
+  // a worker running an older Prisma Client would otherwise throw on the
+  // column and lose a job that had already been paid for.
+  if (!record.profileActorRunId) {
     try {
       const profileJob = await deps.gateway.startJob({
         datasetId: scrapers.profile.datasetId,
@@ -551,7 +552,7 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
   // (INSUFFICIENT_DATA), and a missing account apart; the adapter decides
   // from empty items plus the profile.
   const items = noData ? [] : await deps.gateway.listItems(runId);
-  const profileItems = profileOnly ? null : await readProfileJob(deps, record);
+  const profileItems = await readProfileJob(deps, record);
   const username = record.canonicalProfileKey.split(':')[1] ?? '';
   const parsed = runAdapter(platform, items, username, profileItems);
 
@@ -572,11 +573,6 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
       where: { id: extractionId },
       data: { ...common, status: 'FAILED', failureCode: parsed.code, failureMessage: parsed.message },
     });
-    return;
-  }
-
-  if (profileOnly) {
-    await completeProfileOnly(deps, extractionId, record.platform, parsed.profile, common, at);
     return;
   }
 
@@ -680,48 +676,6 @@ export async function processExtraction(extractionId: string, deps: ExtractionDe
   });
 }
 
-/**
- * Write the READY row for a profile-only platform (Threads).
- *
- * No rate exists, so the baseline rate is null and the sample is empty. The
- * admin types Recent Views, which becomes a manual value on the pitch.
- */
-async function completeProfileOnly(
-  deps: ExtractionDeps,
-  extractionId: string,
-  platform: string,
-  profile: ExtractedProfile,
-  common: Record<string, unknown>,
-  at: Date,
-): Promise<void> {
-  const resultProfilePictureUrl = await cacheProfilePicture(deps, platform, extractionId, profile.profilePictureUrl);
-  const baseline: MetricBaseline = {
-    name: profile.displayName ?? profile.username,
-    followerCount: profile.followerCount,
-    engagementRate: null,
-  };
-
-  await deps.store.guestProfileExtraction.update({
-    where: { id: extractionId },
-    data: {
-      ...common,
-      status: 'READY',
-      resultName: baseline.name,
-      resultBiography: profile.biography ?? null,
-      resultProfilePictureUrl,
-      resultFollowerCount: baseline.followerCount,
-      resultEngagementRate: null,
-      sampleSize: 0,
-      formulaVersion: 'threads_profile_v1',
-      selectedPosts: [],
-      candidatePosts: [],
-      unverifiedFlags: [],
-      ...receiptFields(deps, baseline, 0, [], at),
-    },
-  });
-  log(deps, 'extraction ready', { id: extractionId, formulaVersion: 'threads_profile_v1' });
-}
-
 /** Raw provider post IDs, for the second batch's exclude list. */
 function rawPostIds(items: unknown[]): string[] {
   return items
@@ -759,14 +713,14 @@ async function fetchSecondBatch(
   firstItems: unknown[],
 ): Promise<unknown[]> {
   const { config, store } = deps;
-  const platform = record.platform as SupportedPlatform;
+  if (!isScrapedPlatform(record.platform)) return [];
+  const { platform } = record;
   let jobId = record.topUpRunId ?? null;
 
   if (!jobId) {
     if (topUpBatchSize(config) <= 0 || firstItems.length < config.maxPostsPerProfile) return [];
 
     const { posts } = config.scrapers[platform];
-    if (!posts) return [];
     const started = await deps.gateway.startJob({
       datasetId: posts.datasetId,
       discoverBy: posts.discoverBy,
@@ -866,7 +820,7 @@ export interface ReconcileReport {
  * Recover work after a restart.
  *
  * A queued or polling record is re-enqueued. An ambiguous start is matched
- * against the primary (posts, or Threads profile) dataset's recent jobs, by the profile URL in each job's
+ * against the posts dataset's recent jobs, by the profile URL in each job's
  * input. Nothing here ever starts a new job.
  */
 export async function reconcileExtractions(
@@ -899,6 +853,13 @@ export async function reconcileExtractions(
       // eslint-disable-next-line no-await-in-loop
       await deps.enqueue(record.id);
       report.requeued.push(record.id);
+      continue;
+    }
+
+    if (!isScrapedPlatform(record.platform)) {
+      // eslint-disable-next-line no-await-in-loop
+      await markFailed(deps, record.id, 'UNSUPPORTED_PLATFORM', 'Threads numbers are entered by hand.');
+      report.exhausted.push(record.id);
       continue;
     }
 
@@ -968,7 +929,7 @@ export async function reconcileExtractions(
  * The gateway ranks a running or ready job above a failed or canceled one.
  */
 async function findOwnJob(deps: ExtractionDeps, record: any): Promise<JobSnapshot | null> {
-  const scrapers = deps.config.scrapers[record.platform as SupportedPlatform];
+  const scrapers = deps.config.scrapers[record.platform as PostPlatform];
   const since = new Date(record.createdAt);
 
   // A second-batch job runs the same posts dataset on the same profile URL,
@@ -986,8 +947,7 @@ async function findOwnJob(deps: ExtractionDeps, record: any): Promise<JobSnapsho
     .flatMap((row) => [row.actorRunId, row.topUpRunId])
     .filter((jobId): jobId is string => typeof jobId === 'string');
 
-  // The posts dataset, or the profile dataset on a profile-only platform.
-  const matches = await deps.gateway.findRecentJobs(primaryJob(scrapers).datasetId, since, record.canonicalProfileUrl, {
+  const matches = await deps.gateway.findRecentJobs(scrapers.posts.datasetId, since, record.canonicalProfileUrl, {
     excludeJobIds,
   });
   return matches[0] ?? null;

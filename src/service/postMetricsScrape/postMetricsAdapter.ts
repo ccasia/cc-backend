@@ -171,7 +171,7 @@ const publishedSchema = z.object({ date_posted: text, create_time: text });
  * When the post went live on the platform, or null when the provider has no
  * usable date. `timestamp` is never read: it is the time of the scrape.
  */
-export function postPublishedAt(platform: SupportedPlatform, item: unknown, now: Date = new Date()): Date | null {
+export function postPublishedAt(platform: PostPlatform, item: unknown, now: Date = new Date()): Date | null {
   const parsed = publishedSchema.safeParse(item);
   if (!parsed.success) return null;
   const raw = platform === 'tiktok' ? parsed.data.create_time : parsed.data.date_posted;
