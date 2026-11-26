@@ -92,7 +92,7 @@ export async function fetchAndStoreInsightsForCampaign(campaignId: string): Prom
     // Get campaign info for logging
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { name: true, status: true, campaignBrief: { select: { endDate: true } } },
+      select: { name: true, status: true },
     });
 
     if (!campaign) {
@@ -118,16 +118,15 @@ export async function fetchAndStoreInsightsForCampaign(campaignId: string): Prom
     }
 
     const failures: InsightRefreshFailure[] = [];
-    const campaignEndDate = campaign.campaignBrief?.endDate ?? null;
 
     // Fetch and store Instagram insights
     if (instaUrls.length > 0) {
-      failures.push(...(await fetchAndStorePlatformInsights(campaignId, 'Instagram', instaUrls, campaignEndDate)));
+      failures.push(...(await fetchAndStorePlatformInsights(campaignId, 'Instagram', instaUrls)));
     }
 
     // Fetch and store TikTok insights
     if (tiktokUrls.length > 0) {
-      failures.push(...(await fetchAndStorePlatformInsights(campaignId, 'TikTok', tiktokUrls, campaignEndDate)));
+      failures.push(...(await fetchAndStorePlatformInsights(campaignId, 'TikTok', tiktokUrls)));
     }
 
     console.log(`✅ Insights fetched and stored for campaign ${campaignId}`);
@@ -146,7 +145,6 @@ async function fetchAndStorePlatformInsights(
   campaignId: string,
   platform: 'Instagram' | 'TikTok',
   urls: any[],
-  campaignEndDate: Date | null,
 ): Promise<InsightRefreshFailure[]> {
   console.log(`\n   📦 Fetching ${platform} insights...`);
 
@@ -171,7 +169,7 @@ async function fetchAndStorePlatformInsights(
     await savePublishedDates(prisma.submissionPostingUrl, urls, results);
 
     const dailySnapshotResult = await storeDailyPostEngagementResults(urls, results, platform);
-    queueScrapeFallbacks(urls, dailySnapshotResult.failures, campaignEndDate);
+    queueScrapeFallbacks(urls, dailySnapshotResult.failures);
 
     // Filter valid results
     const validResults = results.filter((r) => !r.error);
@@ -225,14 +223,13 @@ const SCRAPE_FALLBACK_CODES = new Set(['ACCOUNT_NOT_CONNECTED', 'ACCESS_TOKEN_MI
 
 /**
  * Queue today's scrape for posted links the API could not read, by the same
- * rules as the daily scrape cron: inside the campaign period, the current
+ * rules as the daily scrape cron: within 7 days of approval, the current
  * link, and not given up after repeated failed days. The worker claims
  * `metricsScrapedAt`, so a post is scraped once a day.
  */
 export function queueScrapeFallbacks(
   urls: any[],
   failures: { postUrl: string; reason: string }[],
-  campaignEndDate: Date | null,
   now: Date = new Date(),
 ): void {
   for (const { postUrl, reason } of failures) {
@@ -240,7 +237,7 @@ export function queueScrapeFallbacks(
     const postingUrl = urls.find((url) => url.postUrl === postUrl);
     if (!postingUrl || postingUrl.submission?.status !== 'POSTED' || !isCurrentLink(postingUrl)) continue;
     if (wasScrapedToday(postingUrl.metricsScrapedAt, now)) continue;
-    if (!isInScrapeWindow(postingUrl.postingDate, campaignEndDate, now)) continue;
+    if (!isInScrapeWindow(postingUrl, now)) continue;
     if (!isUnderFailureLimit(postingUrl.metricsScrapeFailure)) continue;
     queuePostScrape(
       {

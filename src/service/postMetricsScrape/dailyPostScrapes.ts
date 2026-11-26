@@ -2,7 +2,7 @@ import { prisma } from '@/src/prisma/prisma';
 import { CONNECTION_SELECT, isPlatformConnected } from './planPostScrapes';
 import { isCurrentLink } from './postMetricsScrapeService';
 import { queuePostScrape } from './queuePostScrape';
-import { isInScrapeWindow, isUnderFailureLimit, notScrapedToday, scrapeDay } from './scrapeDay';
+import { SCRAPE_WINDOW_DAYS, isInScrapeWindow, isUnderFailureLimit, notScrapedToday, scrapeDay } from './scrapeDay';
 
 const QUEUE_BATCH_SIZE = 10;
 
@@ -13,23 +13,22 @@ export interface DailyScrapeResult {
 
 /**
  * Queues today's Bright Data scrape for every posted link of a creator with
- * no connected account, from the approval day until the campaign period ends.
+ * no connected account, for 7 days after its posting link was approved.
  * Each scrape writes the day's snapshot, which fills the report's heatmap and
  * daily views. Connected creators are read by the API cron instead.
  */
 export async function queueDailyPostScrapes(now: Date = new Date()): Promise<DailyScrapeResult> {
   const today = scrapeDay(now);
+  // One more day of slack; the exact day is checked in Malaysia time below.
+  const windowStart = today.subtract(SCRAPE_WINDOW_DAYS + 1, 'day').toDate();
 
   const rows = await prisma.submissionPostingUrl.findMany({
     where: {
-      postingDate: { not: null, lt: today.add(1, 'day').toDate() },
+      postingDate: { not: null },
+      approvedAt: { gte: windowStart, lt: today.add(1, 'day').toDate() },
       ...notScrapedToday(now),
       submission: { status: 'POSTED' },
-      campaign: {
-        status: { in: ['ACTIVE', 'COMPLETED'] },
-        // The run after the last day also counts; one more day of slack, as the exact day is checked in Malaysia time below.
-        campaignBrief: { endDate: { gte: today.subtract(2, 'day').toDate() } },
-      },
+      campaign: { status: { in: ['ACTIVE', 'COMPLETED'] } },
     },
     select: {
       id: true,
@@ -40,15 +39,15 @@ export async function queueDailyPostScrapes(now: Date = new Date()): Promise<Dai
       shortCode: true,
       mediaId: true,
       postingDate: true,
+      approvedAt: true,
       metricsScrapeFailure: true,
-      campaign: { select: { campaignBrief: { select: { endDate: true } } } },
       submission: { select: { content: true, user: { select: { creator: { select: CONNECTION_SELECT } } } } },
     },
   });
 
   const due = rows.filter(
     (row) =>
-      isInScrapeWindow(row.postingDate, row.campaign.campaignBrief?.endDate, now) &&
+      isInScrapeWindow(row, now) &&
       isCurrentLink(row) &&
       isUnderFailureLimit(row.metricsScrapeFailure) &&
       !isPlatformConnected(row.submission.user?.creator, row.platform),

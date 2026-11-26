@@ -5,10 +5,14 @@ import { prisma } from '@/src/prisma/prisma';
 /**
  * Extract and store posting URLs from Submission.content field
  * Handles Instagram and TikTok URLs, stores in SubmissionPostingUrl table
+ *
+ * Pass `approvedAt` only from the posting-link approval path. It starts each
+ * link's 7-day scrape window, so a backfill must never set it.
  */
 export async function extractAndStoreSubmissionUrls(
   submissionId: string,
   content: string,
+  { approvedAt }: { approvedAt?: Date } = {},
 ): Promise<{ success: number; failed: number; invalid: number }> {
   console.log(`📝 Extracting URLs from submission ${submissionId}...`);
 
@@ -88,12 +92,15 @@ export async function extractAndStoreSubmissionUrls(
           shortCode: extracted.shortCode,
           mediaId: finalMediaId,
           postingDate: new Date(), // Assume posted if URL exists
+          approvedAt,
         },
         // postingDate is not reset here: a post scrape replaces it with the platform's real publish date.
+        // A re-approval of the same link restarts its scrape window.
         update: {
           shortCode: extracted.shortCode,
           mediaId: finalMediaId,
           updatedAt: new Date(),
+          ...(approvedAt && { approvedAt }),
         },
       });
 
